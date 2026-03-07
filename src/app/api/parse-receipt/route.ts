@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 
 const SYSTEM_PROMPT = `You are a receipt/invoice data extraction specialist for a metal roofing and fencing supply company called Hayden Ranch Services. 
 
@@ -41,18 +41,18 @@ Respond ONLY with valid JSON, no markdown, no explanation:
 
 export async function POST(request: NextRequest) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'OPENAI_API_KEY not configured. Add it to your .env.local file.' },
+        { error: 'ANTHROPIC_API_KEY not configured. Add it to your .env.local file.' },
         { status: 500 }
       );
     }
 
-    const openai = new OpenAI({ apiKey });
+    const anthropic = new Anthropic({ apiKey });
 
     const contentType = request.headers.get('content-type') || '';
-    let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+    let userContent: Anthropic.MessageCreateParams['messages'][0]['content'];
 
     if (contentType.includes('multipart/form-data')) {
       // Handle file upload (image or PDF)
@@ -78,86 +78,66 @@ export async function POST(request: NextRequest) {
 
           if (pdfText && pdfText.trim().length > 20) {
             // PDF has extractable text — send as text
-            messages = [
-              { role: 'system', content: SYSTEM_PROMPT },
-              {
-                role: 'user',
-                content: `Extract all receipt/invoice data from this text:\n\n${pdfText}`,
-              },
-            ];
+            userContent = `Extract all receipt/invoice data from this text:\n\n${pdfText}`;
           } else {
-            // PDF is a scanned image — try to read as image
-            // Convert first page to base64 and send as image
+            // PDF is scanned — send as document to Claude
             const base64 = buffer.toString('base64');
-            const mimeType = 'application/pdf';
-            messages = [
-              { role: 'system', content: SYSTEM_PROMPT },
+            userContent = [
               {
-                role: 'user',
-                content: [
-                  { type: 'text', text: 'Extract all receipt/invoice data from this scanned receipt:' },
-                  {
-                    type: 'image_url',
-                    image_url: {
-                      url: `data:${mimeType};base64,${base64}`,
-                      detail: 'high',
-                    },
-                  },
-                ],
+                type: 'document' as const,
+                source: {
+                  type: 'base64' as const,
+                  media_type: 'application/pdf' as const,
+                  data: base64,
+                },
+              },
+              {
+                type: 'text' as const,
+                text: 'Extract all receipt/invoice data from this scanned receipt PDF.',
               },
             ];
           }
         } catch {
-          // PDF parse failed — try as image anyway
+          // PDF parse failed — send the raw PDF to Claude
           const base64 = buffer.toString('base64');
-          messages = [
-            { role: 'system', content: SYSTEM_PROMPT },
+          userContent = [
             {
-              role: 'user',
-              content: [
-                { type: 'text', text: 'Extract all receipt/invoice data from this document:' },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: `data:application/pdf;base64,${base64}`,
-                    detail: 'high',
-                  },
-                },
-              ],
+              type: 'document' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: 'application/pdf' as const,
+                data: base64,
+              },
+            },
+            {
+              type: 'text' as const,
+              text: 'Extract all receipt/invoice data from this document.',
             },
           ];
         }
       } else if (isImage) {
-        // Image file — send directly to vision
+        // Image file — send directly to Claude vision
         const base64 = buffer.toString('base64');
-        const mimeType = file.type || 'image/jpeg';
+        const mimeType = (file.type || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
 
-        messages = [
-          { role: 'system', content: SYSTEM_PROMPT },
+        userContent = [
           {
-            role: 'user',
-            content: [
-              { type: 'text', text: 'Extract all receipt/invoice data from this scanned receipt image:' },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:${mimeType};base64,${base64}`,
-                  detail: 'high',
-                },
-              },
-            ],
+            type: 'image' as const,
+            source: {
+              type: 'base64' as const,
+              media_type: mimeType,
+              data: base64,
+            },
+          },
+          {
+            type: 'text' as const,
+            text: 'Extract all receipt/invoice data from this scanned receipt image.',
           },
         ];
       } else {
         // Text file — read as text
         const text = new TextDecoder().decode(buffer);
-        messages = [
-          { role: 'system', content: SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: `Extract all receipt/invoice data from this text:\n\n${text}`,
-          },
-        ];
+        userContent = `Extract all receipt/invoice data from this text:\n\n${text}`;
       }
     } else {
       // JSON body with pasted text
@@ -167,24 +147,24 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'No text provided' }, { status: 400 });
       }
 
-      messages = [
-        { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: `Extract all receipt/invoice data from this text:\n\n${text}`,
-        },
-      ];
+      userContent = `Extract all receipt/invoice data from this text:\n\n${text}`;
     }
 
-    // Call OpenAI
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages,
+    // Call Claude
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
-      temperature: 0.1, // Low temp for precise extraction
+      system: SYSTEM_PROMPT,
+      messages: [
+        {
+          role: 'user',
+          content: userContent,
+        },
+      ],
     });
 
-    const content = response.choices[0]?.message?.content;
+    const textBlock = response.content.find((b) => b.type === 'text');
+    const content = textBlock && 'text' in textBlock ? textBlock.text : null;
     if (!content) {
       return NextResponse.json({ error: 'AI returned empty response' }, { status: 500 });
     }

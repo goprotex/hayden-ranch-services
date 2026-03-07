@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import HaydenLogo from '@/components/HaydenLogo';
 
 export default function Home() {
   return (
@@ -7,26 +8,26 @@ export default function Home() {
       <header className="border-b border-steel-700/50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-brand-500 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-lg">H</span>
-            </div>
-            <div>
-              <h1 className="text-white font-bold text-xl">Hayden Ranch Services</h1>
-              <p className="text-steel-400 text-xs">Metal Roofing &amp; Fencing Solutions</p>
-            </div>
+            <HaydenLogo className="h-10 w-auto" dark />
           </div>
           <nav className="flex items-center gap-4">
             <Link
-              href="/projects"
+              href="/roofing"
               className="text-steel-300 hover:text-white transition text-sm"
             >
-              Projects
+              Roofing
             </Link>
             <Link
               href="/pricing"
               className="text-steel-300 hover:text-white transition text-sm"
             >
-              Price Database
+              Pricing
+            </Link>
+            <Link
+              href="/fencing"
+              className="text-steel-300 hover:text-white transition text-sm"
+            >
+              Fencing
             </Link>
           </nav>
         </div>

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useAppStore } from '@/lib/store';
 import { parseReceiptText, receiptToPriceEntries } from '@/lib/pricing/receipt-parser';
 import { Receipt, PriceEntry, ReceiptItem } from '@/types';
+import HaydenLogo from '@/components/HaydenLogo';
 
 type UploadStatus = 'idle' | 'uploading' | 'processing' | 'done' | 'error';
 
@@ -177,11 +178,7 @@ export default function PricingPage() {
               ← Back
             </Link>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
-                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                </svg>
-              </div>
+              <HaydenLogo className="w-8 h-8" />
               <h1 className="text-steel-800 font-bold text-lg">Material Pricing</h1>
             </div>
           </div>
