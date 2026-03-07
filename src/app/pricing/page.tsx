@@ -1,20 +1,89 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useAppStore } from '@/lib/store';
 import { parseReceiptText, receiptToPriceEntries } from '@/lib/pricing/receipt-parser';
-import { Receipt, PriceEntry } from '@/types';
+import { Receipt, PriceEntry, ReceiptItem } from '@/types';
+
+type UploadStatus = 'idle' | 'uploading' | 'processing' | 'done' | 'error';
 
 export default function PricingPage() {
   const { receipts, priceDatabase, addReceipt, addPriceEntries } = useAppStore();
   const [receiptText, setReceiptText] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [activeReceipt, setActiveReceipt] = useState<Receipt | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle');
+  const [uploadError, setUploadError] = useState('');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleParseReceipt = useCallback(() => {
+  const processAIResult = useCallback(
+    (data: Record<string, unknown>) => {
+      const receipt: Receipt = {
+        id: crypto.randomUUID(),
+        supplier: (data.supplier as string) || supplierName || 'Unknown',
+        date: (data.date as string) || new Date().toISOString().split('T')[0],
+        items: Array.isArray(data.items)
+          ? (data.items as Record<string, unknown>[]).map((item) => ({
+              description: String(item.description || ''),
+              sku: item.sku ? String(item.sku) : undefined,
+              quantity: Number(item.quantity) || 1,
+              unit: String(item.unit || 'each'),
+              unitPrice: Number(item.unitPrice) || 0,
+              totalPrice: Number(item.totalPrice) || 0,
+              category: String(item.category || 'other'),
+            })) as ReceiptItem[]
+          : [],
+        subtotal: Number(data.subtotal) || 0,
+        tax: Number(data.tax) || 0,
+        total: Number(data.total) || 0,
+        rawText: JSON.stringify(data, null, 2),
+      };
+
+      // Override supplier if user typed one
+      if (supplierName.trim()) {
+        receipt.supplier = supplierName.trim();
+      }
+
+      addReceipt(receipt);
+      const entries = receiptToPriceEntries(receipt);
+      addPriceEntries(entries);
+      setActiveReceipt(receipt);
+      setSupplierName('');
+    },
+    [supplierName, addReceipt, addPriceEntries]
+  );
+
+  const handleParseReceipt = useCallback(async () => {
     if (!receiptText.trim()) return;
 
+    setUploadStatus('processing');
+    setUploadError('');
+
+    try {
+      // Try AI-powered parsing first via the API
+      const res = await fetch('/api/parse-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: receiptText }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.error) {
+          processAIResult(data);
+          setReceiptText('');
+          setUploadStatus('done');
+          setTimeout(() => setUploadStatus('idle'), 2000);
+          return;
+        }
+      }
+    } catch {
+      // AI unavailable — fall through to regex parser
+    }
+
+    // Fallback: regex-based parsing
     const receipt = parseReceiptText(receiptText, supplierName || undefined);
     addReceipt(receipt);
     const entries = receiptToPriceEntries(receipt);
@@ -22,16 +91,71 @@ export default function PricingPage() {
     setActiveReceipt(receipt);
     setReceiptText('');
     setSupplierName('');
-  }, [receiptText, supplierName, addReceipt, addPriceEntries]);
+    setUploadStatus('done');
+    setTimeout(() => setUploadStatus('idle'), 2000);
+  }, [receiptText, supplierName, addReceipt, addPriceEntries, processAIResult]);
 
   const handleFileUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      const text = await file.text();
-      setReceiptText(text);
+
+      const isImage = file.type.startsWith('image/');
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+      // Show preview for images
+      if (isImage) {
+        const url = URL.createObjectURL(file);
+        setPreviewUrl(url);
+      } else {
+        setPreviewUrl(null);
+      }
+
+      if (isImage || isPdf) {
+        // Use AI parsing for images and PDFs
+        setUploadStatus('uploading');
+        setUploadError('');
+
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+
+          setUploadStatus('processing');
+          const res = await fetch('/api/parse-receipt', {
+            method: 'POST',
+            body: formData,
+          });
+
+          const data = await res.json();
+
+          if (!res.ok || data.error) {
+            throw new Error(data.error || 'Failed to parse receipt');
+          }
+
+          processAIResult(data);
+          setUploadStatus('done');
+          setTimeout(() => {
+            setUploadStatus('idle');
+            setPreviewUrl(null);
+          }, 3000);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Upload failed';
+          setUploadError(msg);
+          setUploadStatus('error');
+        }
+      } else {
+        // Text/CSV — read as text and populate textarea
+        const text = await file.text();
+        setReceiptText(text);
+        setUploadStatus('idle');
+      }
+
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     },
-    []
+    [processAIResult]
   );
 
   // Group prices by category
@@ -89,17 +213,64 @@ export default function PricingPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-steel-600 mb-1">
-                    Upload Receipt File
+                    Upload Receipt (Image, PDF, or Text)
                   </label>
                   <input
+                    ref={fileInputRef}
                     type="file"
-                    accept=".txt,.csv,.pdf,.jpg,.jpeg,.png"
+                    accept=".txt,.csv,.pdf,.jpg,.jpeg,.png,.webp,.heic,.bmp,.tiff"
                     onChange={handleFileUpload}
+                    title="Upload a receipt file"
                     className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                    disabled={uploadStatus === 'uploading' || uploadStatus === 'processing'}
                   />
                   <p className="text-xs text-steel-400 mt-1">
-                    Supports text, CSV, and image files (OCR coming soon)
+                    📸 Photo scans, PDFs, text files — AI reads them all
                   </p>
+
+                  {/* Upload status indicator */}
+                  {uploadStatus === 'uploading' && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-blue-600">
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Uploading file...
+                    </div>
+                  )}
+                  {uploadStatus === 'processing' && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-amber-600">
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      🤖 AI is reading your receipt...
+                    </div>
+                  )}
+                  {uploadStatus === 'done' && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-green-600">
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      ✅ Receipt parsed successfully!
+                    </div>
+                  )}
+                  {uploadStatus === 'error' && (
+                    <div className="mt-3 text-sm text-red-600 bg-red-50 p-2 rounded-lg">
+                      ❌ {uploadError}
+                    </div>
+                  )}
+
+                  {/* Image preview */}
+                  {previewUrl && (
+                    <div className="mt-3 border border-steel-200 rounded-lg overflow-hidden">
+                      <img
+                        src={previewUrl}
+                        alt="Receipt preview"
+                        className="w-full max-h-48 object-contain bg-steel-50"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -117,10 +288,10 @@ export default function PricingPage() {
 
                 <button
                   onClick={handleParseReceipt}
-                  disabled={!receiptText.trim()}
+                  disabled={!receiptText.trim() || uploadStatus === 'processing'}
                   className="w-full bg-green-600 text-white font-semibold py-2.5 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
                 >
-                  Parse Receipt
+                  {uploadStatus === 'processing' ? '🤖 AI Parsing...' : 'Parse Receipt'}
                 </button>
               </div>
             </div>
