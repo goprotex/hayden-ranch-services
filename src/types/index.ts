@@ -3,7 +3,7 @@
 // ============================================================
 
 /** Supported roof measurement report sources */
-export type ReportSource = 'eagleview' | 'gaf_quickmeasure' | 'roofgraf' | 'manual';
+export type ReportSource = 'eagleview' | 'gaf_quickmeasure' | 'roofgraf' | 'roofr' | 'manual';
 
 /** Metal panel profile types */
 export type PanelProfile =

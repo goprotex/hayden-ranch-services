@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useAppStore } from '@/lib/store';
-import { parseRoofReport } from '@/lib/roofing/report-parser';
+import { parseRoofReport, detectReportSource } from '@/lib/roofing/report-parser';
 import { generateCutList } from '@/lib/roofing/cut-list-engine';
 import { PANEL_SPECS } from '@/lib/roofing/panel-specs';
 import { RoofModel, PanelProfile, ReportSource, CutList } from '@/types';
@@ -29,9 +29,12 @@ export default function RoofingPage() {
   const [activeModel, setActiveModel] = useState<RoofModel | null>(null);
   const [activeCutList, setActiveCutList] = useState<CutList | null>(null);
   const [showImport, setShowImport] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
 
   const handleImportReport = useCallback(() => {
     if (!reportText.trim()) return;
+    setUploadError('');
 
     const model = parseRoofReport(reportText, reportSource, projectName || undefined);
     addRoofModel(model);
@@ -53,9 +56,51 @@ export default function RoofingPage() {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      const text = await file.text();
-      setReportText(text);
-      setProjectName(file.name.replace(/\.\w+$/, ''));
+      setUploadError('');
+      const fileName = file.name.replace(/\.\w+$/, '');
+      setProjectName(fileName);
+
+      // If it's a PDF, send to server-side parser
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        setUploading(true);
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+
+          const res = await fetch('/api/parse-pdf', { method: 'POST', body: formData });
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'PDF parsing failed');
+          }
+
+          const { text } = await res.json();
+          if (!text || text.trim().length < 10) {
+            throw new Error('PDF contained no extractable text. Try copy-pasting the report text instead.');
+          }
+
+          setReportText(text);
+
+          // Auto-detect source from PDF content
+          const detected = detectReportSource(text);
+          if (detected !== 'manual') {
+            setReportSource(detected);
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Failed to parse PDF';
+          setUploadError(message);
+        } finally {
+          setUploading(false);
+        }
+      } else {
+        // Plain text file
+        const text = await file.text();
+        setReportText(text);
+
+        const detected = detectReportSource(text);
+        if (detected !== 'manual') {
+          setReportSource(detected);
+        }
+      }
     },
     []
   );
@@ -113,6 +158,7 @@ export default function RoofingPage() {
                       onChange={(e) => setReportSource(e.target.value as ReportSource)}
                       className="w-full border border-steel-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
+                      <option value="roofr">Roofr</option>
                       <option value="eagleview">EagleView</option>
                       <option value="gaf_quickmeasure">GAF QuickMeasure</option>
                       <option value="roofgraf">RoofGraf</option>
@@ -122,14 +168,25 @@ export default function RoofingPage() {
 
                   <div>
                     <label className="block text-sm font-medium text-steel-600 mb-1">
-                      Upload Report File
+                      Upload Report File (PDF, TXT)
                     </label>
                     <input
                       type="file"
                       accept=".txt,.csv,.pdf,.json,.xml"
                       onChange={handleFileUpload}
-                      className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                      disabled={uploading}
+                      className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
                     />
+                    {uploading && (
+                      <p className="text-xs text-blue-600 mt-1 animate-pulse">
+                        ⏳ Extracting text from PDF…
+                      </p>
+                    )}
+                    {uploadError && (
+                      <p className="text-xs text-red-600 mt-1">
+                        ⚠ {uploadError}
+                      </p>
+                    )}
                   </div>
 
                   <div>

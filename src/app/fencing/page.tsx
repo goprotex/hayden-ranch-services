@@ -1,8 +1,19 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useAppStore } from '@/lib/store';
+import type { DrawnLine } from '@/components/fencing/FenceMap';
+
+const FenceMap = dynamic(() => import('@/components/fencing/FenceMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="bg-steel-100 flex items-center justify-center h-[500px] animate-pulse">
+      <p className="text-steel-400 text-sm">Loading map…</p>
+    </div>
+  ),
+});
 import {
   calculateFenceMaterials,
   calculateLaborEstimate,
@@ -44,6 +55,16 @@ export default function FencingPage() {
   const [totalLengthInput, setTotalLengthInput] = useState('');
   const [materials, setMaterials] = useState<FenceMaterialList | null>(null);
   const [labor, setLabor] = useState<LaborEstimate | null>(null);
+  const [drawnLines, setDrawnLines] = useState<DrawnLine[]>([]);
+
+  // When user draws on map, auto-populate the total length field
+  const handleFenceLinesChange = useCallback((lines: DrawnLine[]) => {
+    setDrawnLines(lines);
+    const totalFt = lines.reduce((sum, l) => sum + l.lengthFeet, 0);
+    if (totalFt > 0) {
+      setTotalLengthInput(Math.round(totalFt).toString());
+    }
+  }, []);
 
   const handleCalculate = useCallback(() => {
     const totalLength = parseFloat(totalLengthInput) || 1000;
@@ -254,28 +275,25 @@ export default function FencingPage() {
 
           {/* Center + Right - Map & Results */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Map placeholder */}
+            {/* Map */}
             <div className="bg-white rounded-xl border border-steel-200 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-steel-200">
                 <h2 className="text-steel-800 font-semibold">Satellite Map</h2>
                 <p className="text-sm text-steel-500">
-                  Draw fence lines on the map (requires Mapbox token in .env.local)
+                  Draw fence lines on the satellite view — lengths auto-populate below
                 </p>
               </div>
-              <div className="bg-steel-100 flex items-center justify-center" style={{ height: '400px' }}>
-                <div className="text-center">
-                  <svg className="w-16 h-16 text-steel-300 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498 4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 0 0-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0Z" />
-                  </svg>
-                  <p className="text-steel-400 text-sm font-medium">Satellite Map with Drawing Tools</p>
-                  <p className="text-steel-400 text-xs mt-1">
-                    Add NEXT_PUBLIC_MAPBOX_TOKEN to .env.local to enable
-                  </p>
-                  <p className="text-steel-400 text-xs mt-1">
-                    Features: Draw fence lines, soil overlay, elevation profile
-                  </p>
+              <FenceMap onFenceLinesChange={handleFenceLinesChange} />
+              {drawnLines.length > 0 && (
+                <div className="px-6 py-3 border-t border-steel-200 bg-steel-50 text-xs text-steel-600 space-y-1">
+                  {drawnLines.map((line, i) => (
+                    <div key={line.id} className="flex justify-between">
+                      <span>Line {i + 1}</span>
+                      <span className="font-medium">{Math.round(line.lengthFeet).toLocaleString()} ft</span>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Material List */}
