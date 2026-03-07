@@ -1,0 +1,42 @@
+{
+  "name": "hayden-ranch-services",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hayden Ranch Services - Roofing Cut Lists, Material Pricing & Fencing Bid Tool",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^14.2.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "@heroicons/react": "^2.1.0",
+    "clsx": "^2.1.0",
+    "mapbox-gl": "^3.3.0",
+    "@mapbox/mapbox-gl-draw": "^1.4.3",
+    "pdf-parse": "^1.1.1",
+    "tesseract.js": "^5.0.5",
+    "zustand": "^4.5.0",
+    "recharts": "^2.12.0",
+    "lucide-react": "^0.365.0",
+    "react-dropzone": "^14.2.3",
+    "@turf/turf": "^7.0.0",
+    "jspdf": "^2.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/mapbox-gl": "^3.1.0",
+    "@types/mapbox__mapbox-gl-draw": "^1.4.6",
+    "typescript": "^5.4.0",
+    "tailwindcss": "^3.4.0",
+    "postcss": "^8.4.0",
+    "autoprefixer": "^10.4.0",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.0"
+  }
+}
