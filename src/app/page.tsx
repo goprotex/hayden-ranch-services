@@ -29,6 +29,12 @@ export default function Home() {
             >
               Fencing
             </Link>
+            <Link
+              href="/projects"
+              className="text-steel-300 hover:text-white transition text-sm"
+            >
+              Projects
+            </Link>
           </nav>
         </div>
       </header>

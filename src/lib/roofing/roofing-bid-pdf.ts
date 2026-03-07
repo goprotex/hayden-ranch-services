@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 
-// ── Types ──
+// `` Types ``
 
 export interface RoofBidSection {
   id: string;
@@ -9,6 +9,24 @@ export interface RoofBidSection {
   ratePerSqFt: number;
   total: number;
   pitch?: string;
+}
+
+export interface RoofMaterialCosts {
+  panelCostPerSqFt: number;
+  underlaymentCostPerSqFt: number;
+  trimAndFlashingPerSqFt: number;
+  fastenersCostPerSqFt: number;
+  laborCostPerSqFt: number;
+  profitMarginPercent: number;
+  overheadPercent: number;
+}
+
+export interface RoofSketchFacet {
+  name: string;
+  areaSqFt: number;
+  pitch: string;
+  color: string;
+  vertices: [number, number][]; // normalized 0-1 coords for drawing
 }
 
 export interface RoofBidData {
@@ -33,10 +51,15 @@ export interface RoofBidData {
   roofLayers: number;
   warrantyYears: number;
   customTerms?: string[];
+  // New: material/pricing breakdown
+  materialCosts?: RoofMaterialCosts;
+  // New: sketch facets for diagram
+  sketchFacets?: RoofSketchFacet[];
+  // New: map capture image (base64)
+  mapImage?: string;
 }
 
-// ── Company ──
-
+// Company info
 const COMPANY = {
   name: 'HAYDEN RANCH SERVICES',
   address: '5900 Balcones Dr #26922, Austin, TX 78731',
@@ -44,8 +67,7 @@ const COMPANY = {
   email: 'office@haydenclaim.com',
 };
 
-// ── Default Terms ──
-
+// Default terms
 const DEFAULT_TERMS: string[] = [
   'This proposal is valid for 30 days from the date shown above.',
   'A deposit of {depositPercent}% (${depositAmount}) is due upon acceptance. The remaining balance of ${balanceAmount} is due upon satisfactory completion.',
@@ -73,8 +95,117 @@ function fmt(n: number): string {
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// ── PDF Generator ──
+// Draw roof diagram in PDF
+function drawRoofDiagram(doc: jsPDF, data: RoofBidData, startX: number, startY: number, width: number, height: number): void {
+  const facets = data.sketchFacets;
+  if (!facets || facets.length === 0) return;
 
+  // Background
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(startX, startY, width, height, 2, 2, 'F');
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(startX, startY, width, height, 2, 2, 'S');
+
+  // Find bounds of all facets
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const f of facets) {
+    for (const [vx, vy] of f.vertices) {
+      minX = Math.min(minX, vx); minY = Math.min(minY, vy);
+      maxX = Math.max(maxX, vx); maxY = Math.max(maxY, vy);
+    }
+  }
+  const rangeX = maxX - minX || 1;
+  const rangeY = maxY - minY || 1;
+  const pad = 8;
+  const dw = width - pad * 2;
+  const dh = height - pad * 2 - 8;
+  const scale = Math.min(dw / rangeX, dh / rangeY);
+  const ox = startX + pad + (dw - rangeX * scale) / 2;
+  const oy = startY + pad + (dh - rangeY * scale) / 2;
+
+  const toP = (vx: number, vy: number): [number, number] => [
+    ox + (vx - minX) * scale,
+    oy + (vy - minY) * scale,
+  ];
+
+  // Draw facets
+  const hexToRgb = (hex: string) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return [r, g, b] as [number, number, number];
+  };
+
+  for (const facet of facets) {
+    if (facet.vertices.length < 3) continue;
+    const rgb = hexToRgb(facet.color || '#f59e0b');
+
+    // Fill
+    doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+    doc.setGState(doc.GState({ opacity: 0.2 }));
+    const [fx, fy] = toP(facet.vertices[0][0], facet.vertices[0][1]);
+    let path = `${fx} ${fy} m`;
+    for (let i = 1; i < facet.vertices.length; i++) {
+      const [px, py] = toP(facet.vertices[i][0], facet.vertices[i][1]);
+      path += ` ${px} ${py} l`;
+    }
+    // Use manual polygon drawing
+    doc.setGState(doc.GState({ opacity: 1 }));
+    const pts = facet.vertices.map(v => toP(v[0], v[1]));
+    // Draw filled polygon
+    doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+    // We'll draw a path manually
+    const firstPt = pts[0];
+    doc.triangle(firstPt[0], firstPt[1], firstPt[0], firstPt[1], firstPt[0], firstPt[1], 'F');
+    // Actually, let's use lines for the outline and a simple approach for fill
+    // Fill with low opacity by drawing a lighter version
+    doc.setFillColor(
+      Math.min(255, rgb[0] + 180),
+      Math.min(255, rgb[1] + 180),
+      Math.min(255, rgb[2] + 180)
+    );
+    // Draw as triangulated polygon for fill
+    if (pts.length === 3) {
+      doc.triangle(pts[0][0], pts[0][1], pts[1][0], pts[1][1], pts[2][0], pts[2][1], 'F');
+    } else if (pts.length === 4) {
+      doc.triangle(pts[0][0], pts[0][1], pts[1][0], pts[1][1], pts[2][0], pts[2][1], 'F');
+      doc.triangle(pts[0][0], pts[0][1], pts[2][0], pts[2][1], pts[3][0], pts[3][1], 'F');
+    } else if (pts.length >= 5) {
+      for (let i = 1; i < pts.length - 1; i++) {
+        doc.triangle(pts[0][0], pts[0][1], pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], 'F');
+      }
+    }
+
+    // Outline
+    doc.setDrawColor(rgb[0], rgb[1], rgb[2]);
+    doc.setLineWidth(0.5);
+    for (let i = 0; i < pts.length; i++) {
+      const next = pts[(i + 1) % pts.length];
+      doc.line(pts[i][0], pts[i][1], next[0], next[1]);
+    }
+
+    // Center label
+    const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+    const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(rgb[0], rgb[1], rgb[2]);
+    doc.text(facet.name, cx, cy - 1.5, { align: 'center' });
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.text(`${facet.areaSqFt.toLocaleString()} sf \u2022 ${facet.pitch}`, cx, cy + 2.5, { align: 'center' });
+  }
+
+  // Title
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 41, 59);
+  doc.text('ROOF DIAGRAM', startX + width / 2, startY + height - 3, { align: 'center' });
+}
+
+// PDF Generator
 export function generateRoofBidPDF(data: RoofBidData): void {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   const PW = 215.9;
@@ -93,7 +224,7 @@ export function generateRoofBidPDF(data: RoofBidData): void {
     }
   }
 
-  // ── Header ──
+  // Header
   doc.setFillColor(30, 41, 59);
   doc.rect(0, 0, PW, 38, 'F');
   doc.setFontSize(18);
@@ -107,12 +238,11 @@ export function generateRoofBidPDF(data: RoofBidData): void {
   doc.text(COMPANY.phone + '  |  ' + COMPANY.email, ML, 30);
   y = 46;
 
-  // ── Title ──
+  // Title
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(30, 41, 59);
-  const title = data.roofType + ' Roofing Installation Proposal';
-  doc.text(title, PW / 2, y, { align: 'center' });
+  doc.text(data.roofType + ' Roofing Installation Proposal', PW / 2, y, { align: 'center' });
   y += 8;
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
@@ -126,7 +256,7 @@ export function generateRoofBidPDF(data: RoofBidData): void {
   doc.text('Date: ' + data.date + '  |  Valid Until: ' + data.validUntil, PW / 2, y, { align: 'center' });
   y += 10;
 
-  // ── Project Overview ──
+  // Project Overview
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(30, 41, 59);
@@ -139,7 +269,30 @@ export function generateRoofBidPDF(data: RoofBidData): void {
   doc.text(overviewLines, ML, y);
   y += overviewLines.length * 4.5 + 6;
 
-  // ── Specifications ──
+  // Map Image (if available)
+  if (data.mapImage) {
+    checkPage(80);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text('PROPERTY OVERVIEW', ML, y);
+    y += 4;
+    try {
+      doc.addImage(data.mapImage, 'JPEG', ML, y, CW, 60);
+      y += 64;
+    } catch {
+      // skip if image fails
+    }
+  }
+
+  // Roof Diagram
+  if (data.sketchFacets && data.sketchFacets.length > 0) {
+    checkPage(70);
+    drawRoofDiagram(doc, data, ML, y, CW, 60);
+    y += 64;
+  }
+
+  // Specifications
   checkPage(30);
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
@@ -166,7 +319,59 @@ export function generateRoofBidPDF(data: RoofBidData): void {
   });
   y += 4;
 
-  // ── Investment Summary ──
+  // Material Cost Breakdown (if provided)
+  if (data.materialCosts) {
+    checkPage(45);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text('COST BREAKDOWN', ML, y);
+    y += 6;
+
+    const mc = data.materialCosts;
+    const totalSqFt = data.sections.reduce((s, c) => s + c.areaSqFt, 0);
+    const materialTotal = (mc.panelCostPerSqFt + mc.underlaymentCostPerSqFt + mc.trimAndFlashingPerSqFt + mc.fastenersCostPerSqFt) * totalSqFt;
+    const laborTotal = mc.laborCostPerSqFt * totalSqFt;
+    const subtotal = materialTotal + laborTotal;
+    const overhead = subtotal * mc.overheadPercent / 100;
+    const profit = (subtotal + overhead) * mc.profitMarginPercent / 100;
+
+    const breakdownItems = [
+      ['Panels (' + mc.panelCostPerSqFt.toFixed(2) + '/sqft x ' + totalSqFt.toLocaleString() + ')', fmt(mc.panelCostPerSqFt * totalSqFt)],
+      ['Underlayment (' + mc.underlaymentCostPerSqFt.toFixed(2) + '/sqft)', fmt(mc.underlaymentCostPerSqFt * totalSqFt)],
+      ['Trim & Flashing (' + mc.trimAndFlashingPerSqFt.toFixed(2) + '/sqft)', fmt(mc.trimAndFlashingPerSqFt * totalSqFt)],
+      ['Fasteners & Hardware (' + mc.fastenersCostPerSqFt.toFixed(2) + '/sqft)', fmt(mc.fastenersCostPerSqFt * totalSqFt)],
+      ['Labor (' + mc.laborCostPerSqFt.toFixed(2) + '/sqft)', fmt(laborTotal)],
+      ['Overhead (' + mc.overheadPercent + '%)', fmt(overhead)],
+      ['Profit (' + mc.profitMarginPercent + '%)', fmt(profit)],
+    ];
+
+    doc.setFillColor(30, 41, 59);
+    doc.rect(ML, y - 4, CW, 8, 'F');
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 255, 255);
+    doc.text('Item', ML + 3, y);
+    doc.text('Cost', ML + CW - 3, y, { align: 'right' });
+    y += 6;
+
+    doc.setFont('helvetica', 'normal');
+    breakdownItems.forEach(([label, val], i) => {
+      if (i % 2 === 0) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(ML, y - 4, CW, 7, 'F');
+      }
+      doc.setTextColor(51, 65, 85);
+      doc.text(label, ML + 3, y);
+      doc.setFont('helvetica', 'bold');
+      doc.text('$' + val, ML + CW - 3, y, { align: 'right' });
+      doc.setFont('helvetica', 'normal');
+      y += 7;
+    });
+    y += 4;
+  }
+
+  // Investment Summary
   checkPage(60);
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
@@ -174,19 +379,17 @@ export function generateRoofBidPDF(data: RoofBidData): void {
   doc.text('INVESTMENT SUMMARY', ML, y);
   y += 6;
 
-  // Table header
   doc.setFillColor(30, 41, 59);
   doc.rect(ML, y - 4, CW, 8, 'F');
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(255, 255, 255);
   doc.text('Section', ML + 3, y);
-  doc.text('Area (sq ft)', ML + CW * 0.45, y, { align: 'left' });
-  doc.text('Rate', ML + CW * 0.65, y, { align: 'left' });
+  doc.text('Area (sq ft)', ML + CW * 0.45, y);
+  doc.text('Rate', ML + CW * 0.65, y);
   doc.text('Total', ML + CW - 3, y, { align: 'right' });
   y += 6;
 
-  // Table rows
   doc.setFont('helvetica', 'normal');
   data.sections.forEach((sec, i) => {
     checkPage(8);
@@ -204,7 +407,6 @@ export function generateRoofBidPDF(data: RoofBidData): void {
     y += 7;
   });
 
-  // Extras
   data.extras.forEach((ex) => {
     checkPage(8);
     doc.setTextColor(51, 65, 85);
@@ -215,7 +417,6 @@ export function generateRoofBidPDF(data: RoofBidData): void {
     y += 7;
   });
 
-  // Totals row
   doc.setDrawColor(30, 41, 59);
   doc.setLineWidth(0.5);
   doc.line(ML, y - 2, ML + CW, y - 2);
@@ -228,7 +429,7 @@ export function generateRoofBidPDF(data: RoofBidData): void {
   doc.text('$' + fmt(data.projectTotal), ML + CW - 3, y, { align: 'right' });
   y += 10;
 
-  // ── Payment Schedule ──
+  // Payment Schedule
   checkPage(30);
   doc.setFillColor(255, 251, 235);
   doc.roundedRect(ML, y - 4, CW, 26, 2, 2, 'F');
@@ -252,7 +453,7 @@ export function generateRoofBidPDF(data: RoofBidData): void {
   doc.text('$' + fmt(data.projectTotal), ML + CW - 6, y, { align: 'right' });
   y += 12;
 
-  // ── Timeline ──
+  // Timeline
   checkPage(12);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
@@ -265,7 +466,7 @@ export function generateRoofBidPDF(data: RoofBidData): void {
   doc.text(data.workingDays + ' to ' + Math.ceil(data.workingDays * 1.25) + ' working days (approx. ' + data.timelineWeeks + ' weeks), weather permitting.', ML, y);
   y += 10;
 
-  // ── Terms & Conditions ──
+  // Terms & Conditions
   doc.addPage();
   pageNum++;
   y = 20;
@@ -295,7 +496,7 @@ export function generateRoofBidPDF(data: RoofBidData): void {
     y += wrapped.length * 4 + 3;
   });
 
-  // ── Acceptance ──
+  // Acceptance
   y += 6;
   checkPage(50);
   doc.setFontSize(12);
@@ -327,7 +528,7 @@ export function generateRoofBidPDF(data: RoofBidData): void {
   doc.text('Hayden Ranch Services Representative', ML, y);
   doc.text('Date', ML + halfW + 20, y);
 
-  // ── Page numbers ──
+  // Page numbers
   for (let i = 1; i <= pageNum; i++) {
     doc.setPage(i);
     doc.setFontSize(8);

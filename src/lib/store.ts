@@ -8,11 +8,8 @@ import {
   PriceEntry,
   Receipt,
   FenceBid,
-  FenceLine,
-  FenceType,
-  FenceHeight,
-  StayTuffOption,
 } from '@/types';
+import { DEFAULT_MATERIAL_PRICES, MaterialPrice } from '@/lib/fencing/fence-materials';
 
 interface AppState {
   // Projects
@@ -20,6 +17,7 @@ interface AppState {
   activeProjectId: string | null;
   addProject: (project: Project) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
+  deleteProject: (id: string) => void;
   setActiveProject: (id: string | null) => void;
 
   // Roof models
@@ -39,6 +37,12 @@ interface AppState {
   // Fencing
   fenceBids: FenceBid[];
   addFenceBid: (bid: FenceBid) => void;
+  deleteFenceBid: (id: string) => void;
+
+  // Material Pricing (custom prices for all fencing materials)
+  materialPrices: MaterialPrice[];
+  updateMaterialPrice: (id: string, price: number) => void;
+  resetMaterialPrices: () => void;
 
   // UI state
   selectedPanelProfile: PanelProfile;
@@ -61,6 +65,8 @@ export const useAppStore = create<AppState>()(
             p.id === id ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p
           ),
         })),
+      deleteProject: (id) =>
+        set((state) => ({ projects: state.projects.filter(p => p.id !== id) })),
       setActiveProject: (id) => set({ activeProjectId: id }),
 
       // Roof models
@@ -87,6 +93,19 @@ export const useAppStore = create<AppState>()(
       fenceBids: [],
       addFenceBid: (bid) =>
         set((state) => ({ fenceBids: [...state.fenceBids, bid] })),
+      deleteFenceBid: (id) =>
+        set((state) => ({ fenceBids: state.fenceBids.filter(b => b.id !== id) })),
+
+      // Material Pricing
+      materialPrices: [...DEFAULT_MATERIAL_PRICES],
+      updateMaterialPrice: (id, price) =>
+        set((state) => ({
+          materialPrices: state.materialPrices.map(m =>
+            m.id === id ? { ...m, price } : m
+          ),
+        })),
+      resetMaterialPrices: () =>
+        set({ materialPrices: [...DEFAULT_MATERIAL_PRICES] }),
 
       // UI state
       selectedPanelProfile: 'standing_seam_snap_lock_16',
