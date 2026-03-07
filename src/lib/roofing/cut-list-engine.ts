@@ -81,7 +81,7 @@ export function generateCutList(
 
 /**
  * Generate panel cuts for a single roof facet.
- * Lays panels from one rake edge across to the other.
+ * Panels run from eave edge toward ridge edge.
  */
 function generateFacetPanels(
   facet: RoofFacet,
@@ -91,67 +91,56 @@ function generateFacetPanels(
   const panels: PanelCut[] = [];
   const coverageWidthFeet = spec.widthInches / 12;
 
-  // Calculate bounding box of the facet
-  const minX = Math.min(...facet.vertices.map((v) => v.x));
-  const maxX = Math.max(...facet.vertices.map((v) => v.x));
-  const minY = Math.min(...facet.vertices.map((v) => v.y));
-  const maxY = Math.max(...facet.vertices.map((v) => v.y));
+  // Find eave and ridge edges to determine panel run direction
+  const eaveEdges = facet.edgeTypes.filter(e => e.type === 'eave');
+  const ridgeEdges = facet.edgeTypes.filter(e => e.type === 'ridge');
 
+  // Calculate bounding box
+  const minX = Math.min(...facet.vertices.map(v => v.x));
+  const maxX = Math.max(...facet.vertices.map(v => v.x));
+  const minY = Math.min(...facet.vertices.map(v => v.y));
+  const maxY = Math.max(...facet.vertices.map(v => v.y));
+
+  // Determine eave and ridge Y positions
+  let eaveY = minY;
+  let ridgeY = maxY;
+  if (eaveEdges.length > 0) {
+    eaveY = eaveEdges.reduce((s, e) => s + (e.start.y + e.end.y) / 2, 0) / eaveEdges.length;
+  }
+  if (ridgeEdges.length > 0) {
+    ridgeY = ridgeEdges.reduce((s, e) => s + (e.start.y + e.end.y) / 2, 0) / ridgeEdges.length;
+  }
+
+  // Panel length = eave-to-ridge distance, accounting for pitch
+  const eaveToRidgeFeet = Math.abs(ridgeY - eaveY);
+  const pitchFactor = 1 / Math.cos((facet.pitchDegrees * Math.PI) / 180);
+  const panelLength = eaveToRidgeFeet * pitchFactor;
+
+  // Lay panels side by side across the facet width (perpendicular to eave)
   const facetWidthFeet = maxX - minX;
-  const facetHeightFeet = maxY - minY;
-
-  // How many panels across?
   const numPanels = Math.ceil(facetWidthFeet / coverageWidthFeet);
 
   for (let i = 0; i < numPanels; i++) {
     const xPos = minX + i * coverageWidthFeet;
-
-    // Calculate the panel length at this x position
-    // For a simple rectangle, this is the full height
-    // For complex shapes, we'd intersect with the polygon
-    const panelLength = calculatePanelLengthAtPosition(facet, xPos, facetHeightFeet);
-
-    // Clamp to spec limits
     const clampedLength = Math.min(
       Math.max(panelLength, spec.minLengthFeet),
       spec.maxLengthFeet
     );
-
     panels.push({
-      id: `p_${facet.id}_${i}`,
+      id: 'p_' + facet.id + '_' + i,
       facetId: facet.id,
       panelProfile: profile,
-      lengthFeet: Math.ceil(clampedLength * 4) / 4, // round up to nearest quarter foot
+      lengthFeet: Math.ceil(clampedLength * 4) / 4,
       widthInches: spec.widthInches,
       position: {
         x: xPos,
-        y: minY,
+        y: Math.min(eaveY, ridgeY),
         rotation: 0,
       },
     });
   }
 
   return panels;
-}
-
-/**
- * Calculate the required panel length at a given x position on a facet.
- * Simplified: uses bounding box height. Full implementation would
- * ray-cast against the polygon edges.
- */
-function calculatePanelLengthAtPosition(
-  facet: RoofFacet,
-  _xPos: number,
-  defaultHeight: number
-): number {
-  // In a full implementation, this would:
-  // 1. Cast a vertical ray at xPos through the facet polygon
-  // 2. Find intersection points with top and bottom edges
-  // 3. Return the distance between intersections
-  // 4. Account for pitch factor
-
-  const pitchFactor = 1 / Math.cos((facet.pitchDegrees * Math.PI) / 180);
-  return defaultHeight * pitchFactor;
 }
 
 /**

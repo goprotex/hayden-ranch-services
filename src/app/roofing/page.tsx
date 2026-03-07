@@ -21,6 +21,8 @@ import CutListTable from '@/components/roofing/CutListTable';
 import TrimTable from '@/components/roofing/TrimTable';
 import HaydenLogo from '@/components/HaydenLogo';
 
+import type { RoofPolygon, CutListPanel } from '@/components/roofing/RoofMap';
+import { generatePanelOverlay } from '@/lib/roofing/panel-overlay';
 const RoofMap = dynamic(() => import('@/components/roofing/RoofMap'), { ssr: false });
 
 const COMPANY = {
@@ -115,7 +117,8 @@ export default function RoofingPage() {
   const [overheadPct, setOverheadPct] = useState(10);
 
   // Map polygons
-  const [mapPolygons, setMapPolygons] = useState<{ id: string; name: string; areaSqFt: number; pitch: string; color: string; coordinates: [number, number][] }[]>([]);
+  const [mapPolygons, setMapPolygons] = useState<RoofPolygon[]>([]);
+  const [cutListPanels, setCutListPanels] = useState<CutListPanel[]>([]);
 
   // Auto-calculate effective rate from material costs
   const materialCostPerSqFt = useMemo(() =>
@@ -510,7 +513,7 @@ export default function RoofingPage() {
                       <span className="text-amber-400">\ud83d\uddfa</span> Satellite Map - Draw Roof Facets
                     </h3>
                     <p className="text-xs text-steel-500 mb-3">Search for the property address, then use the polygon tool to trace roof sections. Each polygon becomes a bid section with real-world area calculations.</p>
-                    <RoofMap onPolygonsChange={setMapPolygons} />
+                    <RoofMap onPolygonsChange={setMapPolygons} cutListPanels={cutListPanels} />
                   </div>
 
                   {mapPolygons.length > 0 && (
@@ -522,6 +525,16 @@ export default function RoofingPage() {
                       <div className="text-xs text-steel-500">
                         {mapPolygons.length} polygon(s) auto-synced to bid sections. Switch to "Sections & Extras" to adjust.
                       </div>
+                      <button
+                        onClick={() => {
+                          if (cutListPanels.length > 0) { setCutListPanels([]); return; }
+                          const panels = generatePanelOverlay(mapPolygons, PANEL_SPECS[selectedPanelProfile]?.widthInches ?? 16);
+                          setCutListPanels(panels);
+                        }}
+                        className="mt-3 w-full bg-blue-600/20 border border-blue-500/30 text-blue-400 text-xs font-medium px-3 py-2 rounded-lg hover:bg-blue-600/30 transition"
+                      >
+                        {cutListPanels.length > 0 ? '\u2715 Hide Panel Overlay' : '\ud83d\udcca Show Cut List Overlay'}
+                      </button>
                     </div>
                   )}
 

@@ -333,8 +333,6 @@ export function generateRoofBidPDF(data: RoofBidData): void {
     const materialTotal = (mc.panelCostPerSqFt + mc.underlaymentCostPerSqFt + mc.trimAndFlashingPerSqFt + mc.fastenersCostPerSqFt) * totalSqFt;
     const laborTotal = mc.laborCostPerSqFt * totalSqFt;
     const subtotal = materialTotal + laborTotal;
-    const overhead = subtotal * mc.overheadPercent / 100;
-    const profit = (subtotal + overhead) * mc.profitMarginPercent / 100;
 
     const breakdownItems = [
       ['Panels (' + mc.panelCostPerSqFt.toFixed(2) + '/sqft x ' + totalSqFt.toLocaleString() + ')', fmt(mc.panelCostPerSqFt * totalSqFt)],
@@ -342,8 +340,6 @@ export function generateRoofBidPDF(data: RoofBidData): void {
       ['Trim & Flashing (' + mc.trimAndFlashingPerSqFt.toFixed(2) + '/sqft)', fmt(mc.trimAndFlashingPerSqFt * totalSqFt)],
       ['Fasteners & Hardware (' + mc.fastenersCostPerSqFt.toFixed(2) + '/sqft)', fmt(mc.fastenersCostPerSqFt * totalSqFt)],
       ['Labor (' + mc.laborCostPerSqFt.toFixed(2) + '/sqft)', fmt(laborTotal)],
-      ['Overhead (' + mc.overheadPercent + '%)', fmt(overhead)],
-      ['Profit (' + mc.profitMarginPercent + '%)', fmt(profit)],
     ];
 
     doc.setFillColor(30, 41, 59);
