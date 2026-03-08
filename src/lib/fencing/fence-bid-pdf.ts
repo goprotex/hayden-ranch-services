@@ -444,18 +444,44 @@ export function generateFenceBidPDF(data: FenceBidData): void {
       doc.text('Quantity', mx + cw - 11, y, { align: 'right' });
       y += 6;
 
+      const nameColW = (cw - 8) * 0.68;  // ~68% for material name
+      const qtyColW = (cw - 8) * 0.28;   // ~28% for quantity (right-aligned)
+      const lineH = 3.2; // line height per wrapped line
+
       doc.setTextColor(50, 50, 50);
       doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
       for (let i = 0; i < sec.materials.length; i++) {
-        y = ensureSpace(doc, y, 6);
+        const nameLines = doc.splitTextToSize(sec.materials[i].name, nameColW);
+        const qtyLines = doc.splitTextToSize(sec.materials[i].quantity, qtyColW);
+        const rowLines = Math.max(nameLines.length, qtyLines.length);
+        const rowHeight = rowLines * lineH + 3; // padding
+
+        y = ensureSpace(doc, y, rowHeight);
+
+        // Alternating row stripe
         if (i % 2 === 0) {
           doc.setFillColor(250, 251, 252);
-          doc.rect(mx + 4, y - 3.5, cw - 8, 6, 'F');
+          doc.rect(mx + 4, y - 3, cw - 8, rowHeight, 'F');
         }
-        doc.setFontSize(8);
-        doc.text(sec.materials[i].name, mx + 7, y);
-        doc.text(sec.materials[i].quantity, mx + cw - 11, y, { align: 'right' });
-        y += 6;
+
+        // Material name (wrapped, left-aligned)
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(50, 50, 50);
+        for (let ln = 0; ln < nameLines.length; ln++) {
+          doc.text(nameLines[ln], mx + 7, y + ln * lineH);
+        }
+
+        // Quantity (wrapped, right-aligned)
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(30, 30, 30);
+        for (let ln = 0; ln < qtyLines.length; ln++) {
+          doc.text(qtyLines[ln], mx + cw - 11, y + ln * lineH, { align: 'right' });
+        }
+
+        y += rowHeight;
       }
     }
 

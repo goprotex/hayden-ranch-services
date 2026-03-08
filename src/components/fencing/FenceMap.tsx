@@ -328,17 +328,127 @@ export default function FenceMap({
     });
   }, [onGatesPlaced]);
 
-  // Capture map screenshot
+  // Capture map screenshot — composites HTML markers (gates, braces) onto canvas
   const captureMap = useCallback(() => {
     if (!mapRef.current) return;
     try {
-      const canvas = mapRef.current.getCanvas();
-      const dataUrl = canvas.toDataURL('image/png');
+      const map = mapRef.current;
+      const srcCanvas = map.getCanvas();
+      const w = srcCanvas.width;
+      const h = srcCanvas.height;
+
+      // Create offscreen canvas and draw the base map
+      const offscreen = document.createElement('canvas');
+      offscreen.width = w;
+      offscreen.height = h;
+      const ctx = offscreen.getContext('2d');
+      if (!ctx) { onMapCapture?.(srcCanvas.toDataURL('image/png')); return; }
+      ctx.drawImage(srcCanvas, 0, 0);
+
+      const dpr = window.devicePixelRatio || 1;
+
+      // Draw brace markers (colored circles with white border)
+      for (const brace of braceMarkers) {
+        const pt = map.project(brace.coordinate);
+        const x = pt.x * dpr;
+        const y = pt.y * dpr;
+        const r = 10 * dpr;
+
+        // White border
+        ctx.beginPath();
+        ctx.arc(x, y, r + 2 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+
+        // Colored fill
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        if (brace.type === 'double_h') ctx.fillStyle = '#dc2626';       // red — end posts
+        else if (brace.type === 'corner_brace') ctx.fillStyle = '#2563eb'; // blue — corners
+        else ctx.fillStyle = '#16a34a';                                    // green — H-braces
+        ctx.fill();
+      }
+
+      // Draw gate markers (yellow squares with "G")
+      for (const gate of placedGates) {
+        const pt = map.project(gate.coordinate);
+        const x = pt.x * dpr;
+        const y = pt.y * dpr;
+        const sz = 13 * dpr;
+
+        // Yellow square with border
+        ctx.fillStyle = '#f59e0b';
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 2 * dpr;
+        ctx.fillRect(x - sz, y - sz, sz * 2, sz * 2);
+        ctx.strokeRect(x - sz, y - sz, sz * 2, sz * 2);
+
+        // "G" text
+        ctx.fillStyle = '#1b2636';
+        ctx.font = `bold ${12 * dpr}px Arial, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('G', x, y);
+      }
+
+      // Draw legend bar at bottom
+      const legendH = 28 * dpr;
+      const legendY = h - legendH;
+      ctx.fillStyle = 'rgba(27, 38, 54, 0.85)';
+      ctx.fillRect(0, legendY, w, legendH);
+
+      ctx.font = `${10 * dpr}px Arial, sans-serif`;
+      ctx.textBaseline = 'middle';
+      const cy = legendY + legendH / 2;
+      let lx = 10 * dpr;
+
+      // Legend items: Orange=fence, Red=end post, Blue=corner, Green=H-brace, Yellow=gate
+      const legendItems: [string, string][] = [
+        ['#f59e0b', 'Fence Line'],
+        ['#dc2626', 'End Post'],
+        ['#2563eb', 'Corner Brace'],
+        ['#16a34a', 'H-Brace'],
+        ['#f59e0b', 'Gate'],
+      ];
+      for (const [color, label] of legendItems) {
+        // Swatch
+        if (label === 'Gate') {
+          ctx.fillStyle = color;
+          ctx.fillRect(lx, cy - 5 * dpr, 10 * dpr, 10 * dpr);
+          ctx.fillStyle = '#1b2636';
+          ctx.font = `bold ${7 * dpr}px Arial, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.fillText('G', lx + 5 * dpr, cy);
+          ctx.font = `${10 * dpr}px Arial, sans-serif`;
+          ctx.textAlign = 'left';
+        } else if (label === 'Fence Line') {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2 * dpr;
+          ctx.setLineDash([4 * dpr, 3 * dpr]);
+          ctx.beginPath();
+          ctx.moveTo(lx, cy);
+          ctx.lineTo(lx + 14 * dpr, cy);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else {
+          ctx.beginPath();
+          ctx.arc(lx + 5 * dpr, cy, 5 * dpr, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
+        }
+        lx += 16 * dpr;
+        ctx.fillStyle = '#d1d5db';
+        ctx.textAlign = 'left';
+        ctx.fillText(label, lx, cy);
+        lx += ctx.measureText(label).width + 16 * dpr;
+      }
+
+      const dataUrl = offscreen.toDataURL('image/png');
       onMapCapture?.(dataUrl);
     } catch (err) {
       console.error('Map capture error:', err);
     }
-  }, [onMapCapture]);
+  }, [onMapCapture, braceMarkers, placedGates]);
 
   const handleGeocode = useCallback(async () => {
     if (!address.trim() || !token || !mapRef.current) return;

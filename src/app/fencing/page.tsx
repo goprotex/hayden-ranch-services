@@ -110,6 +110,10 @@ export default function FencingPage() {
   // Terrain analysis
   const [terrainSuggestion, setTerrainSuggestion] = useState<TerrainSuggestion | null>(null);
 
+  // AI-generated site analysis narrative (Claude/GPT)
+  const [aiNarrative, setAiNarrative] = useState<string | null>(null);
+  const [generatingNarrative, setGeneratingNarrative] = useState(false);
+
   // Map captures for PDF (supports multiple screenshots)
   const [mapImages, setMapImages] = useState<string[]>([]);
 
@@ -139,6 +143,46 @@ export default function FencingPage() {
     setTerrainSuggestion(analysis);
     if (analysis.confidence > 0.4) setTerrain(analysis.suggestedDifficulty);
   }, []);
+
+  // Generate AI site analysis when terrain data arrives
+  useEffect(() => {
+    if (!terrainSuggestion?.soilType) return;
+    let cancelled = false;
+    setGeneratingNarrative(true);
+    (async () => {
+      try {
+        const res = await fetch('/api/site-analysis', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            propertyAddress: address,
+            soilType: terrainSuggestion.soilType,
+            soilComponents: terrainSuggestion.components || [],
+            drainage: terrainSuggestion.drainage,
+            hydric: terrainSuggestion.hydric,
+            elevationChange: terrainSuggestion.elevationChange,
+            suggestedDifficulty: terrainSuggestion.suggestedDifficulty,
+            fenceType: FENCE_TYPES[fenceType] || fenceType,
+            fenceHeight,
+            totalLinearFeet: sections.reduce((s, c) => s + c.linearFeet, 0) || 1000,
+            postMaterial,
+            source: terrainSuggestion.source,
+          }),
+        });
+        const data = await res.json();
+        if (!cancelled && data.narrative) {
+          setAiNarrative(data.narrative);
+        }
+      } catch (err) {
+        console.error('AI narrative error:', err);
+      } finally {
+        if (!cancelled) setGeneratingNarrative(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // Only regenerate when terrain analysis changes (not on every keystroke)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [terrainSuggestion]);
 
   const terrainMult = TERRAIN_MAP[terrain]?.mult || 1;
 
@@ -343,11 +387,11 @@ export default function FencingPage() {
       balanceAmount: balance, timelineWeeks: Math.ceil(timelineDays / 5), workingDays: timelineDays,
       projectOverview: projectOverview + (address ? ` Site located at ${address}.` : ''),
       terrainDescription: TERRAIN_MAP[terrain]?.label || terrain,
-      soilNarrative: buildSoilNarrative(),
+      soilNarrative: aiNarrative || buildSoilNarrative(),
       mapImages: mapImages.length > 0 ? mapImages : undefined,
     };
     generateFenceBidPDF(data);
-  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing]);
+  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, aiNarrative]);
 
   const handleSaveBid = useCallback(() => {
     addFenceBid({
@@ -671,6 +715,24 @@ export default function FencingPage() {
                         Using terrain-based difficulty estimate
                       </p>
                     </div>
+                  </div>
+                )}
+
+                {/* AI site analysis status */}
+                {generatingNarrative && (
+                  <div className="bg-purple-900/20 rounded-lg p-3 border border-purple-700/30 flex items-center gap-2">
+                    <span className="animate-pulse text-purple-400">&#x1f916;</span>
+                    <p className="text-xs text-purple-300">Generating AI site analysis for this property&hellip;</p>
+                  </div>
+                )}
+                {aiNarrative && !generatingNarrative && (
+                  <div className="bg-emerald-900/20 rounded-lg p-3 border border-emerald-700/30">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-emerald-400 text-sm">&#x2713;</span>
+                      <p className="text-xs font-semibold text-emerald-300">AI Site Analysis Ready</p>
+                      <button onClick={() => setAiNarrative(null)} className="ml-auto text-[10px] text-red-400 hover:text-red-300 underline">clear</button>
+                    </div>
+                    <p className="text-[11px] text-steel-300 leading-relaxed line-clamp-4">{aiNarrative}</p>
                   </div>
                 )}
 
