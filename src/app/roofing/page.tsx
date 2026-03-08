@@ -158,8 +158,11 @@ export default function RoofingPage() {
     addRoofModel(model);
     setActiveModel(model);
     setManualFacets(model.facets);
-    setReportText('');
-  }, [reportText, reportSource, projectName, addRoofModel]);
+    // Auto-generate cut list from parsed report
+    const cl = generateCutList(model, selectedPanelProfile, selectedGauge);
+    addCutList(cl);
+    setActiveCutList(cl);
+  }, [reportText, reportSource, projectName, addRoofModel, selectedPanelProfile, selectedGauge, addCutList]);
 
   const handleBuildFromSketch = useCallback(() => {
     if (manualFacets.length === 0) return;
@@ -212,6 +215,12 @@ export default function RoofingPage() {
         setManualFacets(model.facets);
         setReportText(xmlText);
         setReportSource(model.source);
+        // Auto-switch to import mode so the viewer & cut list are visible
+        setMode('import');
+        // Auto-generate cut list
+        const cl = generateCutList(model, selectedPanelProfile, selectedGauge);
+        addCutList(cl);
+        setActiveCutList(cl);
       } catch (err) {
         setUploadError(err instanceof Error ? err.message : 'Failed to parse XML');
       } finally { setUploading(false); }
@@ -409,6 +418,17 @@ export default function RoofingPage() {
                   <DInput value={bidProjectName} onChange={setBidProjectName} placeholder="Project Name" />
                   <DInput value={bidClientName} onChange={setBidClientName} placeholder="Client Name" />
                   <DInput value={bidAddress} onChange={setBidAddress} placeholder="Property Address" />
+                </div>
+              </Card>
+
+              {/* Quick XML Import */}
+              <Card title="📄 Quick Import (XML/PDF)">
+                <div className="space-y-2">
+                  <p className="text-xs text-steel-500">Upload a roof measurement report to auto-generate cut lists</p>
+                  <input title="Upload report" type="file" accept=".txt,.csv,.pdf,.json,.xml" onChange={handleFileUpload} disabled={uploading}
+                    className="w-full text-sm text-steel-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-600/20 file:text-amber-400 hover:file:bg-amber-600/30 disabled:opacity-50" />
+                  {uploading && <p className="text-xs text-amber-400 animate-pulse">Processing file...</p>}
+                  {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
                 </div>
               </Card>
 
@@ -743,8 +763,10 @@ export default function RoofingPage() {
 
         {/* CUT LIST MODES (manual/import) */}
         {mode !== 'bid' && (
-          <div className="grid lg:grid-cols-3 gap-8 animate-fade-in-up">
-            <div className="space-y-6">
+          <div className="space-y-6 animate-fade-in-up">
+            {/* Top row: controls in a responsive grid */}
+            <div className="grid lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-4 xl:col-span-3 space-y-6">
               <Card title="\ud83d\udcc1 Project Details">
                 <div className="space-y-3">
                   <div>
@@ -852,7 +874,8 @@ export default function RoofingPage() {
               )}
             </div>
 
-            <div className="lg:col-span-2 space-y-6">
+            {/* Viewer & Cut List in remaining columns */}
+            <div className="lg:col-span-8 xl:col-span-9 space-y-6">
               {/* XML / Roof Viewer – shown whenever a model is loaded */}
               {activeModel && activeModel.facets.length > 0 && (
                 <RoofXmlViewer
@@ -883,6 +906,7 @@ export default function RoofingPage() {
                 </>
               )}
             </div>
+            </div>{/* close grid */}
           </div>
         )}
       </main>

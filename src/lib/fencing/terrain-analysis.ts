@@ -1,12 +1,20 @@
 // ============================================================
 // Terrain Analysis: Elevation + Soil data for auto-difficulty
-// Uses Mapbox Terrain-RGB tiles and USDA NRCS soil data
+// Uses Mapbox Terrain-RGB tiles, UC Davis SoilWeb, and USDA NRCS
 // ============================================================
 
 export interface ElevationPoint {
   lng: number;
   lat: number;
   elevation: number; // feet
+}
+
+export interface SoilInfo {
+  soilType: string | null;
+  drainage: string | null;
+  hydric: string | null;
+  components: { name: string; percent: number; drainage?: string; hydric?: string }[];
+  source: string | null;
 }
 
 export interface TerrainAnalysis {
@@ -18,6 +26,7 @@ export interface TerrainAnalysis {
   avgSlope: number; // percent
   maxSlope: number;
   soilType: string | null;
+  soilInfo: SoilInfo | null;
   soilDifficulty: 'easy' | 'moderate' | 'hard' | 'very_hard';
   suggestedDifficulty: 'easy' | 'moderate' | 'difficult' | 'very_difficult';
   confidence: number; // 0-1
@@ -100,9 +109,17 @@ export async function getElevationProfile(
 
 /**
  * Query soil type via our server-side proxy (avoids CORS)
- * Falls back to direct USDA query if proxy unavailable
+ * Returns rich soil info from UC Davis SoilWeb or USDA fallbacks
  */
 export async function getSoilType(lng: number, lat: number): Promise<string | null> {
+  const info = await getSoilInfo(lng, lat);
+  return info?.soilType ?? null;
+}
+
+/**
+ * Get detailed soil info (type, drainage, hydric, components)
+ */
+export async function getSoilInfo(lng: number, lat: number): Promise<SoilInfo | null> {
   // Try our API proxy first (server-side, no CORS issues)
   try {
     const proxyRes = await fetch('/api/soil', {
@@ -112,7 +129,15 @@ export async function getSoilType(lng: number, lat: number): Promise<string | nu
     });
     if (proxyRes.ok) {
       const data = await proxyRes.json();
-      if (data?.soilType) return data.soilType;
+      if (data?.soilType) {
+        return {
+          soilType: data.soilType,
+          drainage: data.drainage || null,
+          hydric: data.hydric || null,
+          components: data.components || [],
+          source: data.source || null,
+        };
+      }
     }
   } catch {
     // Proxy failed, fall through to direct query
@@ -139,7 +164,14 @@ export async function getSoilType(lng: number, lat: number): Promise<string | nu
     const data = await res.json();
 
     if (data?.Table && data.Table.length > 0) {
-      return data.Table[0][1] || data.Table[0][0] || null;
+      const soilType = data.Table[0][1] || data.Table[0][0] || null;
+      return {
+        soilType,
+        drainage: null,
+        hydric: null,
+        components: [],
+        source: 'USDA_SDA_Direct',
+      };
     }
     return null;
   } catch {
@@ -148,22 +180,41 @@ export async function getSoilType(lng: number, lat: number): Promise<string | nu
 }
 
 /**
- * Classify soil difficulty based on soil name
+ * Classify soil difficulty based on soil name and drainage info
  */
-export function classifySoilDifficulty(soilType: string | null): 'easy' | 'moderate' | 'hard' | 'very_hard' {
+export function classifySoilDifficulty(
+  soilType: string | null,
+  drainage?: string | null,
+): 'easy' | 'moderate' | 'hard' | 'very_hard' {
   if (!soilType) return 'moderate';
   const lower = soilType.toLowerCase();
 
-  // Very hard soils
-  if (['limestone', 'caliche', 'bedrock', 'granite', 'sandstone', 'shale'].some(s => lower.includes(s))) {
+  // Very hard soils (rock-based)
+  if (['limestone', 'caliche', 'bedrock', 'granite', 'sandstone', 'shale', 'rock outcrop', 'eckrant'].some(s => lower.includes(s))) {
     return 'very_hard';
   }
-  // Hard soils
-  if (['clay', 'hardpan', 'rocky', 'rock', 'gravel', 'cobble'].some(s => lower.includes(s))) {
+  // Hard soils (clay, rocky, steep)
+  if (['clay', 'hardpan', 'rocky', 'rock', 'gravel', 'cobble', 'brackett', 'comfort'].some(s => lower.includes(s))) {
     return 'hard';
   }
+  // Also check slope info embedded in name (e.g. "8 to 30 percent slopes")
+  const slopeMatch = lower.match(/(\d+)\s*to\s*(\d+)\s*percent\s*slopes?/);
+  if (slopeMatch) {
+    const maxSlope = parseInt(slopeMatch[2], 10);
+    if (maxSlope >= 30) return 'very_hard';
+    if (maxSlope >= 15) return 'hard';
+  }
+
+  // Check drainage classification
+  if (drainage) {
+    const drainLower = drainage.toLowerCase();
+    if (drainLower.includes('poorly') || drainLower.includes('very poorly')) {
+      return 'hard'; // wet soils = harder to dig
+    }
+  }
+
   // Easy soils
-  if (['sand', 'loam', 'silt', 'alluvial', 'bottomland'].some(s => lower.includes(s))) {
+  if (['sand', 'loam', 'silt', 'alluvial', 'bottomland', 'purves'].some(s => lower.includes(s))) {
     return 'easy';
   }
   return 'moderate';
@@ -201,10 +252,11 @@ export async function analyzeTerrain(
   const avgSlope = slopes.length > 0 ? slopes.reduce((s, v) => s + v, 0) / slopes.length : 0;
   const maxSlope = slopes.length > 0 ? Math.max(...slopes) : 0;
 
-  // Get soil type at midpoint
+  // Get soil info at midpoint
   const midIdx = Math.floor(coords.length / 2);
-  const soilType = await getSoilType(coords[midIdx][0], coords[midIdx][1]);
-  const soilDifficulty = classifySoilDifficulty(soilType);
+  const soilInfo = await getSoilInfo(coords[midIdx][0], coords[midIdx][1]);
+  const soilType = soilInfo?.soilType ?? null;
+  const soilDifficulty = classifySoilDifficulty(soilType, soilInfo?.drainage ?? null);
 
   // Calculate suggested difficulty
   const suggestedDifficulty = calculateSuggestedDifficulty(avgSlope, maxSlope, soilDifficulty, totalElevationChange);
@@ -221,6 +273,7 @@ export async function analyzeTerrain(
     avgSlope,
     maxSlope,
     soilType,
+    soilInfo,
     soilDifficulty,
     suggestedDifficulty,
     confidence,

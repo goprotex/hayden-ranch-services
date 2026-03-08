@@ -465,7 +465,10 @@ export default function FencingPage() {
                       <span className="font-semibold">&#x26a1; AI Suggested: {TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label}</span>
                       {terrainSuggestion.soilType && (
                         <>
-                          <span className="block text-amber-400/80 mt-0.5 font-semibold">&#x1f30d; USDA Soil: {terrainSuggestion.soilType}</span>
+                          <span className="block text-amber-400/80 mt-0.5 font-semibold">&#x1f30d; Soil: {terrainSuggestion.soilType}</span>
+                          {terrainSuggestion.drainage && (
+                            <span className="block text-amber-400/60">Drainage: {terrainSuggestion.drainage}</span>
+                          )}
                           <span className="block text-amber-400/70">Concrete multiplier: {soilMultiplier}x (based on soil difficulty)</span>
                         </>
                       )}
@@ -553,15 +556,26 @@ export default function FencingPage() {
                   <div className="bg-gradient-to-r from-amber-900/30 to-orange-900/30 rounded-xl p-4 border border-amber-700/30 flex items-center gap-3">
                     <span className="text-2xl">&#x1f30d;</span>
                     <div className="flex-1">
-                      <p className="text-sm font-bold text-amber-300">USDA Soil Survey: {terrainSuggestion.soilType}</p>
+                      <p className="text-sm font-bold text-amber-300">Soil: {terrainSuggestion.soilType}</p>
                       <p className="text-[11px] text-amber-400/70 mt-0.5">
                         Elevation change: {Math.round(terrainSuggestion.elevationChange)} ft &bull;
                         Avg elevation: {Math.round(terrainSuggestion.avgElevation)} ft &bull;
                         Suggested difficulty: {TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label}
                       </p>
+                      {terrainSuggestion.drainage && (
+                        <p className="text-[11px] text-amber-400/60 mt-0.5">
+                          Drainage: {terrainSuggestion.drainage}
+                          {terrainSuggestion.hydric ? ` \u2022 Hydric: ${terrainSuggestion.hydric}` : ''}
+                        </p>
+                      )}
+                      {terrainSuggestion.components && terrainSuggestion.components.length > 1 && (
+                        <p className="text-[10px] text-amber-400/50 mt-0.5">
+                          Components: {terrainSuggestion.components.slice(0, 3).map((c: { name: string; percent: number }) => `${c.name} (${c.percent}%)`).join(', ')}
+                        </p>
+                      )}
                       <p className="text-[10px] text-amber-400/50 mt-0.5">
                         Soil affects concrete requirements ({soilMultiplier}x) and labor difficulty.
-                        Source: USDA NRCS Web Soil Survey
+                        Source: {terrainSuggestion.source === 'UC_Davis_SoilWeb' ? 'UC Davis SoilWeb' : 'USDA NRCS Web Soil Survey'}
                       </p>
                     </div>
                   </div>

@@ -31,6 +31,10 @@ export interface TerrainSuggestion {
   avgElevation: number;
   elevationChange: number;
   soilType: string | null;
+  drainage: string | null;
+  hydric: string | null;
+  components: { name: string; percent: number; drainage?: string; hydric?: string }[];
+  source: string | null;
   confidence: number;
 }
 
@@ -97,6 +101,10 @@ export default function FenceMap({
         avgElevation: analysis.avgElevation,
         elevationChange: analysis.totalElevationChange,
         soilType: analysis.soilType,
+        drainage: analysis.soilInfo?.drainage ?? null,
+        hydric: analysis.soilInfo?.hydric ?? null,
+        components: analysis.soilInfo?.components ?? [],
+        source: analysis.soilInfo?.source ?? null,
         confidence: analysis.confidence,
       });
     } catch (err) {
