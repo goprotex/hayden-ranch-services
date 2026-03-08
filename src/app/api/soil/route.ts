@@ -82,52 +82,43 @@ async function queryUCDavisSoilWeb(lng: number, lat: number): Promise<UCDavisRes
     if (!res1.ok) return null;
 
     const text1 = await res1.text();
-    // Response is HTML table; parse mukey from it
-    const mukeyMatch = text1.match(/<td[^>]*>(\d{4,})<\/td>\s*<td[^>]*>(\d+)<\/td>/);
-    if (!mukeyMatch) {
-      // Try simpler pattern: look for a 5-7 digit number that appears twice (mukey column + Map Unit column)
-      const allNumbers = [...text1.matchAll(/>(\d{5,})</g)].map(m => m[1]);
-      if (allNumbers.length === 0) return null;
-      const mukey = allNumbers[allNumbers.length - 1]; // last large number is usually the mukey
 
-      // Also extract musym (map symbol)
-      const symMatch = text1.match(/Map Symbol<\/th>[^]*?<td[^>]*>([^<]+)<\/td>/) ||
-                        text1.match(/<td[^>]*>([A-Za-z][A-Za-z0-9]*)<\/td>/);
-      const musym = symMatch ? symMatch[1].trim() : '';
+    // ── Parse the mapunit HTML table ──
+    // The data row looks like:
+    //   <tr class="record"><td> 32441002 </td><td> tx601 </td><td> 11 </td><td> 373903 </td><td><a ...>373903</a></td></tr>
+    // Columns: ogc_fid | areasymbol | Map Symbol (musym) | mukey | Map Unit (link)
 
-      // Step 2: Get component details
-      const components = await queryUCDavisComponents(mukey);
-
-      return {
-        mukey,
-        muname: components.muname || `Soil unit ${musym || mukey}`,
-        musym,
-        drainage: components.primaryDrainage,
-        hydric: components.primaryHydric,
-        components: components.list,
-      };
+    // Extract the data row (class="record"), skip header row (class='heading')
+    const recordMatch = text1.match(/<tr\s+class="record"[^>]*>([\s\S]*?)<\/tr>/i);
+    if (!recordMatch) {
+      console.warn('UC Davis: no record row found in mapunit response');
+      return null;
     }
 
-    // If we matched the table pattern
-    const mukey = mukeyMatch[2] || mukeyMatch[1];
-    // Extract musym
-    const rows = text1.split(/<tr[^>]*>/).slice(1).map(r => r.split('</tr>')[0]);
-    let musym = '';
-    for (const row of rows) {
-      const cells = [...row.matchAll(/<td[^>]*>([^<]*)<\/td>/g)].map(m => m[1].trim());
-      if (cells.length >= 3 && cells.some(c => c === mukey)) {
-        // Find the map symbol (short alphanumeric code)
-        musym = cells.find(c => /^[A-Za-z]/.test(c) && c.length <= 10) || '';
-        break;
-      }
+    // Extract all cell values from the record row (strip HTML tags, trim whitespace)
+    const cells = [...recordMatch[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)]
+      .map(m => m[1].replace(/<[^>]*>/g, '').trim());
+
+    // cells[0]=ogc_fid, cells[1]=areasymbol, cells[2]=musym, cells[3]=mukey, cells[4]=mukey(link text)
+    if (cells.length < 4) {
+      console.warn('UC Davis: insufficient cells in record row', cells);
+      return null;
     }
 
-    // Step 2: Get component details
+    const mukey = cells[3];
+    const musym = cells[2];
+
+    if (!mukey || !/^\d+$/.test(mukey)) {
+      console.warn('UC Davis: invalid mukey parsed:', mukey);
+      return null;
+    }
+
+    // Step 2: Get component details (soil name, drainage, hydric, etc.)
     const components = await queryUCDavisComponents(mukey);
 
     return {
       mukey,
-      muname: components.muname || `Soil unit ${musym || mukey}`,
+      muname: components.muname || `Map unit ${mukey}`,
       musym,
       drainage: components.primaryDrainage,
       hydric: components.primaryHydric,
@@ -158,32 +149,50 @@ async function queryUCDavisComponents(mukey: string): Promise<{
 
     const html = await res.text();
 
-    // Extract map unit name (appears as the first heading/text)
-    const munameMatch = html.match(/<h\d[^>]*>([^<]+)<\/h\d>/i) ||
-                         html.match(/^([A-Z][^<\n]{5,100})/m);
+    // ── Extract map unit name ──
+    // Appears as: <div style="font-weight: bold; ...">Eckrant-Rock outcrop association, 1 to 10 percent slopes</div>
+    const munameMatch = html.match(/<div[^>]*font-weight:\s*bold[^>]*>([^<]+)<\/div>/i) ||
+                         html.match(/<h\d[^>]*>([^<]+)<\/h\d>/i);
     const muname = munameMatch ? munameMatch[1].trim() : '';
 
-    // Extract component info
+    // ── Extract component info ──
+    // Each component looks like:
+    //   <span style="...font-weight: bold;">Eckrant</span> (58%)
+    //   followed by drainage (e.g., "Well drained") and "Hydric: No"
     const components: SoilComponent[] = [];
 
-    // Pattern: "ComponentName (XX%)" followed by drainage/hydric info
-    const compMatches = [...html.matchAll(/([A-Z][A-Za-z\s-]+)\s*\((\d+)%\)/g)];
+    // Find all component blocks: bold name span followed by percentage
+    const compMatches = [...html.matchAll(/<span[^>]*font-weight:\s*bold[^>]*>([^<]+)<\/span>\s*\((\d+)%\)/gi)];
     for (const match of compMatches) {
-      components.push({
-        name: match[1].trim(),
-        percent: parseInt(match[2], 10),
-      });
+      const name = match[1].trim();
+      const percent = parseInt(match[2], 10);
+      if (name && percent > 0) {
+        components.push({ name, percent });
+      }
     }
 
-    // Extract drainage info
+    // If the span pattern didn't work, try plain text pattern
+    if (components.length === 0) {
+      const plainMatches = [...html.matchAll(/([A-Z][A-Za-z\s-]+?)\s*\((\d+)%\)/g)];
+      for (const match of plainMatches) {
+        components.push({
+          name: match[1].trim(),
+          percent: parseInt(match[2], 10),
+        });
+      }
+    }
+
+    // ── Extract drainage info ──
+    // Appears as plain text within the component's cell, e.g., "Well drained<br>"
     const drainageMatch = html.match(/(Well drained|Moderately well drained|Somewhat poorly drained|Poorly drained|Very poorly drained|Somewhat excessively drained|Excessively drained)/i);
     const primaryDrainage = drainageMatch ? drainageMatch[1] : null;
 
-    // Extract hydric info
+    // ── Extract hydric info ──
+    // Appears as "Hydric: No" or "Hydric: Yes"
     const hydricMatch = html.match(/Hydric:\s*(Yes|No)/i);
     const primaryHydric = hydricMatch ? hydricMatch[1] : null;
 
-    // Add drainage/hydric to first component
+    // Attach drainage/hydric to the first component
     if (components.length > 0 && primaryDrainage) {
       components[0].drainage = primaryDrainage;
     }
