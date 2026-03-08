@@ -77,27 +77,27 @@ export interface BraceSpec {
   description: string;
   postsRequired: number;
   railsRequired: number;
-  braceWire: boolean;
+  weldedDiagonal: boolean;
   concreteBags: number;
   angleThreshold: { min: number; max: number };
 }
 
 export const BRACE_SPECS: BraceSpec[] = [
   { id: 'h_brace', label: 'H-Brace',
-    description: 'Standard H-brace for end posts and slight direction changes (10-25 deg bends)',
-    postsRequired: 2, railsRequired: 1, braceWire: true, concreteBags: 4,
-    angleThreshold: { min: 10, max: 25 } },
+    description: 'Standard H-brace for end posts, gate posts, and moderate direction changes (15-75° deviation from straight)',
+    postsRequired: 2, railsRequired: 1, weldedDiagonal: true, concreteBags: 4,
+    angleThreshold: { min: 15, max: 75 } },
   { id: 'corner_brace', label: 'Corner Brace',
-    description: 'Full corner brace assembly for significant direction changes (25-120 deg bends)',
-    postsRequired: 3, railsRequired: 2, braceWire: true, concreteBags: 6,
-    angleThreshold: { min: 25, max: 120 } },
+    description: 'Double H-brace assembly (two H-braces sharing a center post) for sharp direction changes (>75° deviation from straight)',
+    postsRequired: 3, railsRequired: 2, weldedDiagonal: true, concreteBags: 6,
+    angleThreshold: { min: 75, max: 180 } },
   { id: 'n_brace', label: 'N-Brace',
-    description: 'N-brace for moderate angles with cross-bracing (15-30 deg bends)',
-    postsRequired: 2, railsRequired: 2, braceWire: true, concreteBags: 4,
-    angleThreshold: { min: 15, max: 30 } },
+    description: 'N-brace with cross-bracing for moderate angles (15-45° deviation)',
+    postsRequired: 2, railsRequired: 2, weldedDiagonal: true, concreteBags: 4,
+    angleThreshold: { min: 15, max: 45 } },
   { id: 'double_h', label: 'Double H-Brace',
-    description: 'Heavy duty double H-brace for high tension lines and gate posts',
-    postsRequired: 3, railsRequired: 2, braceWire: true, concreteBags: 6,
+    description: 'Heavy duty double H-brace for high-tension end posts and large gate openings',
+    postsRequired: 3, railsRequired: 2, weldedDiagonal: true, concreteBags: 6,
     angleThreshold: { min: 0, max: 180 } },
 ];
 
@@ -221,7 +221,6 @@ export const DEFAULT_MATERIAL_PRICES: MaterialPrice[] = [
   { id: 'no_climb_roll', category: 'Wire', name: "No-Climb Horse Fence (200' roll)", unit: 'roll', price: 320, defaultPrice: 320 },
   { id: 'ht_smooth', category: 'Wire', name: "High Tensile Smooth (4000' roll)", unit: 'roll', price: 110, defaultPrice: 110 },
   // Brace & Hardware
-  { id: 'brace_wire', category: 'Hardware', name: "Brace Wire (20' coil)", unit: 'each', price: 12, defaultPrice: 12 },
   { id: 'clips', category: 'Hardware', name: 'Fence Clips/Staples (box of 500)', unit: 'box', price: 45, defaultPrice: 45 },
   { id: 'concrete_bag', category: 'Hardware', name: 'Concrete Mix (80 lb bag)', unit: 'bag', price: 7, defaultPrice: 7 },
   { id: 'tensioner', category: 'Hardware', name: 'Inline Wire Tensioner', unit: 'each', price: 12, defaultPrice: 12 },
@@ -271,26 +270,32 @@ export function estimatePainting(
 
 /**
  * Determine the best brace type for a given vertex angle.
- * Accepts optional brace-style preferences.
+ * `angleDegrees` is the INTERIOR angle at the vertex (180° = straight line, 90° = right angle, 0° = U-turn).
+ * Deviation from straight = 180 - angleDegrees.
+ *
+ * Rules (per user's real-world practice):
+ * - deviation < 15°  (angle > 165°)  → no brace needed (nearly straight)
+ * - deviation 15-75° (angle 105-165°) → H-brace
+ * - deviation > 75°  (angle < 105°)  → Corner brace (two H-braces sharing a center post)
  */
 export function determineBraceType(
   angleDegrees: number,
   preferredCornerBrace?: BraceType,
   preferredHBrace?: BraceType,
 ): BraceRecommendation | null {
-  if (angleDegrees < 1) return null;  // co-linear, no brace needed
+  const deviation = 180 - angleDegrees;
+
+  // Nearly straight — no brace needed
+  if (deviation < 15) return null;
 
   let spec: BraceSpec;
 
-  // End-of-line or very sharp -> double H
-  if (angleDegrees <= 5 || angleDegrees >= 175) {
-    spec = BRACE_SPECS.find(b => b.id === 'double_h')!;
-  } else if (angleDegrees > 25) {
-    // Corner territory
+  if (deviation >= 75) {
+    // Sharp bend (>75° from straight) → corner brace (= two H-braces together)
     const preferred = preferredCornerBrace ?? 'corner_brace';
     spec = BRACE_SPECS.find(b => b.id === preferred) ?? BRACE_SPECS.find(b => b.id === 'corner_brace')!;
   } else {
-    // H-brace territory (10-25 deg)
+    // Moderate bend (15-75° from straight) → H-brace
     const preferred = preferredHBrace ?? 'h_brace';
     spec = BRACE_SPECS.find(b => b.id === preferred) ?? BRACE_SPECS.find(b => b.id === 'h_brace')!;
   }

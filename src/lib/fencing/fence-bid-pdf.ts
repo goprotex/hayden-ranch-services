@@ -12,6 +12,22 @@ import {
 // Types for fence bid PDF
 // ============================================================
 
+/** Top & bottom wire option: smooth HT wire, single barbed, or double barbed top */
+export type TopWireType = 'smooth' | 'barbed' | 'barbed_double';
+
+export interface LaborEstimate {
+  drillingHours: number;       // time to drill all post holes
+  postSettingHours: number;    // time to set posts in concrete
+  tPostHours: number;          // time to drive T-posts
+  wireHours: number;           // estimated wire stringing time
+  braceAssemblyHours: number;  // time to build H-brace & corner brace assemblies
+  gateHours: number;           // gate installation
+  totalHours: number;
+  workDayHours: number;        // hours per work day (9-10)
+  workDays: number;            // total work days
+  breakdown: { task: string; hours: number; detail: string }[];
+}
+
 export interface FenceBidSection {
   id: string;
   name: string;
@@ -55,6 +71,7 @@ export interface FenceBidData {
   squareTubeGauge?: SquareTubeGauge; // '14ga' | '12ga' | '11ga' (only when square_tube)
   tPostSpacing: number;              // user-configured, e.g. 10
   linePostSpacing: number;           // user-configured, e.g. 66
+  topWireType: TopWireType;          // 'smooth' | 'barbed' | 'barbed_double'
 
   // Sections
   sections: FenceBidSection[];
@@ -72,6 +89,9 @@ export interface FenceBidData {
   timelineWeeks: number;
   workingDays: number;
 
+  // Calculated labor estimate
+  laborEstimate?: LaborEstimate;
+
   // Custom project overview text
   projectOverview: string;
 
@@ -81,11 +101,179 @@ export interface FenceBidData {
   // Property research / soil narrative for the customer
   soilNarrative?: string;
 
+  // Structured soil/terrain data for rich PDF rendering
+  siteData?: {
+    soilType: string | null;
+    components: { name: string; percent: number; drainage?: string; hydric?: string }[];
+    drainage: string | null;
+    hydric: string | null;
+    source: string | null;
+    elevationChange: number;
+    suggestedDifficulty: string;
+    // USDA SDA enrichment
+    bedrockDepthIn: number | null;
+    restrictionType: string | null;
+    slopeRange: string | null;
+    slopeLow: number | null;
+    slopeHigh: number | null;
+    runoff: string | null;
+    taxonomy: string | null;
+    taxOrder: string | null;
+    texture: string | null;
+    clayPct: number | null;
+    sandPct: number | null;
+    rockFragmentPct: number | null;
+    pH: number | null;
+    organicMatter: number | null;
+  };
+
+  // Site-specific pricing adjustments driven by soil data
+  siteAdjustments?: SiteAdjustment[];
+
   // Map screenshot data URLs (base64 PNGs) — supports multiple captures
   mapImages?: string[];
 
   // Terms (use default if empty)
   customTerms?: string[];
+}
+
+// ============================================================
+// Site pricing adjustment (soil-data-driven)
+// ============================================================
+
+export interface SiteAdjustment {
+  label: string;        // e.g. "Rock Drilling Surcharge"
+  reason: string;       // e.g. "Bedrock at 11″ below grade"
+  dataPoint: string;    // the raw data that triggered it
+  impact: string;       // e.g. "Hydraulic rock drill required for every post hole"
+  costNote?: string;    // optional cost text
+}
+
+/**
+ * Analyse structured soil data and return site-specific adjustments
+ * that explain WHY pricing may be higher/lower than a typical install.
+ * Optionally references the user's actual material selections.
+ */
+export function buildSiteAdjustments(
+  site: FenceBidData['siteData'],
+  materials?: { postMaterial?: PostMaterial; squareTubeGauge?: SquareTubeGauge; fenceType?: string },
+): SiteAdjustment[] {
+  if (!site) return [];
+  const adj: SiteAdjustment[] = [];
+
+  // 1 — Shallow bedrock
+  if (site.bedrockDepthIn != null && site.bedrockDepthIn <= 36) {
+    const ft = Math.floor(site.bedrockDepthIn / 12);
+    const inches = site.bedrockDepthIn % 12;
+    const depthStr = ft > 0 ? `${ft}' ${inches > 0 ? inches + '"' : ''}`.trim() : `${site.bedrockDepthIn}"`;
+    if (site.bedrockDepthIn <= 18) {
+      adj.push({
+        label: 'Shallow Bedrock — Rock Drilling Required',
+        reason: `USDA data shows ${site.restrictionType || 'bedrock'} at ${depthStr} below grade`,
+        dataPoint: `Bedrock depth: ${depthStr}`,
+        impact: 'Hydraulic rock drill required for every post hole. Standard auger cannot penetrate this depth. Each post must be anchored directly into the rock shelf.',
+        costNote: 'Core drilling included in project pricing — no surprise charges',
+      });
+    } else if (site.bedrockDepthIn <= 30) {
+      adj.push({
+        label: 'Moderate Bedrock — Partial Rock Drilling',
+        reason: `${site.restrictionType || 'Bedrock'} at ${depthStr} — standard post depth is 30-36"`,
+        dataPoint: `Bedrock depth: ${depthStr}`,
+        impact: 'Many post holes will bottom out on rock. Crew will carry rock drilling equipment and set posts at maximum achievable depth with epoxy anchoring where needed.',
+        costNote: 'Rock drilling equipment mobilization included in pricing',
+      });
+    } else {
+      adj.push({
+        label: 'Subsurface Rock Possible',
+        reason: `${site.restrictionType || 'Bedrock'} detected at ${depthStr} depth`,
+        dataPoint: `Bedrock depth: ${depthStr}`,
+        impact: 'Some deeper posts may encounter rock. Drilling equipment will be on-site as a precaution.',
+      });
+    }
+  }
+
+  // 2 — High rock fragment content
+  if (site.rockFragmentPct != null && site.rockFragmentPct >= 25) {
+    if (site.rockFragmentPct >= 50) {
+      adj.push({
+        label: 'Heavy Rock Fragment Soil',
+        reason: `Soil matrix is ${site.rockFragmentPct}% coarse rock fragments`,
+        dataPoint: `Rock fragments: ${site.rockFragmentPct}%`,
+        impact: 'Post holes will encounter heavy cobbles and stones throughout. Auger bits wear rapidly; backup bits and hand-finishing of holes required.',
+        costNote: 'Auger wear and extended dig time factored into pricing',
+      });
+    } else {
+      adj.push({
+        label: 'Rocky Soil Conditions',
+        reason: `${site.rockFragmentPct}% rock fragments in the soil profile`,
+        dataPoint: `Rock fragments: ${site.rockFragmentPct}%`,
+        impact: 'Post hole digging will be slower than normal. We carry carbide-tipped auger bits rated for this soil type.',
+      });
+    }
+  }
+
+  // 3 — High clay content (shrink-swell)
+  if (site.clayPct != null && site.clayPct >= 35) {
+    adj.push({
+      label: 'High-Clay Expansive Soil',
+      reason: `Clay content is ${site.clayPct}% — soils with >35% clay expand and contract significantly`,
+      dataPoint: `Clay content: ${site.clayPct}%`,
+      impact: 'Seasonal moisture changes will push and pull on posts. We set posts deeper and use additional concrete to counteract heave. All brace assemblies are reinforced.',
+      costNote: 'Additional concrete and deeper post settings included',
+    });
+  }
+
+  // 4 — Steep slope
+  if (site.slopeHigh != null && site.slopeHigh >= 20) {
+    adj.push({
+      label: 'Steep Terrain',
+      reason: `USDA slope range: ${site.slopeRange || site.slopeHigh + '%'}`,
+      dataPoint: `Max slope: ${site.slopeHigh}%`,
+      impact: 'Steep terrain requires closer post spacing, reinforced bracing at grade changes, and additional labor for equipment staging. Wire tension is higher on slopes due to gravity.',
+      costNote: 'Slope-adjusted post spacing included in material counts',
+    });
+  }
+
+  // 5 — Hydric/wetland conditions
+  if (site.hydric && site.hydric.toLowerCase() === 'yes') {
+    adj.push({
+      label: 'Wetland / Hydric Soil Present',
+      reason: 'USDA classifies portions of this soil as hydric (wetland indicator)',
+      dataPoint: `Hydric indicator: Yes`,
+      impact: 'Standing water or saturated soils may be present seasonally. Posts in wet areas require deeper settings and rapid-set concrete to cure before water infiltration.',
+      costNote: 'Rapid-set concrete for wet areas included',
+    });
+  }
+
+  // 6 — Poor drainage
+  if (site.drainage) {
+    const d = site.drainage.toLowerCase();
+    if (d.includes('poorly') || d.includes('very poorly')) {
+      adj.push({
+        label: 'Poor Drainage Conditions',
+        reason: `Soil drainage classified as "${site.drainage}"`,
+        dataPoint: `Drainage: ${site.drainage}`,
+        impact: 'Saturated soils reduce post-hole wall stability and slow concrete curing. We may need to dewater holes before setting posts and use fast-set concrete.',
+      });
+    }
+  }
+
+  // 7 — Acidic soil (metal corrosion risk)
+  if (site.pH != null && site.pH <= 5.5) {
+    const postNote = materials?.postMaterial === 'drill_stem'
+      ? 'Your drill stem posts (0.190" wall thickness) provide excellent corrosion resistance — far superior to standard pipe.'
+      : materials?.postMaterial === 'square_tube'
+        ? 'We recommend galvanized square tube or periodic inspection of post bases in acidic soil.'
+        : 'We recommend heavy-wall drill stem or galvanized posts for maximum longevity in these conditions.';
+    adj.push({
+      label: 'Acidic Soil — Corrosion Consideration',
+      reason: `Soil pH of ${site.pH} is acidic (below 5.5)`,
+      dataPoint: `pH: ${site.pH}`,
+      impact: `Acidic soils can accelerate corrosion of metal fence posts over time. ${postNote}`,
+    });
+  }
+
+  return adj;
 }
 
 // ============================================================
@@ -251,25 +439,379 @@ export function generateFenceBidPDF(data: FenceBidData): void {
     y += wLines.length * 3.5 + 8;
   }
 
-  // ── Property Research & Site Analysis ──
-  if (data.soilNarrative) {
+  // ── Property Research & Site Analysis (comprehensive) ──
+  if (data.soilNarrative || data.siteData) {
     y = ensureSpace(doc, y, 40);
-    doc.setTextColor(27, 38, 54);
+
+    // ─── Section header with accent bar ───
+    doc.setFillColor(27, 38, 54);
+    doc.rect(mx, y - 3, cw, 9, 'F');
+    doc.setTextColor(255, 255, 255);
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text('PROPERTY RESEARCH & SITE ANALYSIS', mx, y);
-    y += 6;
+    doc.text('PROPERTY RESEARCH & SITE ANALYSIS', mx + 4, y + 3);
+    y += 12;
 
-    doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'normal');
     doc.setTextColor(60, 60, 60);
-    const soilLines = doc.splitTextToSize(data.soilNarrative, cw);
-    // May be multiple paragraphs, handle page breaks
-    for (let i = 0; i < soilLines.length; i++) {
-      y = ensureSpace(doc, y, 4);
-      doc.text(soilLines[i], mx, y);
-      y += 3.5;
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'italic');
+    doc.text('Before designing your fence, our team researched your property using the USDA National Resources Conservation Service', mx, y);
+    y += 3.5;
+    doc.text('(NRCS) Web Soil Survey and supplemental USDA Soil Data Access databases. Here is what we found:', mx, y);
+    y += 7;
+
+    // ─── Quick Data Callout Boxes (if we have structured data) ───
+    const site = data.siteData;
+    if (site) {
+      const boxes: { label: string; value: string; note: string }[] = [];
+
+      if (site.soilType) boxes.push({ label: 'Primary Soil', value: site.soilType.length > 30 ? site.soilType.slice(0, 28) + '…' : site.soilType, note: 'USDA NRCS' });
+      if (site.bedrockDepthIn != null) {
+        const ft = Math.floor(site.bedrockDepthIn / 12);
+        const inches = site.bedrockDepthIn % 12;
+        boxes.push({ label: 'Bedrock Depth', value: ft > 0 ? `${ft}' ${inches > 0 ? inches + '"' : ''}`.trim() : `${site.bedrockDepthIn}"`, note: site.restrictionType || 'bedrock' });
+      }
+      if (site.texture) boxes.push({ label: 'Soil Texture', value: site.texture.length > 22 ? site.texture.slice(0, 20) + '…' : site.texture, note: 'top horizon' });
+      if (site.pH != null) boxes.push({ label: 'Soil pH', value: site.pH.toFixed(1), note: site.pH >= 7.5 ? 'alkaline' : site.pH <= 5.5 ? 'acidic' : 'near-neutral' });
+      if (site.rockFragmentPct != null && site.rockFragmentPct > 0) boxes.push({ label: 'Rock Content', value: `${site.rockFragmentPct}%`, note: 'coarse fragments' });
+      if (site.clayPct != null) boxes.push({ label: 'Clay Content', value: `${site.clayPct}%`, note: site.clayPct >= 35 ? 'expansive' : 'normal range' });
+      if (site.slopeRange) boxes.push({ label: 'Slope Range', value: site.slopeRange, note: 'USDA survey' });
+      if (site.drainage) boxes.push({ label: 'Drainage', value: site.drainage, note: site.runoff ? `${site.runoff} runoff` : '' });
+
+      if (boxes.length > 0) {
+        // Draw data boxes (up to 4 per row)
+        const boxesPerRow = Math.min(4, boxes.length);
+        const boxW = (cw - (boxesPerRow - 1) * 3) / boxesPerRow;
+        const boxH = 18;
+
+        for (let i = 0; i < boxes.length; i++) {
+          if (i > 0 && i % boxesPerRow === 0) {
+            y += boxH + 3;
+            y = ensureSpace(doc, y, boxH + 3);
+          }
+          const col = i % boxesPerRow;
+          const bx = mx + col * (boxW + 3);
+
+          // Box background
+          doc.setFillColor(244, 247, 252);
+          doc.roundedRect(bx, y, boxW, boxH, 2, 2, 'F');
+
+          // Accent line
+          doc.setFillColor(59, 130, 246);
+          doc.rect(bx, y, boxW, 2.5, 'F');
+
+          // Label
+          doc.setFontSize(6.5);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(100, 110, 130);
+          doc.text(boxes[i].label.toUpperCase(), bx + 3, y + 6);
+
+          // Value
+          doc.setFontSize(9);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(27, 38, 54);
+          doc.text(boxes[i].value, bx + 3, y + 11.5);
+
+          // Note
+          if (boxes[i].note) {
+            doc.setFontSize(6);
+            doc.setFont('helvetica', 'italic');
+            doc.setTextColor(130, 130, 150);
+            doc.text(boxes[i].note, bx + 3, y + 15);
+          }
+        }
+        y += boxH + 8;
+      }
     }
+
+    // ─── AI / Template Narrative ───
+    if (data.soilNarrative) {
+      y = ensureSpace(doc, y, 20);
+      doc.setTextColor(27, 38, 54);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Understanding Your Land', mx, y);
+      y += 5;
+
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(55, 55, 60);
+      const soilLines = doc.splitTextToSize(data.soilNarrative, cw);
+      for (let i = 0; i < soilLines.length; i++) {
+        y = ensureSpace(doc, y, 4);
+        doc.text(soilLines[i], mx, y);
+        y += 3.5;
+      }
+      y += 5;
+    }
+
+    // ─── Soil Profile Detail (if we have structured taxonomy) ───
+    if (site && (site.taxonomy || site.components?.length > 0)) {
+      y = ensureSpace(doc, y, 25);
+      doc.setTextColor(27, 38, 54);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Soil Profile', mx, y);
+      y += 5;
+
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(55, 55, 60);
+
+      if (site.taxonomy) {
+        const taxParts: string[] = [];
+        taxParts.push(`Your property sits on soil classified by the USDA as "${site.taxonomy}." This scientific classification tells us a great deal about how this soil formed over thousands of years and how it behaves.`);
+
+        if (site.taxOrder) {
+          const orderDescriptions: Record<string, string> = {
+            'mollisols': 'Mollisols are among the most fertile soils in the world, formed under grassland vegetation. They are characterized by a thick, dark surface horizon rich in organic matter — excellent for ranching but the high organic content means post holes may need extra concrete to prevent settling.',
+            'vertisols': 'Vertisols are heavy clay soils that shrink dramatically when dry and swell when wet, forming deep cracks in summer. This "shrink-swell" action can literally push fence posts out of the ground over time. We combat this with deeper post settings and extra concrete.',
+            'alfisols': 'Alfisols are moderately fertile soils with a distinct clay layer at depth. They form under hardwood forests and are common throughout the Hill Country. The clay subsoil provides good anchor for fence posts once you get below the topsoil.',
+            'inceptisols': 'Inceptisols are young soils that have just begun to develop distinct layers. In the Hill Country, these often form on steep slopes where erosion prevents deep soil development — which means you may hit rock relatively quickly when digging.',
+            'entisols': 'Entisols are very young soils with minimal development — essentially weathered rock. These are common on steep slopes, floodplains, and rocky ridgelines in the Hill Country. Post installation in Entisols often requires rock drilling because there simply is not much soil depth to work with.',
+            'aridisols': 'Aridisols form in dry climates and often contain calcium carbonate (caliche) layers that are extremely hard. Caliche layers are notorious in Texas for destroying auger bits and requiring specialized drilling equipment.',
+          };
+          const orderKey = site.taxOrder.toLowerCase();
+          const orderDesc = orderDescriptions[orderKey];
+          if (orderDesc) taxParts.push(orderDesc);
+        }
+
+        const taxText = taxParts.join(' ');
+        const taxLines = doc.splitTextToSize(taxText, cw);
+        for (let i = 0; i < taxLines.length; i++) {
+          y = ensureSpace(doc, y, 4);
+          doc.text(taxLines[i], mx, y);
+          y += 3.5;
+        }
+        y += 3;
+      }
+
+      // Soil components breakdown
+      if (site.components && site.components.length > 0) {
+        y = ensureSpace(doc, y, 10);
+        doc.setFontSize(8.5);
+        doc.setFont('helvetica', 'normal');
+        const compIntro = `The soil survey divides your property's soil map unit into ${site.components.length} component${site.components.length > 1 ? 's' : ''}:`;
+        doc.text(compIntro, mx, y);
+        y += 4.5;
+
+        for (const comp of site.components) {
+          y = ensureSpace(doc, y, 5);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8);
+          doc.text(`• ${comp.name}`, mx + 3, y);
+          doc.setFont('helvetica', 'normal');
+          const compDetail = ` — ${comp.percent}% of area${comp.drainage ? ', ' + comp.drainage + ' drainage' : ''}${comp.hydric === 'Yes' ? ', hydric (wetland)' : ''}`;
+          doc.text(compDetail, mx + 3 + doc.getTextWidth(`• ${comp.name}`), y);
+          y += 4;
+        }
+        y += 3;
+      }
+    }
+
+    // ─── Subsurface & Rock Conditions ───
+    if (site && (site.bedrockDepthIn != null || (site.rockFragmentPct != null && site.rockFragmentPct > 10))) {
+      y = ensureSpace(doc, y, 25);
+      doc.setTextColor(27, 38, 54);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text('What\'s Below the Surface', mx, y);
+      y += 5;
+
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(55, 55, 60);
+
+      const subParts: string[] = [];
+      if (site.bedrockDepthIn != null) {
+        const depth = site.bedrockDepthIn;
+        const ft = Math.floor(depth / 12);
+        const inches = depth % 12;
+        const depthStr = ft > 0 ? `${ft} feet${inches > 0 ? ' ' + inches + ' inches' : ''}` : `${depth} inches`;
+        subParts.push(`According to USDA subsurface data, ${site.restrictionType || 'bedrock'} exists at approximately ${depthStr} below the surface on your property. For context, a standard fence post needs to be set 30 to 36 inches deep for proper stability. ${depth <= 18 ? 'At this depth, every single post hole will hit solid rock — there is no way around it. Our crew will arrive with a truck-mounted hydraulic rock drill that can bore through limestone and bedrock to set posts directly into the rock shelf. This is actually the strongest possible installation — a post anchored in solid rock is not going anywhere.' : depth <= 30 ? 'At this depth, most post holes will encounter rock before reaching the ideal 36-inch depth. We bring rock drilling equipment to finish these holes and ensure each post reaches maximum achievable depth.' : 'At this depth, our deeper post holes (particularly corner and end posts) may encounter rock. We keep drilling equipment on the truck as standard practice for Hill Country installations.'}`);
+      }
+      if (site.rockFragmentPct != null && site.rockFragmentPct > 10) {
+        if (site.rockFragmentPct >= 50) {
+          subParts.push(`The soil itself contains ${site.rockFragmentPct}% coarse rock fragments — cobbles and stones mixed throughout the soil matrix. In practical terms, this means the soil is essentially half rocks. Digging post holes in this material is significantly harder than in clean soil. Standard auger bits wear out quickly; we use heavy-duty carbide-tipped bits rated for rocky soil, and we carry backup bits for jobs like this.`);
+        } else if (site.rockFragmentPct >= 25) {
+          subParts.push(`With ${site.rockFragmentPct}% coarse rock fragments in the soil, post hole digging will encounter frequent cobbles and stones. This is common in the Texas Hill Country where limestone bedrock has been weathering for millions of years, mixing gravel and cobbles into the upper soil layers. Our auger equipment is rated for this type of soil.`);
+        } else {
+          subParts.push(`The soil contains about ${site.rockFragmentPct}% rock fragments — a moderate amount typical of Hill Country soils. Our equipment handles this easily, though digging may be slightly slower than in rock-free soil.`);
+        }
+      }
+
+      const subText = subParts.join(' ');
+      const subLines = doc.splitTextToSize(subText, cw);
+      for (let i = 0; i < subLines.length; i++) {
+        y = ensureSpace(doc, y, 4);
+        doc.text(subLines[i], mx, y);
+        y += 3.5;
+      }
+      y += 5;
+    }
+
+    // ─── Terrain, Drainage & Water ───
+    if (site && (site.elevationChange > 5 || site.drainage || site.runoff || (site.hydric && site.hydric.toLowerCase() === 'yes'))) {
+      y = ensureSpace(doc, y, 25);
+      doc.setTextColor(27, 38, 54);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Terrain, Drainage & Water', mx, y);
+      y += 5;
+
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(55, 55, 60);
+
+      const tdParts: string[] = [];
+
+      if (site.elevationChange > 5) {
+        const elev = Math.round(site.elevationChange);
+        if (elev > 50) {
+          tdParts.push(`Your fence line crosses approximately ${elev} feet of elevation change${site.slopeRange ? ` (USDA slope range: ${site.slopeRange})` : ''}. That is significant — imagine a ${Math.round(elev / 3)}-story building. On steep grades, gravity pulls constantly on the wire, which means we need closer post spacing to prevent sagging and reinforced bracing at every grade change. Wire tension must be carefully balanced: too tight and the wire will snap in cold weather when it contracts; too loose and livestock can push through.`);
+        } else if (elev > 15) {
+          tdParts.push(`Your fence line crosses about ${elev} feet of elevation change${site.slopeRange ? ` (USDA slope range: ${site.slopeRange})` : ''}. This moderate grade requires attention to post spacing and wire tension — we have adjusted our material plan to use slightly closer post spacing on the sloped sections.`);
+        } else {
+          tdParts.push(`Your fence line is relatively level with only about ${elev} feet of elevation change — ideal conditions for efficient installation and even wire tension throughout.`);
+        }
+      }
+
+      if (site.drainage) {
+        const d = site.drainage.toLowerCase();
+        if (d.includes('well')) {
+          tdParts.push(`Your soil has "${site.drainage}" drainage, which is favorable for fence installation. Good drainage means post-hole concrete will cure properly and water won't pool around post bases, which is the number one cause of premature post failure.${site.runoff ? ` Surface runoff is classified as "${site.runoff}" — this tells us how quickly rainwater moves across the surface, which helps us plan for erosion protection around corner posts.` : ''}`);
+        } else if (d.includes('poor') || d.includes('somewhat')) {
+          tdParts.push(`Your soil has "${site.drainage}" drainage, which means water tends to linger in the soil. This is important for fence longevity — we use rapid-set concrete in areas where water is present and ensure posts are set at maximum depth to get below the saturated zone where possible.${site.runoff ? ` Surface runoff is classified as "${site.runoff}."` : ''}`);
+        } else {
+          tdParts.push(`Soil drainage is classified as "${site.drainage}."${site.runoff ? ` Surface runoff is ${site.runoff.toLowerCase()}.` : ''}`);
+        }
+      }
+
+      if (site.hydric && site.hydric.toLowerCase() === 'yes') {
+        tdParts.push('The USDA classifies portions of this soil as hydric, which means it shows indicators of seasonal wetland conditions. This does not mean your property is a swamp — many Hill Country properties have small hydric areas in low-lying draws and creek bottoms. We will identify these areas on-site and use appropriate techniques (deeper posts, rapid-set concrete) in those zones.');
+      }
+
+      if (tdParts.length > 0) {
+        const tdText = tdParts.join(' ');
+        const tdLines = doc.splitTextToSize(tdText, cw);
+        for (let i = 0; i < tdLines.length; i++) {
+          y = ensureSpace(doc, y, 4);
+          doc.text(tdLines[i], mx, y);
+          y += 3.5;
+        }
+        y += 5;
+      }
+    }
+
+    // ─── Site-Specific Pricing Adjustments ───
+    if (data.siteAdjustments && data.siteAdjustments.length > 0) {
+      y = ensureSpace(doc, y, 30);
+      doc.setTextColor(27, 38, 54);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text('What This Means for Your Fence & Pricing', mx, y);
+      y += 5;
+
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(55, 55, 60);
+      const introText = 'Based on our property research, we identified the following site conditions that directly affect installation approach and pricing. We believe in transparent pricing — you should know exactly WHY your bid is what it is.';
+      const introLines = doc.splitTextToSize(introText, cw);
+      for (let i = 0; i < introLines.length; i++) {
+        y = ensureSpace(doc, y, 4);
+        doc.text(introLines[i], mx, y);
+        y += 3.5;
+      }
+      y += 4;
+
+      for (const adj of data.siteAdjustments) {
+        y = ensureSpace(doc, y, 24);
+
+        // Adjustment card
+        doc.setFillColor(254, 249, 243);
+        const cardText = `${adj.impact}${adj.costNote ? ' ' + adj.costNote + '.' : ''}`;
+        const cardLines = doc.splitTextToSize(cardText, cw - 16);
+        const cardH = 14 + cardLines.length * 3.5;
+        doc.roundedRect(mx + 2, y - 2, cw - 4, cardH, 1.5, 1.5, 'F');
+
+        // Orange accent
+        doc.setFillColor(234, 138, 45);
+        doc.rect(mx + 2, y - 2, 2.5, cardH, 'F');
+
+        // Title
+        doc.setFontSize(8.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(27, 38, 54);
+        doc.text(adj.label, mx + 8, y + 2);
+
+        // Data point badge
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(140, 90, 30);
+        doc.text(adj.dataPoint, mx + 8, y + 6);
+
+        // Impact text
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(60, 60, 65);
+        for (let i = 0; i < cardLines.length; i++) {
+          doc.text(cardLines[i], mx + 8, y + 10 + i * 3.5);
+        }
+        y += cardH + 3;
+      }
+      y += 3;
+    }
+
+    // ─── Confidence Closer — ties soil findings to actual material selections ───
+    if (site) {
+      // Build a material-aware closer referencing user's selections
+      const matPostLabel = data.postMaterial === 'drill_stem'
+        ? 'heavy-wall drill stem (2-3/8" OD, 4.7 lb/ft)'
+        : `2" square tube${data.squareTubeGauge ? ' (' + data.squareTubeGauge + ')' : ''}`;
+      const matReasons: string[] = [];
+      if (site.bedrockDepthIn != null && site.bedrockDepthIn <= 30) {
+        matReasons.push(data.postMaterial === 'drill_stem'
+          ? 'drill stem\'s superior strength is ideal for rock-anchored installations'
+          : 'square tube posts will be welded to base plates for rock anchoring');
+      }
+      if (site.pH != null && site.pH <= 5.5) {
+        matReasons.push(data.postMaterial === 'drill_stem'
+          ? 'drill stem\'s heavy wall thickness (0.190") provides decades of corrosion resistance in your acidic soil'
+          : 'we recommend monitoring galvanized coatings in your acidic soil conditions');
+      }
+      if (site.clayPct != null && site.clayPct >= 35) {
+        matReasons.push(`posts set ${data.postMaterial === 'drill_stem' ? '3\' deep' : 'to full depth'} with extra concrete to combat clay heave`);
+      }
+
+      const closerParts: string[] = [
+        `We selected ${matPostLabel} for your line posts (spaced every ${data.linePostSpacing}') and T-posts every ${data.tPostSpacing}' specifically for the conditions on YOUR property.`,
+      ];
+      if (matReasons.length > 0) {
+        closerParts.push(`Why: ${matReasons.join('; ')}.`);
+      }
+      closerParts.push(`Every material quantity, concrete calculation, and spacing in this ${data.fenceType} proposal is tailored to your soil, rock, and terrain — not generic averages.`);
+      const closerText = closerParts.join(' ');
+
+      const closerLines = doc.splitTextToSize(closerText, cw - 8);
+      const closerH = Math.max(18, 8 + closerLines.length * 3.5);
+      y = ensureSpace(doc, y, closerH + 2);
+      doc.setFillColor(240, 250, 245);
+      doc.roundedRect(mx, y, cw, closerH, 2, 2, 'F');
+      doc.setFillColor(34, 139, 84);
+      doc.rect(mx, y, cw, 2.5, 'F');
+
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(27, 38, 54);
+      doc.text('Our Material Selection — Tailored to Your Property', mx + 4, y + 7);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(50, 60, 55);
+      doc.text(closerLines, mx + 4, y + 11);
+      y += closerH + 2;
+    }
+
     y += 6;
   }
 
@@ -412,6 +954,67 @@ export function generateFenceBidPDF(data: FenceBidData): void {
   doc.text('PROJECT TOTAL', mx + 3, y);
   doc.text(`$${data.projectTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y, { align: 'right' });
   y += 14;
+
+  // ── Labor Estimate Section ──
+  if (data.laborEstimate) {
+    const le = data.laborEstimate;
+    y = ensureSpace(doc, y, 60);
+    doc.setTextColor(27, 38, 54);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ESTIMATED LABOR TIMELINE', mx, y);
+    y += 3;
+
+    // Subtitle
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Based on production rates: 4 post holes/hr drilling, 2 posts/hr setting, 12 T-posts/hr — ${le.workDayHours}-hour work days`, mx, y + 3);
+    y += 8;
+
+    // Labor table header
+    doc.setFillColor(27, 38, 54);
+    doc.rect(mx, y - 4, cw, 7, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Task', mx + 3, y);
+    doc.text('Hours', mx + cw * 0.65, y);
+    doc.text('Detail', mx + cw * 0.75, y);
+    y += 6;
+
+    // Labor rows
+    for (let i = 0; i < le.breakdown.length; i++) {
+      const row = le.breakdown[i];
+      y = ensureSpace(doc, y, 7);
+      if (i % 2 === 0) {
+        doc.setFillColor(245, 247, 250);
+        doc.rect(mx, y - 4, cw, 7, 'F');
+      }
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(50, 50, 50);
+      doc.text(row.task, mx + 3, y);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${row.hours} hrs`, mx + cw * 0.65, y);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 100, 100);
+      const detailLines = doc.splitTextToSize(row.detail, cw * 0.23);
+      doc.text(detailLines[0] || '', mx + cw * 0.75, y);
+      y += 7;
+    }
+
+    // Total row
+    doc.setFillColor(27, 38, 54);
+    doc.rect(mx, y - 4, cw, 8, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('TOTAL LABOR', mx + 3, y);
+    doc.text(`${le.totalHours} hours ≈ ${le.workDays} work day${le.workDays !== 1 ? 's' : ''} (${le.workDayHours} hrs/day)`, mx + cw - 3, y, { align: 'right' });
+    y += 14;
+  }
 
   // ── Detailed Sections ──
   y = ensureSpace(doc, y, 30);
@@ -647,6 +1250,7 @@ export function calculateSectionMaterials(
   squareTubeGauge: SquareTubeGauge = '14ga',
   tPostSpacing: number = 10,
   linePostSpacing: number = 66,
+  topWireType: TopWireType = 'smooth',
 ): SectionMaterial[] {
   const ft = linearFeet;
   const wireHeightIn = resolveWireHeight(fenceHeight, stayTuffModel);
@@ -674,17 +1278,32 @@ export function calculateSectionMaterials(
   const postsPerJoint = postMaterial === 'drill_stem'
     ? postCalc.postsPerDrillStemJoint
     : postCalc.postsPerSquareTubeJoint;
-  const jointsNeeded = postsPerJoint > 0 ? Math.ceil(linePostCount / postsPerJoint) : linePostCount;
+  // ── Bracing ──
+  // H-braces go at each end of the section + mid-run braces for very long straight runs (1 per 660').
+  // Gate braces and bend/corner braces are calculated separately in the overall bid.
+  const endBraces = 2;
+  const midRunBraces = Math.max(0, Math.floor(linearFeet / 660) - 1);
+  const hBraceCount = endBraces + midRunBraces;
+
+  // Each H-brace assembly: 1 additional brace post + 1 horizontal rail (10') + 1 welded diagonal pipe (~10').
+  // The end/corner post is already counted as a line post.
+  const bracePostCount = hBraceCount;
+  const bracePipePieces = hBraceCount * 2; // horizontal rail + welded diagonal per assembly
+
+  // Pipe joints: line posts + brace posts + brace rails/diagonals
+  const totalPostsFromPipe = linePostCount + bracePostCount;
+  const postJointsNeeded = postsPerJoint > 0 ? Math.ceil(totalPostsFromPipe / postsPerJoint) : totalPostsFromPipe;
+  const bracePiecesPerJoint = Math.floor(jointLen / 10);
+  const braceJointsNeeded = bracePiecesPerJoint > 0 ? Math.ceil(bracePipePieces / bracePiecesPerJoint) : bracePipePieces;
+  const jointsNeeded = postJointsNeeded + braceJointsNeeded;
 
   // Post description
   const postLabel = postMaterial === 'drill_stem'
     ? `Drill Stem (2-3/8" OD, 4.7 lb/ft)`
     : `2" Square Tube (${gaugeSpec ? gaugeSpec.label : '14 Gauge'}, ${gaugeSpec ? gaugeSpec.wallThickness : '0.075"'} wall)`;
 
-  // Bracing: 1 H-brace per line post location
-  const braceCount = linePostCount;
   const concreteBagsPerPost = wireHeightIn >= 72 ? 3 : 2;
-  const concreteBags = (linePostCount * concreteBagsPerPost) + (braceCount * 4);
+  const concreteBags = (linePostCount * concreteBagsPerPost) + (hBraceCount * concreteBagsPerPost);
 
   // Hardware counts
   const clipsPerTPost = wireHeightIn >= 72 ? 5 : 4;
@@ -745,14 +1364,33 @@ export function calculateSectionMaterials(
   }
 
   // ==============================================================
-  // HIGH-TENSILE SMOOTH WIRE (top/bottom) — not used with barbed wire
+  // TOP & BOTTOM WIRE — smooth HT or barbed (user selectable), not used with barbed wire fence type
   // ==============================================================
   if (!isBarbedWire) {
-    const strandLabel = htStrands === 2 ? 'top & bottom strands' : 'top strand only';
-    materials.push({
-      name: `12.5 Gauge High-Tensile Smooth Wire — ${strandLabel}, 4,000' rolls. Runs along the top${htStrands === 2 ? ' and bottom' : ''} of the fence to add rigidity and prevent livestock from pushing over or under. ${htStrands === 2 ? 'Two strands recommended for fences 72" and taller.' : 'Single top strand for fences under 72".'}`,
-      quantity: `${(wireWithOverlap * htStrands).toLocaleString()} ft (${htStrands} strand${htStrands > 1 ? 's' : ''}, ${((wireWithOverlap * htStrands) / 4000).toFixed(2)} rolls)`,
-    });
+    const useBarbed = topWireType === 'barbed' || topWireType === 'barbed_double';
+    const topStrands = topWireType === 'barbed_double' ? 2 : 1;
+    const bottomStrands = wireHeightIn >= 72 ? 1 : 0; // bottom wire only on tall fences
+    const totalStrands = topStrands + bottomStrands;
+
+    if (useBarbed) {
+      // 4-prong high-tensile barbed wire — 1,320' rolls
+      const barbedFtNeeded = wireWithOverlap * totalStrands;
+      const barbedRolls = Math.ceil(barbedFtNeeded / 1320);
+      const strandDesc = topStrands === 2
+        ? `double barbed top + ${bottomStrands ? '1 barbed bottom' : 'no bottom'}`
+        : `1 barbed top${bottomStrands ? ' + 1 barbed bottom' : ''}`;
+      materials.push({
+        name: `High-Tensile 4-Prong Barbed Wire — ${strandDesc}, 15.5 gauge, 4-point barbs, 5" spacing (1,320' rolls). Runs along the top${topStrands === 2 ? ' (double strand)' : ''} ${bottomStrands ? 'and bottom ' : ''}of the fence for livestock deterrent and predator control. ${topStrands === 2 ? 'Double barbed top provides extra deterrent against animals pushing over the fence.' : ''} ${bottomStrands ? 'Bottom strand prevents livestock from pushing under.' : ''} Includes 10% overlap.`,
+        quantity: `${barbedFtNeeded.toLocaleString()} ft (${totalStrands} strand${totalStrands > 1 ? 's' : ''} = ${barbedRolls} rolls × 1,320')`,
+      });
+    } else {
+      // Smooth high-tensile wire — 4,000' rolls (original behavior)
+      const strandLabel = totalStrands === 2 ? 'top & bottom strands' : 'top strand only';
+      materials.push({
+        name: `12.5 Gauge High-Tensile Smooth Wire — ${strandLabel}, 4,000' rolls. Runs along the top${totalStrands === 2 ? ' and bottom' : ''} of the fence to add rigidity and prevent livestock from pushing over or under. ${totalStrands === 2 ? 'Two strands recommended for fences 72" and taller.' : 'Single top strand for fences under 72".'}`,
+        quantity: `${(wireWithOverlap * totalStrands).toLocaleString()} ft (${totalStrands} strand${totalStrands > 1 ? 's' : ''}, ${((wireWithOverlap * totalStrands) / 4000).toFixed(2)} rolls)`,
+      });
+    }
   }
 
   // ==============================================================
@@ -769,24 +1407,27 @@ export function calculateSectionMaterials(
   // LINE POSTS (user's selected material)
   // ==============================================================
   materials.push({
-    name: `${postLabel} Line Posts — Set ${postCalc.belowGroundFeet}' deep in concrete, ${postCalc.aboveGroundFeet.toFixed(1)}' above ground (${postCalc.totalLengthFeet}' total cut length). Spaced every ${linePostSpacing}' on center. ${postMaterial === 'drill_stem' ? 'Heavy-wall oilfield pipe recycled for agricultural use — excellent strength-to-cost ratio, highly resistant to livestock impact and weather.' : `Square tube with ${gaugeSpec ? gaugeSpec.wallThickness : '0.075"'} wall thickness — clean profile with excellent rigidity for straight fence lines.`} Cut from ${jointLen}' joints (${postsPerJoint} posts per joint).`,
-    quantity: `${linePostCount} posts (cut from ${jointsNeeded} joints × ${jointLen}')`,
+    name: `${postLabel} Line Posts — Set ${postCalc.belowGroundFeet}' deep in concrete, ${postCalc.aboveGroundFeet.toFixed(1)}' above ground (${postCalc.totalLengthFeet}' total cut length). Spaced every ${linePostSpacing}' on center. ${postMaterial === 'drill_stem' ? 'Heavy-wall oilfield pipe recycled for agricultural use — excellent strength-to-cost ratio, highly resistant to livestock impact and weather.' : `Square tube with ${gaugeSpec ? gaugeSpec.wallThickness : '0.075"'} wall thickness — clean profile with excellent rigidity for straight fence lines.`} Cut from ${jointLen}' joints (${postsPerJoint} posts per joint). Total joints: ${postJointsNeeded} for ${totalPostsFromPipe} posts (${linePostCount} line + ${bracePostCount} brace) + ${braceJointsNeeded} for ${bracePipePieces} brace rails/diagonals.`,
+    quantity: `${totalPostsFromPipe} posts + ${bracePipePieces} brace pipes (${jointsNeeded} joints × ${jointLen}')`,
   });
 
   // ==============================================================
-  // BRACE ASSEMBLIES (H-braces at line post locations)
+  // BRACE ASSEMBLIES (H-braces at ends + mid-run for long sections)
   // ==============================================================
+  const braceBreakdown = midRunBraces > 0
+    ? `${endBraces} at section ends + ${midRunBraces} mid-run (1 per 660' of run)`
+    : `${endBraces} at section ends`;
   materials.push({
-    name: `H-Brace Assemblies — ${postLabel} vertical posts with ${postMaterial === 'drill_stem' ? '2-3/8" OD' : '2" square tube'} horizontal brace rails (10' each). Each assembly uses a diagonal brace wire tensioned between top of one post and base of the other for maximum rigidity. Braces anchor the fence at ends, corners, and gate locations to resist wire tension pull (up to 250 lbs per wire strand).`,
-    quantity: `${braceCount} assemblies (${braceCount} rails + ${braceCount} brace wire coils)`,
+    name: `H-Brace Assemblies — Each assembly: 2 vertical ${postMaterial === 'drill_stem' ? '2-3/8" OD' : '2" square tube'} posts + 1 horizontal brace rail (10') + 1 welded pipe diagonal (~10'). The diagonal is welded between the top of one post and the base of the other for maximum rigidity — no brace wire used. Braces anchor the fence line at ends and along long runs to resist wire tension pull (up to 250 lbs per wire strand). Gate braces are calculated separately with each gate.`,
+    quantity: `${hBraceCount} assemblies (${braceBreakdown})`,
   });
 
   // ==============================================================
   // CONCRETE
   // ==============================================================
   materials.push({
-    name: `Concrete Mix — 80 lb bags, fast-setting. ${concreteBagsPerPost} bags per line post (${postCalc.belowGroundFeet}' depth) + 4 bags per brace assembly for double-post setting. Proper concrete setting prevents frost heave, livestock-induced lean, and soil erosion undermining. ${wireHeightIn >= 72 ? '3 bags per post required for taller fences (72"+) to provide adequate lateral support.' : '2 bags per post is standard for fences under 72".'}`,
-    quantity: `${concreteBags} bags (${(concreteBags * 80).toLocaleString()} lbs total)`,
+    name: `Concrete Mix — 80 lb bags, fast-setting. ${concreteBagsPerPost} bags per post (${postCalc.belowGroundFeet}' depth) for both line posts and H-brace posts. Proper concrete setting prevents frost heave, livestock-induced lean, and soil erosion undermining. ${wireHeightIn >= 72 ? '3 bags per post required for taller fences (72"+) to provide adequate lateral support.' : '2 bags per post is standard for fences under 72".'}`,
+    quantity: `${concreteBags} bags — ${linePostCount} line posts + ${bracePostCount} brace posts × ${concreteBagsPerPost} bags each (${(concreteBags * 80).toLocaleString()} lbs total)`,
   });
 
   // ==============================================================
@@ -810,4 +1451,135 @@ export function calculateSectionMaterials(
   }
 
   return materials;
+}
+
+// ============================================================
+// Labor Time Estimation
+// ============================================================
+// Based on real-world production rates:
+//   Drilling:       12 post holes per 3 hours (4 holes/hr, 15 min each)
+//   Post setting:   30 min per post (concrete pour + plumb + brace)
+//   T-posts:        10-15 per hour (avg 12/hr)
+//   H-brace:        2 posts to drill & set
+//   Corner brace:   5 posts to drill & set
+//   Work day:       9-10 hours
+
+export function calculateLaborEstimate(params: {
+  totalLinearFeet: number;
+  linePostCount: number;
+  tPostCount: number;
+  hBraceCount: number;
+  cornerBraceCount: number;
+  gateCount: number;
+  workDayHours?: number; // default 9.5
+}): LaborEstimate {
+  const {
+    totalLinearFeet,
+    linePostCount,
+    tPostCount,
+    hBraceCount,
+    cornerBraceCount,
+    gateCount,
+    workDayHours = 9.5,
+  } = params;
+
+  const breakdown: { task: string; hours: number; detail: string }[] = [];
+
+  // ── Line post holes (drill + set) ──
+  // Drilling: 15 min/hole, Setting: 30 min/post → 45 min total per line post
+  const linePostDrillHrs = linePostCount * (15 / 60);
+  const linePostSetHrs = linePostCount * (30 / 60);
+  breakdown.push({
+    task: 'Drill line post holes',
+    hours: linePostDrillHrs,
+    detail: `${linePostCount} holes × 15 min each (4 holes/hr)`,
+  });
+  breakdown.push({
+    task: 'Set line posts in concrete',
+    hours: linePostSetHrs,
+    detail: `${linePostCount} posts × 30 min each (pour, plumb, brace)`,
+  });
+
+  // ── H-brace assembly (2 posts each: drill + set + build assembly) ──
+  const hBracePostCount = hBraceCount * 2;
+  const hBraceDrillHrs = hBracePostCount * (15 / 60);
+  const hBraceSetHrs = hBracePostCount * (30 / 60);
+  const hBraceAssemblyHrs = hBraceCount * 0.5; // ~30 min to weld rail + diagonal per assembly
+  if (hBraceCount > 0) {
+    breakdown.push({
+      task: 'Drill & set H-brace posts',
+      hours: hBraceDrillHrs + hBraceSetHrs,
+      detail: `${hBraceCount} H-braces × 2 posts each = ${hBracePostCount} holes + sets`,
+    });
+    breakdown.push({
+      task: 'Build H-brace assemblies (weld rail & diagonal)',
+      hours: hBraceAssemblyHrs,
+      detail: `${hBraceCount} assemblies × ~30 min welding/fitting`,
+    });
+  }
+
+  // ── Corner brace assembly (5 posts each) ──
+  const cornerPostCount = cornerBraceCount * 5;
+  const cornerDrillHrs = cornerPostCount * (15 / 60);
+  const cornerSetHrs = cornerPostCount * (30 / 60);
+  const cornerAssemblyHrs = cornerBraceCount * 1.0; // ~1 hr to build each corner assembly
+  if (cornerBraceCount > 0) {
+    breakdown.push({
+      task: 'Drill & set corner brace posts',
+      hours: cornerDrillHrs + cornerSetHrs,
+      detail: `${cornerBraceCount} corner braces × 5 posts each = ${cornerPostCount} holes + sets`,
+    });
+    breakdown.push({
+      task: 'Build corner brace assemblies',
+      hours: cornerAssemblyHrs,
+      detail: `${cornerBraceCount} assemblies × ~1 hr welding/fitting`,
+    });
+  }
+
+  // ── T-posts (drive with hydraulic driver, avg 12/hr) ──
+  const tPostHrs = tPostCount / 12;
+  if (tPostCount > 0) {
+    breakdown.push({
+      task: 'Drive T-posts',
+      hours: tPostHrs,
+      detail: `${tPostCount} T-posts × ~5 min each (12/hr avg)`,
+    });
+  }
+
+  // ── Wire stringing (~300 ft/hr for crew: unroll, tension, tie) ──
+  const wireHrs = totalLinearFeet / 300;
+  breakdown.push({
+    task: 'String & tension wire',
+    hours: wireHrs,
+    detail: `${totalLinearFeet.toLocaleString()} ft @ ~300 ft/hr (unroll, stretch, clip)`,
+  });
+
+  // ── Gates (avg 1.5 hrs per gate install including welding frame) ──
+  const gateHrs = gateCount * 1.5;
+  if (gateCount > 0) {
+    breakdown.push({
+      task: 'Install gates',
+      hours: gateHrs,
+      detail: `${gateCount} gate${gateCount > 1 ? 's' : ''} × ~1.5 hrs each (hang, weld hinges, latch)`,
+    });
+  }
+
+  const drillingHours = linePostDrillHrs + hBraceDrillHrs + cornerDrillHrs;
+  const postSettingHours = linePostSetHrs + hBraceSetHrs + cornerSetHrs;
+  const braceAssemblyHours = hBraceAssemblyHrs + cornerAssemblyHrs;
+  const totalHours = breakdown.reduce((sum, b) => sum + b.hours, 0);
+  const workDays = Math.ceil(totalHours / workDayHours * 10) / 10; // round to 0.1
+
+  return {
+    drillingHours: Math.round(drillingHours * 10) / 10,
+    postSettingHours: Math.round(postSettingHours * 10) / 10,
+    tPostHours: Math.round(tPostHrs * 10) / 10,
+    wireHours: Math.round(wireHrs * 10) / 10,
+    braceAssemblyHours: Math.round(braceAssemblyHours * 10) / 10,
+    gateHours: Math.round(gateHrs * 10) / 10,
+    totalHours: Math.round(totalHours * 10) / 10,
+    workDayHours,
+    workDays: Math.ceil(workDays),
+    breakdown: breakdown.map(b => ({ ...b, hours: Math.round(b.hours * 10) / 10 })),
+  };
 }

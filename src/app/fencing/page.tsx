@@ -12,7 +12,7 @@ import {
   recommendedTPostLength, wireRollPriceId, postJointPriceId, calculatePostLength,
   type PostMaterial, type SquareTubeGauge, type BraceType, type GateSize, type GateSpec, type BraceRecommendation,
 } from '@/lib/fencing/fence-materials';
-import { generateFenceBidPDF, calculateSectionMaterials, type FenceBidSection, type BidGate, type FenceBidData } from '@/lib/fencing/fence-bid-pdf';
+import { generateFenceBidPDF, calculateSectionMaterials, calculateLaborEstimate, buildSiteAdjustments, type FenceBidSection, type BidGate, type FenceBidData, type TopWireType } from '@/lib/fencing/fence-bid-pdf';
 import type { DrawnLine, VertexAngle, TerrainSuggestion } from '@/components/fencing/FenceMap';
 import type { FenceType, FenceHeight, StayTuffOption } from '@/types';
 
@@ -67,6 +67,9 @@ export default function FencingPage() {
   const [squareTubeGauge, setSquareTubeGauge] = useState<SquareTubeGauge>('14ga');
   // Height for non-Stay-Tuff fences (manual)
   const [manualHeight, setManualHeight] = useState<FenceHeight>('5ft');
+
+  // Top & bottom wire type: smooth HT, barbed, or double barbed top
+  const [topWireType, setTopWireType] = useState<TopWireType>('barbed');
 
   // Derived: use Stay-Tuff height when applicable, otherwise manual height
   const wireHeightInches = useMemo(() => {
@@ -227,11 +230,18 @@ export default function FencingPage() {
     }
     wireCostPerFt *= 1.10; // 10% overlap
 
-    // Top wire
+    // Top/bottom wire (smooth HT or barbed, depending on selection)
     let topWireCostPerFt = 0;
     if (fenceType !== 'barbed_wire') {
-      const strands = wireHeightInches >= 72 ? 2 : 1;
-      topWireCostPerFt = (findPrice('ht_smooth') / 4000) * strands;
+      const useBarbed = topWireType === 'barbed' || topWireType === 'barbed_double';
+      const topStrands = topWireType === 'barbed_double' ? 2 : 1;
+      const bottomStrands = wireHeightInches >= 72 ? 1 : 0;
+      const totalStrands = topStrands + bottomStrands;
+      if (useBarbed) {
+        topWireCostPerFt = (findPrice('barbed_wire') / 1320) * totalStrands;
+      } else {
+        topWireCostPerFt = (findPrice('ht_smooth') / 4000) * totalStrands;
+      }
     }
 
     // T-Post cost per foot (auto-sized)
@@ -253,8 +263,12 @@ export default function FencingPage() {
     // Hardware per foot
     const clipsCostPerFt = (findPrice('clips') / 500) * (4 / tPostSpacing);
     const tensionerCostPerFt = findPrice('tensioner') / 330;
-    const braceWireCostPerFt = findPrice('brace_wire') / 200;
-    const hardwareCostPerFt = clipsCostPerFt + tensionerCostPerFt + braceWireCostPerFt;
+    // Brace diagonal pipe cost: each brace uses 1 rail + 1 welded diagonal (10' each), cut from same pipe joints
+    const bracePiecesPerJoint = Math.floor(jointLen / 10);
+    const bracePipeCostPerFt = bracePiecesPerJoint > 0
+      ? (2 * jointPrice / bracePiecesPerJoint) / linePostSpacing
+      : 0;
+    const hardwareCostPerFt = clipsCostPerFt + tensionerCostPerFt + bracePipeCostPerFt;
 
     const total = wireCostPerFt + topWireCostPerFt + tPostCostPerFt + linePostCostPerFt + concreteCostPerFt + hardwareCostPerFt;
     return {
@@ -266,7 +280,7 @@ export default function FencingPage() {
       hardware: Math.round(hardwareCostPerFt * 100) / 100,
       total: Math.round(total * 100) / 100,
     };
-  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier]);
+  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType]);
 
   const baseRate = materialCostPerFoot.total + laborRate;
   const effectiveRate = useMemo(() => Math.round((materialCostPerFoot.total + laborRate * terrainMult) * 100) / 100, [materialCostPerFoot.total, laborRate, terrainMult]);
@@ -315,93 +329,125 @@ export default function FencingPage() {
   }, []);
   const updGate = useCallback((id: string, u: Partial<BidGate>) => { setGates(p => p.map(g => g.id === id ? { ...g, ...u } : g)); }, []);
   const rmGate = useCallback((id: string) => { setGates(p => p.filter(g => g.id !== id)); }, []);
-  /** Build a layman-friendly soil/terrain narrative for the PDF bid */
+  /** Build a comprehensive, educational soil/terrain narrative for the PDF bid (fallback when AI is unavailable) */
   const buildSoilNarrative = useCallback((): string | undefined => {
     if (!terrainSuggestion) return undefined;
     const parts: string[] = [];
 
-    // Soil explanation
+    // ── Opening: Research source & soil type ──
     if (terrainSuggestion.soilType) {
       parts.push(
-        `Our research of your property using the ${terrainSuggestion.source === 'UC_Davis_SoilWeb' ? 'UC Davis SoilWeb database (USDA NRCS data)' : 'USDA Natural Resources Conservation Service (NRCS) Web Soil Survey'} identified the primary soil type on your property as "${terrainSuggestion.soilType}."`,
+        `Before designing your fence, our team conducted thorough property research using the ${terrainSuggestion.source === 'UC_Davis_SoilWeb' ? 'UC Davis SoilWeb database, which draws on USDA Natural Resources Conservation Service (NRCS) data' : 'USDA Natural Resources Conservation Service (NRCS) Web Soil Survey'}. This is the same data used by civil engineers, land developers, and agricultural planners across the country. The primary soil type mapped on your property is "${terrainSuggestion.soilType}." Understanding your soil is not just academic — it directly determines how deep we set posts, how much concrete each hole needs, what equipment we bring, and ultimately how long your fence will last.`,
       );
+    }
 
-      // Texture + rock fragment data (most useful for customers)
-      if (terrainSuggestion.texture) {
-        parts.push(`The top soil horizon is classified as "${terrainSuggestion.texture}"${terrainSuggestion.rockFragmentPct ? `, with approximately ${terrainSuggestion.rockFragmentPct}% coarse rock fragments (cobbles and stones) in the soil matrix` : ''}.`);
-      }
+    // ── Geological history / taxonomy ──
+    if (terrainSuggestion.taxonomy) {
+      const taxOrder = terrainSuggestion.taxOrder?.toLowerCase() || '';
+      const orderStories: Record<string, string> = {
+        'mollisols': 'Mollisols are among the most fertile soils on Earth. They formed over thousands of years under native grassland vegetation — in your case, likely the tallgrass and mixed-grass prairies that once blanketed the Texas Hill Country. The thick, dark topsoil layer (called the "A horizon") is rich in organic matter from countless generations of grasses growing, dying, and decomposing. While this makes excellent ranching soil, the organic-rich layer can be soft, which means fence post holes need extra concrete to prevent slow settling over the years.',
+        'vertisols': 'Vertisols are fascinating and sometimes frustrating soils. They are extremely high in a type of clay called montmorillonite (also known as "shrink-swell" clay). When it rains, Vertisols absorb water and expand dramatically — you may have noticed the ground feeling spongy after heavy rain. When it dries out in summer, the soil contracts and deep cracks appear — sometimes wide enough to drop a boot into. This seasonal movement literally pushes fence posts out of the ground over time, a process called "frost heave" in northern states but caused purely by clay expansion in Texas. We combat this with deeper post settings and additional concrete.',
+        'alfisols': 'Alfisols are moderately fertile soils that formed under hardwood forest cover. In the Hill Country, these often formed under post oak and blackjack oak woodlands. They have a distinctive feature: a clay-enriched subsoil layer (called the "Bt horizon") that forms when clay particles wash down from the surface over centuries. This clay layer actually provides excellent anchorage for fence posts once you bore through the sandier topsoil to reach it.',
+        'inceptisols': 'Inceptisols are geologically young soils — they have not had enough time or stable enough conditions to develop the distinct layers that older soils have. In the Hill Country, Inceptisols typically form on moderate to steep slopes where erosion keeps stripping away the surface faster than soil can develop. The practical implication is that there is often not much soil depth to work with — you hit rock or partially weathered limestone relatively quickly when digging.',
+        'entisols': 'Entisols are the youngest soils in the classification system — essentially weathered rock with minimal soil development. On your property, this likely means the soil is thin, sitting directly on limestone bedrock or within rocky hillside material. These soils formed where the terrain is too steep or too rocky for deep soil development. Fence post installation in Entisols almost always involves rock drilling, because there simply is not enough loose soil to auger through.',
+        'aridisols': 'Aridisols form in dry climates and are common in parts of west-central Texas. A notorious feature of many Aridisols is a cemented calcium carbonate layer called "caliche" — the bane of post hole diggers across Texas. Caliche forms when dissolved calcium from limestone leaches downward and re-precipitates in a rock-hard layer that can be inches to feet thick. Standard auger bits bounce off caliche; it requires specialized carbide-tipped bits or a hydraulic rock drill to penetrate.',
+      };
+      const storyKey = Object.keys(orderStories).find(k => taxOrder.includes(k));
+      const orderStory = storyKey ? orderStories[storyKey] : null;
 
-      // Bedrock depth — THE most critical finding for fencing
-      if (terrainSuggestion.bedrockDepthIn != null) {
-        const depth = terrainSuggestion.bedrockDepthIn;
-        const ft = Math.floor(depth / 12);
-        const inches = depth % 12;
-        const depthStr = ft > 0 ? `${ft}' ${inches > 0 ? inches + '"' : ''}` : `${depth}"`;
-        if (depth <= 18) {
-          parts.push(`USDA data indicates ${terrainSuggestion.restrictionType || 'bedrock'} at approximately ${depthStr} below grade. This is extremely shallow — a standard fence post is set 30-36 inches deep. Our crew will bring hydraulic rock drilling equipment to bore into bedrock for every post hole, ensuring each post is anchored securely into the rock shelf itself.`);
-        } else if (depth <= 30) {
-          parts.push(`USDA data indicates ${terrainSuggestion.restrictionType || 'bedrock'} at approximately ${depthStr} below grade. This is shallow for fence post installation (standard depth is 30-36"). Many post holes will bottom out on rock, requiring our crew to bring rock drilling equipment. We have accounted for this in our pricing and timeline.`);
-        } else if (depth <= 48) {
-          parts.push(`USDA data indicates ${terrainSuggestion.restrictionType || 'bedrock'} at approximately ${depthStr} below grade. Some deeper post holes may encounter rock, and our crew will have drilling equipment on-site as a precaution.`);
-        }
-      }
-
-      // Explain what the soil means in plain English
-      const soil = terrainSuggestion.soilType.toLowerCase();
-      if (!terrainSuggestion.bedrockDepthIn && (soil.includes('rock') || soil.includes('outcrop') || soil.includes('limestone') || soil.includes('caliche'))) {
-        parts.push('This soil type contains significant rock or limestone. Post holes will require a hydraulic breaker or core drill in some areas, which we have accounted for in our pricing.');
-      } else if (terrainSuggestion.clayPct != null && terrainSuggestion.clayPct >= 35) {
-        parts.push(`With ${terrainSuggestion.clayPct}% clay content, this soil will expand and contract with moisture changes. We compensate by setting posts deeper with additional concrete to prevent seasonal shifting.`);
-      } else if (soil.includes('clay') || soil.includes('vertisol')) {
-        parts.push('Clay soils expand and contract with moisture changes. We compensate for this by setting posts deeper with additional concrete to prevent frost heave and shifting.');
-      } else if (soil.includes('sand') || soil.includes('loam')) {
-        parts.push('Sandy or loam soils provide good drainage but require deeper post settings and more concrete per post to ensure structural stability.');
-      } else if (!terrainSuggestion.texture) {
-        parts.push('We have selected post depths and concrete quantities appropriate for your soil conditions to ensure a long-lasting, stable installation.');
+      if (orderStory) {
+        parts.push(`The USDA classifies your soil under the scientific taxonomy "${terrainSuggestion.taxonomy}." ${orderStory}`);
+      } else {
+        parts.push(`The USDA classifies your soil under the scientific taxonomy "${terrainSuggestion.taxonomy}." This classification, developed over a century of soil science research, tells us about how your soil formed, what layers exist below the surface, and how it behaves under different conditions — all critical factors for fence installation.`);
       }
     }
 
-    // Drainage info
+    // ── Texture & rock fragments ──
+    if (terrainSuggestion.texture) {
+      let textureExplain = `The top soil layer (the material our auger hits first) is classified as "${terrainSuggestion.texture}."`;
+      if (terrainSuggestion.rockFragmentPct != null && terrainSuggestion.rockFragmentPct >= 25) {
+        textureExplain += ` That ${terrainSuggestion.rockFragmentPct}% rock fragment content means that roughly ${terrainSuggestion.rockFragmentPct >= 50 ? 'one out of every two shovelfuls is rock' : 'one in every three to four shovelfuls is rock'}. These are not small pebbles — "coarse fragments" in USDA terminology means cobbles and stones 3 inches and larger mixed throughout the soil matrix. This is the result of millions of years of limestone bedrock slowly weathering and breaking apart, mixing gravel and cobbles into the upper soil. Our crew uses heavy-duty carbide-tipped auger bits rated for this type of material, and we carry backup bits for rocky jobs.`;
+      } else if (terrainSuggestion.rockFragmentPct != null && terrainSuggestion.rockFragmentPct > 0) {
+        textureExplain += ` The soil contains about ${terrainSuggestion.rockFragmentPct}% rock fragments — moderate for the Hill Country — which our equipment handles well.`;
+      }
+      parts.push(textureExplain);
+    } else if (terrainSuggestion.rockFragmentPct != null && terrainSuggestion.rockFragmentPct >= 20) {
+      parts.push(`USDA data indicates your soil contains ${terrainSuggestion.rockFragmentPct}% coarse rock fragments (cobbles and stones in the soil matrix). ${terrainSuggestion.rockFragmentPct >= 50 ? 'The soil is essentially half rocks — every other shovelful will contain significant stone. This is typical of thin Hill Country soils overlying limestone bedrock.' : 'This is a noticeable amount of rock that slows down post hole augering but is well within what our equipment can handle.'}`);
+    }
+
+    // ── Bedrock depth (THE most critical finding) ──
+    if (terrainSuggestion.bedrockDepthIn != null) {
+      const depth = terrainSuggestion.bedrockDepthIn;
+      const ft = Math.floor(depth / 12);
+      const inches = depth % 12;
+      const depthStr = ft > 0 ? `${ft} feet${inches > 0 ? ' ' + inches + ' inches' : ''}` : `${depth} inches`;
+      const restrictType = terrainSuggestion.restrictionType || 'bedrock';
+      if (depth <= 18) {
+        parts.push(`Perhaps the most important finding from our research: USDA subsurface data indicates ${restrictType} at approximately ${depthStr} below the surface. For context, a properly set fence post needs to be buried 30 to 36 inches deep. At ${depthStr}, every single post hole on your property will hit solid rock well before reaching that depth. This is not unusual in the Hill Country — much of this region sits on Cretaceous-era limestone that was deposited as marine sediment roughly 100 million years ago when central Texas was the floor of a shallow sea. Our crew will arrive with a truck-mounted hydraulic rock drill that can bore directly into limestone. A post anchored into solid bedrock is actually the strongest possible installation — that post is not going anywhere, ever.`);
+      } else if (depth <= 30) {
+        parts.push(`USDA subsurface data indicates ${restrictType} at approximately ${depthStr} below the surface. Since a standard fence post is set 30 to 36 inches deep, most post holes will encounter rock before reaching ideal depth. This is common in the Texas Hill Country, where limestone bedrock from the Cretaceous period (roughly 100 million years old) lies relatively close to the surface. Our crew will bring rock drilling equipment to finish these holes and ensure each post reaches maximum achievable depth, anchoring directly into the rock shelf where possible.`);
+      } else if (depth <= 48) {
+        parts.push(`USDA data indicates ${restrictType} at approximately ${depthStr} below grade. While this is deep enough for most post holes, our corner posts and end posts (which are set deeper for added stability) may encounter rock. We keep rock drilling equipment on the truck as standard practice for all Hill Country installations.`);
+      }
+    } else if (terrainSuggestion.soilType) {
+      const soil = terrainSuggestion.soilType.toLowerCase();
+      if (soil.includes('rock') || soil.includes('outcrop') || soil.includes('limestone') || soil.includes('caliche')) {
+        parts.push('Based on the soil type name, your property contains significant rock or limestone near the surface. Post holes will likely require a hydraulic breaker or core drill in some areas, which we have accounted for in our approach.');
+      }
+    }
+
+    // ── Clay content / shrink-swell ──
+    if (terrainSuggestion.clayPct != null && terrainSuggestion.clayPct >= 35) {
+      parts.push(`Your soil tests at ${terrainSuggestion.clayPct}% clay content, which puts it firmly in the "expansive" category. Here is what that means in practical terms: clay soils act like a sponge in slow motion. After heavy rain, the clay absorbs water and expands — during the 2024 spring rains, some Texas clay soils swelled enough to lift foundation slabs. In summer droughts, the same soil contracts and cracks. For fence posts, this seasonal push-and-pull can gradually work posts loose over the years if they are not set properly. We compensate by setting posts deeper than standard, using additional concrete per hole, and selecting a concrete mix that bonds well with clay soils.`);
+    } else if (terrainSuggestion.soilType && (terrainSuggestion.soilType.toLowerCase().includes('clay') || terrainSuggestion.soilType.toLowerCase().includes('vertisol'))) {
+      parts.push('Clay-rich soils expand and contract with moisture changes — a phenomenon called "shrink-swell." We compensate for this by setting posts deeper with additional concrete to prevent seasonal shifting.');
+    }
+
+    // ── Drainage & water ──
     if (terrainSuggestion.drainage) {
       const drain = terrainSuggestion.drainage.toLowerCase();
       if (drain.includes('well')) {
-        parts.push(`Your soil has "${terrainSuggestion.drainage}" drainage${terrainSuggestion.runoff ? ` with ${terrainSuggestion.runoff.toLowerCase()} surface runoff` : ''}. This is favorable for concrete curing and long-term post stability.`);
+        parts.push(`Your soil has "${terrainSuggestion.drainage}" drainage${terrainSuggestion.runoff ? ` with ${terrainSuggestion.runoff.toLowerCase()} surface runoff` : ''}. This is one of the best scenarios for fence installation. Good drainage means water moves through the soil efficiently, so post-hole concrete cures properly and water does not pool around post bases. Standing water around metal posts is the number one cause of premature post failure in Texas — and you do not have to worry about it here.`);
       } else if (drain.includes('poor') || drain.includes('somewhat')) {
-        parts.push(`Your soil has "${terrainSuggestion.drainage}" drainage. We account for wet-area conditions in post settings, using additional concrete and deeper depths where needed.`);
+        parts.push(`Your soil has "${terrainSuggestion.drainage}" drainage, which means water tends to linger rather than percolate through. This is important for fence longevity — we use rapid-set concrete in areas where water is present in the hole, and we ensure posts are set at maximum depth to anchor below the saturated zone where possible.${terrainSuggestion.runoff ? ` Surface runoff is classified as "${terrainSuggestion.runoff}."` : ''}`);
+      } else {
+        parts.push(`Soil drainage is classified as "${terrainSuggestion.drainage}"${terrainSuggestion.runoff ? ` with ${terrainSuggestion.runoff.toLowerCase()} surface runoff` : ''} — we have selected concrete and post-setting techniques appropriate for these conditions.`);
       }
     }
 
-    // pH
+    // ── pH ──
     if (terrainSuggestion.pH != null) {
       if (terrainSuggestion.pH >= 7.5) {
-        parts.push(`Soil pH is ${terrainSuggestion.pH} (alkaline), which is favorable for the longevity of metal fence posts.`);
+        parts.push(`Soil pH measures ${terrainSuggestion.pH} (alkaline), which is common in limestone regions and actually favorable for metal fence post longevity. Alkaline soils are less corrosive to steel than acidic soils, so your drill stem posts should provide decades of reliable service.`);
       } else if (terrainSuggestion.pH <= 5.5) {
-        parts.push(`Soil pH is ${terrainSuggestion.pH} (acidic). We recommend monitoring post condition over time, as acidic soils can gradually affect metal posts over many years.`);
+        parts.push(`Soil pH measures ${terrainSuggestion.pH} (acidic). Acidic soils can gradually corrode metal fence posts over long periods — typically 15 to 25 years depending on wall thickness. We recommend heavy-wall drill stem (2-3/8" OD, 4.7 lb/ft) for maximum longevity in these conditions, and periodic inspection of post bases every 5-10 years.`);
+      } else {
+        parts.push(`Soil pH measures ${terrainSuggestion.pH} (near neutral) — right in the sweet spot for metal post longevity. Neither acidic enough to cause corrosion concerns nor alkaline enough to affect concrete curing.`);
       }
     }
 
-    // Hydric indicator
+    // ── Hydric indicator ──
     if (terrainSuggestion.hydric && terrainSuggestion.hydric.toLowerCase() === 'yes') {
-      parts.push('Note: Portions of the property contain hydric (wetland-indicator) soils. We may need to adjust post locations in low-lying areas to avoid standing water and ensure structural integrity.');
+      parts.push('The USDA classifies portions of this soil as "hydric," which is a wetland indicator. This does not mean your property is a swamp — many Hill Country properties have small hydric areas in low-lying draws and seasonal creek bottoms. It means the soil is seasonally saturated long enough to develop certain chemical characteristics. We will identify these areas during our on-site walk-through and use deeper post settings with rapid-set concrete in those zones.');
     }
 
-    // Elevation / terrain
+    // ── Elevation / terrain ──
     if (terrainSuggestion.elevationChange > 0) {
       const elev = Math.round(terrainSuggestion.elevationChange);
       if (elev > 50) {
-        parts.push(`The fence line crosses approximately ${elev} feet of elevation change${terrainSuggestion.slopeRange ? ` (USDA slope range: ${terrainSuggestion.slopeRange})` : ''}. Steep terrain requires closer post spacing to maintain proper wire tension on slopes. Bracing assemblies are reinforced at grade changes to handle the additional pull of gravity on the wire.`);
+        parts.push(`Your fence line crosses approximately ${elev} feet of elevation change${terrainSuggestion.slopeRange ? ` (USDA slope range: ${terrainSuggestion.slopeRange})` : ''}. To put that in perspective, that is about the height of a ${Math.round(elev / 10)}-story building. On steep grades, gravity pulls constantly on the wire, creating additional tension that standard flat-ground spacing cannot handle. We use closer post spacing on slopes to prevent wire sag, and every bracing assembly at a grade change is reinforced with a welded pipe diagonal to resist the extra downhill pull.`);
       } else if (elev > 15) {
-        parts.push(`The fence line crosses approximately ${elev} feet of elevation change${terrainSuggestion.slopeRange ? ` (USDA slope range: ${terrainSuggestion.slopeRange})` : ''}. We have incorporated slightly closer post spacing to maintain wire tension.`);
+        parts.push(`Your fence line crosses approximately ${elev} feet of elevation change${terrainSuggestion.slopeRange ? ` (USDA slope range: ${terrainSuggestion.slopeRange})` : ''}. This moderate grade is very common in the Hill Country and manageable with slightly closer post spacing on the sloped sections to maintain even wire tension.`);
       } else {
-        parts.push(`Your fence line is relatively level with only about ${elev} feet of elevation change, which is ideal for efficient installation and consistent wire tension.`);
+        parts.push(`Your fence line is relatively level with only about ${elev} feet of elevation change — ideal conditions for efficient installation and consistent wire tension throughout the entire run.`);
       }
     }
 
-    // Terrain difficulty summary
+    // ── Terrain difficulty summary & confidence closer ──
     const diffLabel = TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label || terrainSuggestion.suggestedDifficulty;
-    parts.push(`Based on our analysis, we have classified this project as "${diffLabel}" terrain difficulty. All material quantities, post spacing, concrete requirements, and labor estimates in this proposal reflect this assessment.`);
+    parts.push(`Based on our comprehensive analysis, we have classified this project as "${diffLabel}" terrain difficulty. Every material quantity, post spacing, concrete calculation, and labor estimate in this proposal has been specifically tailored to the soil, rock, and terrain conditions on YOUR property — not generic industry averages. We bring this level of research to every project because a fence is only as good as the ground it is built in.`);
 
-    return parts.length > 0 ? parts.join(' ') : undefined;
+    return parts.length > 0 ? parts.join('\n\n') : undefined;
   }, [terrainSuggestion]);
 
   const handleDownloadPDF = useCallback(() => {
@@ -412,25 +458,85 @@ export default function FencingPage() {
     const secs = computed.map(sec => ({
       ...sec, materials: calculateSectionMaterials(
         sec.linearFeet, ftLabel, fenceHeight, stModel,
-        sec.terrain || terrain, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing,
+        sec.terrain || terrain, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType,
       ),
     }));
+    // Calculate labor estimate
+    const laborEst = calculateLaborEstimate({
+      totalLinearFeet: totalFeet,
+      linePostCount: materialCalc.linePostCount,
+      tPostCount: materialCalc.tPostCount,
+      hBraceCount: materialCalc.hBraces,
+      cornerBraceCount: materialCalc.cornerBraces,
+      gateCount: gates.length,
+    });
     const data: FenceBidData = {
       projectName: projectName || 'Fence Installation', clientName: clientName || 'Customer',
       propertyAddress: address, date: fmtDate(now), validUntil: fmtDate(valid),
       fenceType: ftLabel, fenceHeight, stayTuffModel: stModel,
       stayTuffDescription: stModel ? selectedStayTuff.description : undefined,
       wireHeightInches,
-      postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing,
+      postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType,
       sections: secs, gates, projectTotal: projTotal, depositPercent, depositAmount: deposit,
       balanceAmount: balance, timelineWeeks: Math.ceil(timelineDays / 5), workingDays: timelineDays,
+      laborEstimate: laborEst,
       projectOverview: projectOverview + (address ? ` Site located at ${address}.` : ''),
       terrainDescription: TERRAIN_MAP[terrain]?.label || terrain,
       soilNarrative: aiNarrative || buildSoilNarrative(),
+      siteData: terrainSuggestion ? {
+        soilType: terrainSuggestion.soilType,
+        components: terrainSuggestion.components || [],
+        drainage: terrainSuggestion.drainage,
+        hydric: terrainSuggestion.hydric,
+        source: terrainSuggestion.source,
+        elevationChange: terrainSuggestion.elevationChange,
+        suggestedDifficulty: terrainSuggestion.suggestedDifficulty,
+        bedrockDepthIn: terrainSuggestion.bedrockDepthIn,
+        restrictionType: terrainSuggestion.restrictionType,
+        slopeRange: terrainSuggestion.slopeRange,
+        slopeLow: terrainSuggestion.slopeLow,
+        slopeHigh: terrainSuggestion.slopeHigh,
+        runoff: terrainSuggestion.runoff,
+        taxonomy: terrainSuggestion.taxonomy,
+        taxOrder: terrainSuggestion.taxOrder,
+        texture: terrainSuggestion.texture,
+        clayPct: terrainSuggestion.clayPct,
+        sandPct: terrainSuggestion.sandPct,
+        rockFragmentPct: terrainSuggestion.rockFragmentPct,
+        pH: terrainSuggestion.pH,
+        organicMatter: terrainSuggestion.organicMatter,
+      } : undefined,
+      siteAdjustments: terrainSuggestion ? buildSiteAdjustments({
+        soilType: terrainSuggestion.soilType,
+        components: terrainSuggestion.components || [],
+        drainage: terrainSuggestion.drainage,
+        hydric: terrainSuggestion.hydric,
+        source: terrainSuggestion.source,
+        elevationChange: terrainSuggestion.elevationChange,
+        suggestedDifficulty: terrainSuggestion.suggestedDifficulty,
+        bedrockDepthIn: terrainSuggestion.bedrockDepthIn,
+        restrictionType: terrainSuggestion.restrictionType,
+        slopeRange: terrainSuggestion.slopeRange,
+        slopeLow: terrainSuggestion.slopeLow,
+        slopeHigh: terrainSuggestion.slopeHigh,
+        runoff: terrainSuggestion.runoff,
+        taxonomy: terrainSuggestion.taxonomy,
+        taxOrder: terrainSuggestion.taxOrder,
+        texture: terrainSuggestion.texture,
+        clayPct: terrainSuggestion.clayPct,
+        sandPct: terrainSuggestion.sandPct,
+        rockFragmentPct: terrainSuggestion.rockFragmentPct,
+        pH: terrainSuggestion.pH,
+        organicMatter: terrainSuggestion.organicMatter,
+      }, {
+        postMaterial,
+        squareTubeGauge,
+        fenceType: ftLabel,
+      }) : undefined,
       mapImages: mapImages.length > 0 ? mapImages : undefined,
     };
     generateFenceBidPDF(data);
-  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, aiNarrative]);
+  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc]);
 
   const handleSaveBid = useCallback(() => {
     addFenceBid({
@@ -554,6 +660,28 @@ export default function FencingPage() {
                 </div>
               </div>
             </Card>
+
+            {/* Top/Bottom Wire — only show for non-barbed-wire fence types */}
+            {fenceType !== 'barbed_wire' && (
+              <Card title="Top & Bottom Wire" icon="&#x2194;&#xfe0f;">
+                <div className="space-y-2">
+                  <label className="block text-xs font-medium text-steel-400 mb-1">Wire Type (runs above & below field wire)</label>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {([
+                      { value: 'smooth' as TopWireType, label: 'Smooth HT Wire', desc: '12.5 ga smooth, 4,000\' rolls' },
+                      { value: 'barbed' as TopWireType, label: 'Barbed Wire (single)', desc: '4-prong barbed, 1,320\' rolls — top & bottom' },
+                      { value: 'barbed_double' as TopWireType, label: 'Double Barbed Top', desc: '2 barbed strands on top + 1 on bottom' },
+                    ]).map(opt => (
+                      <button key={opt.value} onClick={() => setTopWireType(opt.value)}
+                        className={`py-2 px-3 rounded-lg text-left transition ${topWireType === opt.value ? 'bg-amber-600/20 text-amber-300 border border-amber-500/50' : 'bg-surface-200 text-steel-400 border border-steel-700/20 hover:bg-surface-50'}`}>
+                        <span className="text-[11px] font-medium block">{opt.label}</span>
+                        <span className="text-[9px] opacity-60">{opt.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+            )}
 
             <Card title="Bracing" icon="&#x1f527;">
               <div className="space-y-3">

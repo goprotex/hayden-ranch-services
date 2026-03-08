@@ -75,7 +75,6 @@ const MATCH_RULES: { keywords: string[]; id: string; unitConvert?: (entry: Price
   { keywords: ['smooth', 'wire'], id: 'ht_smooth' },
 
   // Hardware
-  { keywords: ['brace', 'wire'], id: 'brace_wire' },
   { keywords: ['clip'], id: 'clips' },
   { keywords: ['staple'], id: 'clips' },
   { keywords: ['concrete', 'mix'], id: 'concrete_bag' },
