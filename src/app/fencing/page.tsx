@@ -167,6 +167,16 @@ export default function FencingPage() {
             totalLinearFeet: sections.reduce((s, c) => s + c.linearFeet, 0) || 1000,
             postMaterial,
             source: terrainSuggestion.source,
+            // Enriched SDA data
+            bedrockDepthIn: terrainSuggestion.bedrockDepthIn,
+            restrictionType: terrainSuggestion.restrictionType,
+            slopeRange: terrainSuggestion.slopeRange,
+            runoff: terrainSuggestion.runoff,
+            taxonomy: terrainSuggestion.taxonomy,
+            texture: terrainSuggestion.texture,
+            clayPct: terrainSuggestion.clayPct,
+            rockFragmentPct: terrainSuggestion.rockFragmentPct,
+            pH: terrainSuggestion.pH,
           }),
         });
         const data = await res.json();
@@ -313,20 +323,40 @@ export default function FencingPage() {
     // Soil explanation
     if (terrainSuggestion.soilType) {
       parts.push(
-        `Our research of your property using the ${terrainSuggestion.source === 'UC_Davis_SoilWeb' ? 'UC Davis SoilWeb database' : 'USDA Natural Resources Conservation Service (NRCS) Web Soil Survey'} identified the primary soil type on your property as "${terrainSuggestion.soilType}."`,
+        `Our research of your property using the ${terrainSuggestion.source === 'UC_Davis_SoilWeb' ? 'UC Davis SoilWeb database (USDA NRCS data)' : 'USDA Natural Resources Conservation Service (NRCS) Web Soil Survey'} identified the primary soil type on your property as "${terrainSuggestion.soilType}."`,
       );
+
+      // Texture + rock fragment data (most useful for customers)
+      if (terrainSuggestion.texture) {
+        parts.push(`The top soil horizon is classified as "${terrainSuggestion.texture}"${terrainSuggestion.rockFragmentPct ? `, with approximately ${terrainSuggestion.rockFragmentPct}% coarse rock fragments (cobbles and stones) in the soil matrix` : ''}.`);
+      }
+
+      // Bedrock depth — THE most critical finding for fencing
+      if (terrainSuggestion.bedrockDepthIn != null) {
+        const depth = terrainSuggestion.bedrockDepthIn;
+        const ft = Math.floor(depth / 12);
+        const inches = depth % 12;
+        const depthStr = ft > 0 ? `${ft}' ${inches > 0 ? inches + '"' : ''}` : `${depth}"`;
+        if (depth <= 18) {
+          parts.push(`USDA data indicates ${terrainSuggestion.restrictionType || 'bedrock'} at approximately ${depthStr} below grade. This is extremely shallow — a standard fence post is set 30-36 inches deep. Our crew will bring hydraulic rock drilling equipment to bore into bedrock for every post hole, ensuring each post is anchored securely into the rock shelf itself.`);
+        } else if (depth <= 30) {
+          parts.push(`USDA data indicates ${terrainSuggestion.restrictionType || 'bedrock'} at approximately ${depthStr} below grade. This is shallow for fence post installation (standard depth is 30-36"). Many post holes will bottom out on rock, requiring our crew to bring rock drilling equipment. We have accounted for this in our pricing and timeline.`);
+        } else if (depth <= 48) {
+          parts.push(`USDA data indicates ${terrainSuggestion.restrictionType || 'bedrock'} at approximately ${depthStr} below grade. Some deeper post holes may encounter rock, and our crew will have drilling equipment on-site as a precaution.`);
+        }
+      }
 
       // Explain what the soil means in plain English
       const soil = terrainSuggestion.soilType.toLowerCase();
-      if (soil.includes('rock') || soil.includes('outcrop') || soil.includes('limestone') || soil.includes('caliche')) {
-        parts.push('This soil type contains significant rock or limestone. Post holes will require a hydraulic breaker or core drill in some areas, which we have accounted for in our pricing. Rock conditions can slow installation but result in a stronger, more permanent fence.');
+      if (!terrainSuggestion.bedrockDepthIn && (soil.includes('rock') || soil.includes('outcrop') || soil.includes('limestone') || soil.includes('caliche'))) {
+        parts.push('This soil type contains significant rock or limestone. Post holes will require a hydraulic breaker or core drill in some areas, which we have accounted for in our pricing.');
+      } else if (terrainSuggestion.clayPct != null && terrainSuggestion.clayPct >= 35) {
+        parts.push(`With ${terrainSuggestion.clayPct}% clay content, this soil will expand and contract with moisture changes. We compensate by setting posts deeper with additional concrete to prevent seasonal shifting.`);
       } else if (soil.includes('clay') || soil.includes('vertisol')) {
-        parts.push('Clay soils expand and contract with moisture changes. We compensate for this by setting posts deeper with additional concrete to prevent frost heave and shifting. Your fence will be engineered to handle seasonal soil movement.');
+        parts.push('Clay soils expand and contract with moisture changes. We compensate for this by setting posts deeper with additional concrete to prevent frost heave and shifting.');
       } else if (soil.includes('sand') || soil.includes('loam')) {
-        parts.push('Sandy or loam soils provide good drainage but require deeper post settings and more concrete per post to ensure structural stability. We\'ve sized our materials accordingly.');
-      } else if (soil.includes('gravel') || soil.includes('alluvial')) {
-        parts.push('Gravelly and alluvial soils drain well but can shift. Our post depths and concrete quantities are designed to anchor securely in these conditions.');
-      } else {
+        parts.push('Sandy or loam soils provide good drainage but require deeper post settings and more concrete per post to ensure structural stability.');
+      } else if (!terrainSuggestion.texture) {
         parts.push('We have selected post depths and concrete quantities appropriate for your soil conditions to ensure a long-lasting, stable installation.');
       }
     }
@@ -335,9 +365,18 @@ export default function FencingPage() {
     if (terrainSuggestion.drainage) {
       const drain = terrainSuggestion.drainage.toLowerCase();
       if (drain.includes('well')) {
-        parts.push(`Your soil has "${terrainSuggestion.drainage}" drainage characteristics, meaning water moves through the soil efficiently. This is favorable for concrete curing and long-term post stability.`);
+        parts.push(`Your soil has "${terrainSuggestion.drainage}" drainage${terrainSuggestion.runoff ? ` with ${terrainSuggestion.runoff.toLowerCase()} surface runoff` : ''}. This is favorable for concrete curing and long-term post stability.`);
       } else if (drain.includes('poor') || drain.includes('somewhat')) {
-        parts.push(`Your soil has "${terrainSuggestion.drainage}" drainage. We account for wet-area conditions in post settings, using additional concrete and deeper depths where needed to prevent settling.`);
+        parts.push(`Your soil has "${terrainSuggestion.drainage}" drainage. We account for wet-area conditions in post settings, using additional concrete and deeper depths where needed.`);
+      }
+    }
+
+    // pH
+    if (terrainSuggestion.pH != null) {
+      if (terrainSuggestion.pH >= 7.5) {
+        parts.push(`Soil pH is ${terrainSuggestion.pH} (alkaline), which is favorable for the longevity of metal fence posts.`);
+      } else if (terrainSuggestion.pH <= 5.5) {
+        parts.push(`Soil pH is ${terrainSuggestion.pH} (acidic). We recommend monitoring post condition over time, as acidic soils can gradually affect metal posts over many years.`);
       }
     }
 
@@ -350,9 +389,9 @@ export default function FencingPage() {
     if (terrainSuggestion.elevationChange > 0) {
       const elev = Math.round(terrainSuggestion.elevationChange);
       if (elev > 50) {
-        parts.push(`The fence line crosses approximately ${elev} feet of elevation change. Steep terrain requires closer post spacing (reducing from the standard 16.5' down to as little as 10' apart) to maintain proper wire tension on slopes. Bracing assemblies are reinforced at grade changes to handle the additional pull of gravity on the wire.`);
+        parts.push(`The fence line crosses approximately ${elev} feet of elevation change${terrainSuggestion.slopeRange ? ` (USDA slope range: ${terrainSuggestion.slopeRange})` : ''}. Steep terrain requires closer post spacing to maintain proper wire tension on slopes. Bracing assemblies are reinforced at grade changes to handle the additional pull of gravity on the wire.`);
       } else if (elev > 15) {
-        parts.push(`The fence line crosses approximately ${elev} feet of elevation change. Moderate slopes require slightly closer post spacing to maintain wire tension, which we have incorporated into our material calculations.`);
+        parts.push(`The fence line crosses approximately ${elev} feet of elevation change${terrainSuggestion.slopeRange ? ` (USDA slope range: ${terrainSuggestion.slopeRange})` : ''}. We have incorporated slightly closer post spacing to maintain wire tension.`);
       } else {
         parts.push(`Your fence line is relatively level with only about ${elev} feet of elevation change, which is ideal for efficient installation and consistent wire tension.`);
       }

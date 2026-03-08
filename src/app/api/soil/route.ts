@@ -3,9 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 /**
  * Proxy for soil data queries.
  * Strategy:
- *   1. UC Davis SoilWeb (fast, reliable) → mukey + muname
- *   2. UC Davis list_components → drainage, hydric, slope details
- *   3. Fallback: USDA SDA REST API
+ *   1. UC Davis SoilWeb (fast, reliable) → mukey + muname + components
+ *   2. USDA SDA enrichment → bedrock depth, texture, rock %, slope, pH, taxonomy
+ *   3. Fallback: USDA SDA basic query
  *   4. Fallback: SSURGO WFS endpoint
  */
 export async function POST(req: NextRequest) {
@@ -20,6 +20,9 @@ export async function POST(req: NextRequest) {
     // 1. Try UC Davis SoilWeb (primary – fast & reliable)
     const ucDavisResult = await queryUCDavisSoilWeb(lng, lat);
     if (ucDavisResult) {
+      // 2. Enrich with USDA SDA detailed data (bedrock depth, texture, rock %, etc.)
+      const enrichment = await querySDAEnrichment(ucDavisResult.mukey, lng, lat);
+
       return NextResponse.json({
         soilType: ucDavisResult.muname,
         mukey: ucDavisResult.mukey,
@@ -28,16 +31,18 @@ export async function POST(req: NextRequest) {
         hydric: ucDavisResult.hydric,
         components: ucDavisResult.components,
         source: 'UC_Davis_SoilWeb',
+        // Enriched SDA data
+        ...(enrichment || {}),
       });
     }
 
-    // 2. Try USDA SDA REST API
+    // 3. Try USDA SDA REST API (basic soil name)
     const soilType = await querySDA(lng, lat);
     if (soilType) {
       return NextResponse.json({ soilType, source: 'USDA_SDA' });
     }
 
-    // 3. Try SSURGO WFS endpoint
+    // 4. Try SSURGO WFS endpoint
     const fallbackSoil = await querySSURGO_WFS(lng, lat);
     if (fallbackSoil) {
       return NextResponse.json({ soilType: fallbackSoil, source: 'SSURGO_WFS' });
@@ -206,7 +211,122 @@ async function queryUCDavisComponents(mukey: string): Promise<{
   }
 }
 
-// ─── USDA SDA REST API ─────────────────────────────────────────────
+// ─── USDA SDA Enrichment (bedrock, texture, rock %, slope, pH, taxonomy) ────
+
+interface SDAEnrichment {
+  bedrockDepthIn: number | null;      // depth to bedrock in INCHES (from corestrictions)
+  restrictionType: string | null;     // e.g. "Lithic bedrock", "Paralithic bedrock"
+  slopeRange: string | null;          // e.g. "1-10%"
+  slopeLow: number | null;
+  slopeHigh: number | null;
+  runoff: string | null;              // e.g. "Medium", "High", "Very high"
+  taxonomy: string | null;            // full taxonomic class
+  taxOrder: string | null;            // e.g. "Mollisols"
+  texture: string | null;             // e.g. "Very cobbly clay"
+  clayPct: number | null;             // clay % (0-100)
+  sandPct: number | null;             // sand %
+  rockFragmentPct: number | null;     // coarse fragment % (>3" + >10")
+  pH: number | null;                  // soil pH (1:1 water)
+  organicMatter: number | null;       // organic matter %
+}
+
+async function querySDAEnrichment(mukey: string, lng: number, lat: number): Promise<SDAEnrichment | null> {
+  const SDA_URL = 'https://SDMDataAccess.sc.egov.usda.gov/Tabular/post.rest';
+
+  try {
+    // Run two queries in parallel: component-level + horizon-level + restriction
+    const [compResult, horizonResult, restrictionResult] = await Promise.all([
+      // Query 1: Component-level data (slope, runoff, taxonomy)
+      fetchSDA(SDA_URL, `SELECT TOP 1 c.slope_l, c.slope_h, c.runoff, c.taxclname, c.taxorder FROM component c WHERE c.mukey = '${mukey}' AND c.comppct_r >= 10 ORDER BY c.comppct_r DESC`),
+      // Query 2: Horizon data (texture, clay, rock fragments, pH, OM) – top horizon only
+      fetchSDA(SDA_URL, `SELECT TOP 1 t.texdesc, h.claytotal_r, h.sandtotal_r, h.fraggt10_r, h.frag3to10_r, h.ph1to1h2o_r, h.om_r FROM component c INNER JOIN chorizon h ON c.cokey = h.cokey LEFT JOIN chtexturegrp t ON h.chkey = t.chkey AND t.rvindicator = 'Yes' WHERE c.mukey = '${mukey}' AND c.comppct_r >= 10 ORDER BY c.comppct_r DESC, h.hzdept_r ASC`),
+      // Query 3: Depth to bedrock/restriction
+      fetchSDA(SDA_URL, `SELECT TOP 1 r.resdept_r, r.reskind FROM component c INNER JOIN corestrictions r ON c.cokey = r.cokey WHERE c.mukey = '${mukey}' AND c.comppct_r >= 10 ORDER BY c.comppct_r DESC, r.resdept_r ASC`),
+    ]);
+
+    const enrichment: SDAEnrichment = {
+      bedrockDepthIn: null,
+      restrictionType: null,
+      slopeRange: null,
+      slopeLow: null,
+      slopeHigh: null,
+      runoff: null,
+      taxonomy: null,
+      taxOrder: null,
+      texture: null,
+      clayPct: null,
+      sandPct: null,
+      rockFragmentPct: null,
+      pH: null,
+      organicMatter: null,
+    };
+
+    // Parse component data
+    if (compResult?.[0]) {
+      const row = compResult[0];
+      const slopeLow = row[0] != null ? parseFloat(row[0]) : null;
+      const slopeHigh = row[1] != null ? parseFloat(row[1]) : null;
+      enrichment.slopeLow = slopeLow;
+      enrichment.slopeHigh = slopeHigh;
+      if (slopeLow != null && slopeHigh != null) {
+        enrichment.slopeRange = `${slopeLow}-${slopeHigh}%`;
+      }
+      enrichment.runoff = row[2] || null;
+      enrichment.taxonomy = row[3] || null;
+      enrichment.taxOrder = row[4] || null;
+    }
+
+    // Parse horizon data
+    if (horizonResult?.[0]) {
+      const row = horizonResult[0];
+      enrichment.texture = row[0] || null;
+      enrichment.clayPct = row[1] != null ? parseFloat(row[1]) : null;
+      enrichment.sandPct = row[2] != null ? parseFloat(row[2]) : null;
+      // Rock fragment % = fragments > 10" + fragments 3-10"
+      const frag10 = row[3] != null ? parseFloat(row[3]) : 0;
+      const frag3 = row[4] != null ? parseFloat(row[4]) : 0;
+      enrichment.rockFragmentPct = (frag10 + frag3) > 0 ? frag10 + frag3 : null;
+      enrichment.pH = row[5] != null ? parseFloat(row[5]) : null;
+      enrichment.organicMatter = row[6] != null ? parseFloat(row[6]) : null;
+    }
+
+    // Parse restriction (bedrock depth)
+    if (restrictionResult?.[0]) {
+      const row = restrictionResult[0];
+      const depthCm = row[0] != null ? parseFloat(row[0]) : null;
+      // Convert cm to inches (fencing industry uses inches)
+      enrichment.bedrockDepthIn = depthCm != null ? Math.round(depthCm / 2.54) : null;
+      enrichment.restrictionType = row[1] || null;
+    }
+
+    return enrichment;
+  } catch (err) {
+    console.error('SDA enrichment query failed (non-fatal):', err);
+    return null; // Enrichment failure is non-fatal; UC Davis data still works
+  }
+}
+
+/** Helper: run a single SDA query and return the Table rows, or null */
+async function fetchSDA(url: string, query: string): Promise<string[][] | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, format: 'JSON' }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.Table ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ─── USDA SDA REST API (basic fallback) ─────────────────────────────────────
 async function querySDA(lng: number, lat: number): Promise<string | null> {
   const url = 'https://SDMDataAccess.sc.egov.usda.gov/Tabular/post.rest';
   const query = `SELECT TOP 1 musym, muname FROM mapunit 

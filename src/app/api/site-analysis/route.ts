@@ -20,6 +20,16 @@ interface SiteAnalysisRequest {
   totalLinearFeet: number;
   postMaterial: string;
   source: string | null;
+  // Enriched SDA data
+  bedrockDepthIn?: number | null;
+  restrictionType?: string | null;
+  slopeRange?: string | null;
+  runoff?: string | null;
+  taxonomy?: string | null;
+  texture?: string | null;
+  clayPct?: number | null;
+  rockFragmentPct?: number | null;
+  pH?: number | null;
 }
 
 const SYSTEM_PROMPT = `You are a senior fencing contractor writing the "Property Research & Site Analysis" section of a professional fence installation bid for a Texas Hill Country fencing company called Hayden Ranch Services. 
@@ -31,12 +41,16 @@ Write in first-person plural ("we", "our") as the contractor speaking directly t
 - Specific — reference the actual soil type, drainage, elevation, etc. by name
 - Practical — explain what each finding means for their fence installation specifically
 
-The section should be 2-4 paragraphs, roughly 150-250 words. Cover:
+The section should be 3-5 paragraphs, roughly 200-350 words. Cover:
 1. What soil database you researched and what you found (soil type name, composition)
-2. What that soil means for post setting (depth, concrete needs, potential rock issues)
-3. Drainage and water table considerations if relevant
-4. Elevation/terrain impact on post spacing and wire tensioning
-5. A brief confidence-building closer about how your material selections are tailored to these conditions
+2. If bedrock depth is provided, specifically mention it (convert to feet/inches for the reader). Explain what it means for post setting — e.g., "bedrock at 11 inches means we cannot simply auger and set posts; our crew will bring hydraulic rock drilling equipment."
+3. If rock fragment % is provided, explain what it means for digging — e.g., "with 54% coarse rock fragments, this soil is essentially half rocks."
+4. If texture is provided (e.g., "Very cobbly clay"), reference it naturally and explain what that means for the homeowner.
+5. If clay % is high (>35%), mention swelling clay concerns for post shifting.
+6. If pH is provided, briefly note whether it's favorable for metal posts.
+7. Drainage, runoff, and water table considerations if relevant.
+8. Elevation/terrain impact on post spacing and wire tensioning.
+9. A confidence-building closer about how your material selections are tailored to these specific conditions.
 
 Do NOT use bullet points, headers, or markdown formatting. Write flowing prose paragraphs only.
 Do NOT mention pricing or dollar amounts.
@@ -102,7 +116,27 @@ function buildUserPrompt(data: SiteAnalysisRequest): string {
 
   if (data.drainage) parts.push(`Drainage classification: ${data.drainage}`);
   if (data.hydric) parts.push(`Hydric (wetland) indicator: ${data.hydric}`);
-  if (elevChange > 0) parts.push(`Elevation change across fence line: approximately ${Math.round(elevChange)} feet`);
+
+  // ── Enriched USDA SDA data ──
+  if (data.bedrockDepthIn != null) {
+    const ft = Math.floor(data.bedrockDepthIn / 12);
+    const inches = data.bedrockDepthIn % 12;
+    const depthStr = ft > 0 ? `${ft} feet ${inches > 0 ? inches + ' inches' : ''}` : `${data.bedrockDepthIn} inches`;
+    parts.push(`\nDepth to bedrock: ${depthStr} (${data.restrictionType || 'bedrock'})`);
+    parts.push(`IMPORTANT: A standard fence post is set 2.5-3 feet deep. Bedrock at ${depthStr} means ${data.bedrockDepthIn <= 24 ? 'rock drilling equipment will be required for every post hole' : data.bedrockDepthIn <= 36 ? 'many post holes will bottom out on rock' : 'deeper posts may encounter rock in some areas'}.`);
+  }
+
+  if (data.texture) parts.push(`Soil texture (top horizon): ${data.texture}`);
+  if (data.rockFragmentPct != null && data.rockFragmentPct > 0) {
+    parts.push(`Rock fragment content: ${data.rockFragmentPct}% coarse fragments (cobbles and stones in the soil matrix)`);
+  }
+  if (data.clayPct != null) parts.push(`Clay content: ${data.clayPct}%${data.clayPct >= 35 ? ' (high — expect swelling/shrinking with moisture changes)' : ''}`);
+  if (data.pH != null) parts.push(`Soil pH: ${data.pH}${data.pH >= 7.5 ? ' (alkaline — favorable for metal post longevity)' : data.pH <= 5.5 ? ' (acidic — may accelerate metal corrosion over decades)' : ' (near neutral)'}`);
+  if (data.slopeRange) parts.push(`USDA slope range: ${data.slopeRange}`);
+  if (data.runoff) parts.push(`Surface runoff class: ${data.runoff}`);
+  if (data.taxonomy) parts.push(`Soil taxonomy: ${data.taxonomy}`);
+
+  if (elevChange > 0) parts.push(`\nElevation change across fence line: approximately ${Math.round(elevChange)} feet`);
   parts.push(`Terrain difficulty classification: ${data.suggestedDifficulty || 'moderate'}`);
 
   return parts.join('\n');
@@ -118,7 +152,7 @@ async function callClaude(apiKey: string, userPrompt: string): Promise<string> {
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 600,
+      max_tokens: 900,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }],
     }),
@@ -142,7 +176,7 @@ async function callOpenAI(apiKey: string, userPrompt: string): Promise<string> {
     },
     body: JSON.stringify({
       model: 'gpt-4o',
-      max_tokens: 600,
+      max_tokens: 900,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userPrompt },

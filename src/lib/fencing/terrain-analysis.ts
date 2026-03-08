@@ -15,6 +15,21 @@ export interface SoilInfo {
   hydric: string | null;
   components: { name: string; percent: number; drainage?: string; hydric?: string }[];
   source: string | null;
+  // Enriched SDA data (may be null if SDA query failed)
+  bedrockDepthIn: number | null;      // depth to bedrock in inches
+  restrictionType: string | null;     // e.g. "Lithic bedrock"
+  slopeRange: string | null;          // e.g. "1-10%"
+  slopeLow: number | null;
+  slopeHigh: number | null;
+  runoff: string | null;              // e.g. "Medium", "High"
+  taxonomy: string | null;            // full taxonomic class
+  taxOrder: string | null;            // e.g. "Mollisols"
+  texture: string | null;             // e.g. "Very cobbly clay"
+  clayPct: number | null;             // clay %
+  sandPct: number | null;
+  rockFragmentPct: number | null;     // coarse fragment %
+  pH: number | null;
+  organicMatter: number | null;
 }
 
 export interface TerrainAnalysis {
@@ -136,6 +151,21 @@ export async function getSoilInfo(lng: number, lat: number): Promise<SoilInfo | 
           hydric: data.hydric || null,
           components: data.components || [],
           source: data.source || null,
+          // Enriched SDA data
+          bedrockDepthIn: data.bedrockDepthIn ?? null,
+          restrictionType: data.restrictionType ?? null,
+          slopeRange: data.slopeRange ?? null,
+          slopeLow: data.slopeLow ?? null,
+          slopeHigh: data.slopeHigh ?? null,
+          runoff: data.runoff ?? null,
+          taxonomy: data.taxonomy ?? null,
+          taxOrder: data.taxOrder ?? null,
+          texture: data.texture ?? null,
+          clayPct: data.clayPct ?? null,
+          sandPct: data.sandPct ?? null,
+          rockFragmentPct: data.rockFragmentPct ?? null,
+          pH: data.pH ?? null,
+          organicMatter: data.organicMatter ?? null,
         };
       }
     }
@@ -171,6 +201,20 @@ export async function getSoilInfo(lng: number, lat: number): Promise<SoilInfo | 
         hydric: null,
         components: [],
         source: 'USDA_SDA_Direct',
+        bedrockDepthIn: null,
+        restrictionType: null,
+        slopeRange: null,
+        slopeLow: null,
+        slopeHigh: null,
+        runoff: null,
+        taxonomy: null,
+        taxOrder: null,
+        texture: null,
+        clayPct: null,
+        sandPct: null,
+        rockFragmentPct: null,
+        pH: null,
+        organicMatter: null,
       };
     }
     return null;
@@ -180,12 +224,58 @@ export async function getSoilInfo(lng: number, lat: number): Promise<SoilInfo | 
 }
 
 /**
- * Classify soil difficulty based on soil name and drainage info
+ * Classify soil difficulty based on soil name, drainage, and enriched SDA data
  */
 export function classifySoilDifficulty(
   soilType: string | null,
   drainage?: string | null,
+  soilInfo?: SoilInfo | null,
 ): 'easy' | 'moderate' | 'hard' | 'very_hard' {
+  // If we have enriched SDA data, use it for precise classification
+  if (soilInfo) {
+    let score = 0;
+
+    // Bedrock depth is the #1 factor for fencing difficulty
+    if (soilInfo.bedrockDepthIn != null) {
+      if (soilInfo.bedrockDepthIn <= 12) score += 40;       // <1 foot — rock drill required
+      else if (soilInfo.bedrockDepthIn <= 24) score += 25;  // 1-2 feet — very shallow
+      else if (soilInfo.bedrockDepthIn <= 36) score += 10;  // 2-3 feet — tight for a 3' set
+    }
+
+    // Rock fragment percentage — cobbles destroy auger bits
+    if (soilInfo.rockFragmentPct != null) {
+      if (soilInfo.rockFragmentPct >= 40) score += 20;
+      else if (soilInfo.rockFragmentPct >= 20) score += 10;
+      else if (soilInfo.rockFragmentPct >= 10) score += 5;
+    }
+
+    // Clay content — swelling clays shift posts
+    if (soilInfo.clayPct != null) {
+      if (soilInfo.clayPct >= 50) score += 10;
+      else if (soilInfo.clayPct >= 35) score += 5;
+    }
+
+    // Slope from USDA
+    if (soilInfo.slopeHigh != null) {
+      if (soilInfo.slopeHigh >= 30) score += 15;
+      else if (soilInfo.slopeHigh >= 15) score += 8;
+      else if (soilInfo.slopeHigh >= 8) score += 3;
+    }
+
+    // Poor drainage = wet difficult digging
+    if (soilInfo.drainage) {
+      const d = soilInfo.drainage.toLowerCase();
+      if (d.includes('very poorly')) score += 10;
+      else if (d.includes('poorly')) score += 7;
+    }
+
+    if (score >= 40) return 'very_hard';
+    if (score >= 25) return 'hard';
+    if (score >= 10) return 'moderate';
+    return 'easy';
+  }
+
+  // Fallback: text-based classification
   if (!soilType) return 'moderate';
   const lower = soilType.toLowerCase();
 
@@ -256,7 +346,7 @@ export async function analyzeTerrain(
   const midIdx = Math.floor(coords.length / 2);
   const soilInfo = await getSoilInfo(coords[midIdx][0], coords[midIdx][1]);
   const soilType = soilInfo?.soilType ?? null;
-  const soilDifficulty = classifySoilDifficulty(soilType, soilInfo?.drainage ?? null);
+  const soilDifficulty = classifySoilDifficulty(soilType, soilInfo?.drainage ?? null, soilInfo);
 
   // Calculate suggested difficulty
   const suggestedDifficulty = calculateSuggestedDifficulty(avgSlope, maxSlope, soilDifficulty, totalElevationChange);

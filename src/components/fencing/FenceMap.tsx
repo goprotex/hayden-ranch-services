@@ -52,6 +52,21 @@ export interface TerrainSuggestion {
   components: { name: string; percent: number; drainage?: string; hydric?: string }[];
   source: string | null;
   confidence: number;
+  // Enriched USDA SDA data
+  bedrockDepthIn: number | null;
+  restrictionType: string | null;
+  slopeRange: string | null;
+  slopeLow: number | null;
+  slopeHigh: number | null;
+  runoff: string | null;
+  taxonomy: string | null;
+  taxOrder: string | null;
+  texture: string | null;
+  clayPct: number | null;
+  sandPct: number | null;
+  rockFragmentPct: number | null;
+  pH: number | null;
+  organicMatter: number | null;
 }
 
 /** Snap a point to the nearest position on a line segment */
@@ -139,6 +154,21 @@ export default function FenceMap({
         components: analysis.soilInfo?.components ?? [],
         source: analysis.soilInfo?.source ?? null,
         confidence: analysis.confidence,
+        // Enriched USDA SDA data
+        bedrockDepthIn: analysis.soilInfo?.bedrockDepthIn ?? null,
+        restrictionType: analysis.soilInfo?.restrictionType ?? null,
+        slopeRange: analysis.soilInfo?.slopeRange ?? null,
+        slopeLow: analysis.soilInfo?.slopeLow ?? null,
+        slopeHigh: analysis.soilInfo?.slopeHigh ?? null,
+        runoff: analysis.soilInfo?.runoff ?? null,
+        taxonomy: analysis.soilInfo?.taxonomy ?? null,
+        taxOrder: analysis.soilInfo?.taxOrder ?? null,
+        texture: analysis.soilInfo?.texture ?? null,
+        clayPct: analysis.soilInfo?.clayPct ?? null,
+        sandPct: analysis.soilInfo?.sandPct ?? null,
+        rockFragmentPct: analysis.soilInfo?.rockFragmentPct ?? null,
+        pH: analysis.soilInfo?.pH ?? null,
+        organicMatter: analysis.soilInfo?.organicMatter ?? null,
       });
     } catch (err) {
       console.error('Terrain analysis error:', err);
