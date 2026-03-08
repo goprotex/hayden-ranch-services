@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useAppStore } from '@/lib/store';
 import { parseRoofReport, detectReportSource } from '@/lib/roofing/report-parser';
+import { isXmlRoofReport, parseXmlRoofReport } from '@/lib/roofing/xml-parser';
 import { generateCutList } from '@/lib/roofing/cut-list-engine';
 import { generateCutListPDF } from '@/lib/roofing/pdf-export';
 import { PANEL_SPECS } from '@/lib/roofing/panel-specs';
@@ -18,6 +19,7 @@ import {
 import { RoofModel, RoofFacet, PanelProfile, ReportSource, CutList } from '@/types';
 import CutListTable from '@/components/roofing/CutListTable';
 import TrimTable from '@/components/roofing/TrimTable';
+import RoofXmlViewer from '@/components/roofing/RoofXmlViewer';
 import HaydenLogo from '@/components/HaydenLogo';
 
 import type { RoofPolygon, CutListPanel } from '@/components/roofing/RoofMap';
@@ -195,6 +197,27 @@ export default function RoofingPage() {
     setUploadError('');
     const fileName = file.name.replace(/\.\w+$/, '');
     setProjectName(fileName);
+
+    // XML files – parse directly into a RoofModel (no text-extract step needed)
+    if (file.name.toLowerCase().endsWith('.xml') || file.type === 'text/xml' || file.type === 'application/xml') {
+      setUploading(true);
+      try {
+        const xmlText = await file.text();
+        if (!isXmlRoofReport(xmlText)) {
+          throw new Error('This XML file does not appear to contain roof measurement data.');
+        }
+        const model = parseXmlRoofReport(xmlText, fileName);
+        addRoofModel(model);
+        setActiveModel(model);
+        setManualFacets(model.facets);
+        setReportText(xmlText);
+        setReportSource(model.source);
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : 'Failed to parse XML');
+      } finally { setUploading(false); }
+      return;
+    }
+
     if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
       setUploading(true);
       try {
@@ -212,11 +235,23 @@ export default function RoofingPage() {
       } finally { setUploading(false); }
     } else {
       const text = await file.text();
+      // Check if the text file is actually XML content
+      if (isXmlRoofReport(text)) {
+        try {
+          const model = parseXmlRoofReport(text, fileName);
+          addRoofModel(model);
+          setActiveModel(model);
+          setManualFacets(model.facets);
+          setReportText(text);
+          setReportSource(model.source);
+          return;
+        } catch { /* fall through to normal text parsing */ }
+      }
       setReportText(text);
       const detected = detectReportSource(text);
       if (detected !== 'manual') setReportSource(detected);
     }
-  }, []);
+  }, [addRoofModel]);
 
   // Bid Computed Values
   const bidComputed = useMemo(() =>
@@ -740,7 +775,7 @@ export default function RoofingPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-steel-400 mb-1">Upload Report (PDF/TXT)</label>
+                      <label className="block text-sm font-medium text-steel-400 mb-1">Upload Report (PDF/XML/TXT)</label>
                       <input title="Upload report" type="file" accept=".txt,.csv,.pdf,.json,.xml" onChange={handleFileUpload} disabled={uploading}
                         className="w-full text-sm text-steel-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-600/20 file:text-amber-400 hover:file:bg-amber-600/30 disabled:opacity-50" />
                       {uploading && <p className="text-xs text-amber-400 mt-1 animate-pulse">Extracting text from PDF...</p>}
@@ -818,6 +853,15 @@ export default function RoofingPage() {
             </div>
 
             <div className="lg:col-span-2 space-y-6">
+              {/* XML / Roof Viewer – shown whenever a model is loaded */}
+              {activeModel && activeModel.facets.length > 0 && (
+                <RoofXmlViewer
+                  model={activeModel}
+                  cutList={activeCutList}
+                  xmlSource={reportText.trim().startsWith('<') ? reportText : undefined}
+                />
+              )}
+
               {activeCutList && (
                 <>
                   <div className="card-dark overflow-hidden">

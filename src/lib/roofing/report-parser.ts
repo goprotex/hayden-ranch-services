@@ -1,4 +1,5 @@
 import { RoofModel, RoofFacet, ReportSource, Point2D, FacetEdge, EdgeType } from '@/types';
+import { isXmlRoofReport, parseXmlRoofReport } from './xml-parser';
 
 // ============================================================
 // PUBLIC API
@@ -7,6 +8,14 @@ import { RoofModel, RoofFacet, ReportSource, Point2D, FacetEdge, EdgeType } from
 /** Auto-detect the report source from extracted PDF text */
 export function detectReportSource(text: string): ReportSource {
   const t = text.toLowerCase();
+  if (isXmlRoofReport(text)) {
+    // For XML, peek inside for brand
+    if (t.includes('gaf') || t.includes('quickmeasure')) return 'gaf_quickmeasure';
+    if (t.includes('eagleview')) return 'eagleview';
+    if (t.includes('roofr')) return 'roofr';
+    if (t.includes('roofgraf')) return 'roofgraf';
+    return 'gaf_quickmeasure'; // default XML source
+  }
   if (t.includes('roofr') || t.includes('powered by roofr')) return 'roofr';
   if (t.includes('eagleview') || t.includes('eagle view')) return 'eagleview';
   if (t.includes('roofgraf') || t.includes('roof graf')) return 'roofgraf';
@@ -23,6 +32,11 @@ export function parseRoofReport(
   source: ReportSource,
   projectName?: string
 ): RoofModel {
+  // Check for XML first — it takes priority regardless of selected source
+  if (isXmlRoofReport(rawText)) {
+    return parseXmlRoofReport(rawText, projectName);
+  }
+
   // Auto-detect if source is manual but text has brand indicators
   if (source === 'manual') {
     const detected = detectReportSource(rawText);
