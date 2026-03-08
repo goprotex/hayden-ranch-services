@@ -1,5 +1,12 @@
 import jsPDF from 'jspdf';
-import { recommendedTPostLength, calculatePostLength } from './fence-materials';
+import {
+  recommendedTPostLength,
+  calculatePostLength,
+  POST_MATERIALS,
+  SQUARE_TUBE_GAUGES,
+  type PostMaterial,
+  type SquareTubeGauge,
+} from './fence-materials';
 
 // ============================================================
 // Types for fence bid PDF
@@ -42,6 +49,12 @@ export interface FenceBidData {
   stayTuffModel?: string;
   stayTuffDescription?: string;
   wireHeightInches?: number; // actual wire height for proper material sizing
+
+  // Material selections (from UI)
+  postMaterial: PostMaterial;         // 'drill_stem' | 'square_tube'
+  squareTubeGauge?: SquareTubeGauge; // '14ga' | '12ga' | '11ga' (only when square_tube)
+  tPostSpacing: number;              // user-configured, e.g. 10
+  linePostSpacing: number;           // user-configured, e.g. 66
 
   // Sections
   sections: FenceBidSection[];
@@ -91,7 +104,7 @@ const COMPANY = {
 // ============================================================
 
 const DEFAULT_TERMS: string[] = [
-  `Scope of Work: Installation includes ${'{fenceType}'} fence with drill stem corner posts, H-braces, and line posts with concrete setting. All hardware, clips, and professional installation included. Any work not explicitly listed in this proposal is excluded.`,
+  `Scope of Work: Installation includes ${'{fenceType}'} fence with ${'{postMaterial}'} corner posts, H-braces, and line posts with concrete setting. All hardware, clips, and professional installation included. Any work not explicitly listed in this proposal is excluded.`,
   `Payment Terms: ${'{depositPercent}'}% non-refundable deposit ($${'{depositAmount}'}) required to schedule work and order materials. Deposit is earned upon receipt and covers material ordering, scheduling, and opportunity costs. Balance ($${'{balanceAmount}'}) due in full upon completion before contractor leaves property. Payment accepted by check, cash, or bank transfer. Returned checks subject to $50 fee plus any bank charges. No work begins without cleared deposit.`,
   `Cancellation Policy: Customer may cancel within 3 business days of signing with full deposit refund. After 3 business days, deposit is non-refundable and earned.`,
   `Site Access and Conditions: Customer warrants they have legal right to authorize work on the property. Customer is responsible for marking all underground utilities by calling 811 at least 3 business days before work begins. Customer grants contractor access to property and right to cross property as needed to complete work. Customer is responsible for securing all animals during work. Contractor is not liable for livestock escape due to temporary fence access during installation.`,
@@ -473,9 +486,13 @@ export function generateFenceBidPDF(data: FenceBidData): void {
   const terms = data.customTerms && data.customTerms.length > 0 ? data.customTerms : DEFAULT_TERMS;
 
   // Replace template variables in terms
+  const postMatLabel = data.postMaterial === 'square_tube'
+    ? `2" square tube${data.squareTubeGauge ? ` (${data.squareTubeGauge})` : ''}`
+    : 'drill stem (2-3/8" OD)';
   const processedTerms = terms.map((term) =>
     term
       .replace(/\{fenceType\}/g, data.fenceType)
+      .replace(/\{postMaterial\}/g, postMatLabel)
       .replace(/\{depositPercent\}/g, data.depositPercent.toString())
       .replace(/\{depositAmount\}/g, data.depositAmount.toLocaleString(undefined, { minimumFractionDigits: 2 }))
       .replace(/\{balanceAmount\}/g, data.balanceAmount.toLocaleString(undefined, { minimumFractionDigits: 2 }))
@@ -599,7 +616,11 @@ export function calculateSectionMaterials(
   fenceType: string,
   fenceHeight: string,
   stayTuffModel?: string,
-  terrain: string = 'moderate'
+  terrain: string = 'moderate',
+  postMaterial: PostMaterial = 'drill_stem',
+  squareTubeGauge: SquareTubeGauge = '14ga',
+  tPostSpacing: number = 10,
+  linePostSpacing: number = 66,
 ): SectionMaterial[] {
   const ft = linearFeet;
   const wireHeightIn = resolveWireHeight(fenceHeight, stayTuffModel);
@@ -607,20 +628,37 @@ export function calculateSectionMaterials(
   const wireRolls = Math.ceil(wireWithOverlap / 330);
   const wireRollsDec = (wireWithOverlap / 330).toFixed(1);
 
-  // Post spacing depends on terrain
-  const spacingMap: Record<string, number> = { easy: 16.5, moderate: 14, difficult: 12, very_difficult: 10 };
-  const spacing = spacingMap[terrain] || 14;
+  // Use user-configured spacings
+  const tPosts = Math.ceil(ft / tPostSpacing);
+  const linePostCount = Math.max(2, Math.ceil(ft / linePostSpacing));
 
   // Correct T-post sizing from fence-materials.ts
   const tPostSpec = recommendedTPostLength(wireHeightIn);
-  const tPosts = Math.ceil(ft / spacing);
 
-  // Correct drill stem post sizing from fence-materials.ts
+  // Correct post sizing from fence-materials.ts
   const postCalc = calculatePostLength(wireHeightIn);
-  const drillStemPosts = Math.max(2, Math.ceil(ft / 200)); // corners + end posts ~every 200ft
-  const drillStemBraces = drillStemPosts;
+
+  // Post material info
+  const postSpec = POST_MATERIALS.find(p => p.id === postMaterial) || POST_MATERIALS[0];
+  const gaugeSpec = postMaterial === 'square_tube'
+    ? (SQUARE_TUBE_GAUGES.find(g => g.gauge === squareTubeGauge) || SQUARE_TUBE_GAUGES[0])
+    : null;
+
+  const jointLen = postSpec.jointLengthFeet;
+  const postsPerJoint = postMaterial === 'drill_stem'
+    ? postCalc.postsPerDrillStemJoint
+    : postCalc.postsPerSquareTubeJoint;
+  const jointsNeeded = postsPerJoint > 0 ? Math.ceil(linePostCount / postsPerJoint) : linePostCount;
+
+  // Post description
+  const postLabel = postMaterial === 'drill_stem'
+    ? `Drill Stem (2-3/8" OD, 4.7 lb/ft)`
+    : `2" Square Tube (${gaugeSpec ? gaugeSpec.label : '14 Gauge'}, ${gaugeSpec ? gaugeSpec.wallThickness : '0.075"'} wall)`;
+
+  // Bracing: 1 H-brace per line post location
+  const braceCount = linePostCount;
   const concreteBagsPerPost = wireHeightIn >= 72 ? 3 : 2;
-  const concreteBags = drillStemPosts * concreteBagsPerPost;
+  const concreteBags = (linePostCount * concreteBagsPerPost) + (braceCount * 4);
 
   // Hardware counts
   const clipsPerTPost = wireHeightIn >= 72 ? 5 : 4;
@@ -634,75 +672,116 @@ export function calculateSectionMaterials(
   const tensioners = Math.max(2, Math.ceil(ft / 660)) * (htStrands + 1);
 
   const isStayTuff = fenceType.includes('stay_tuff') || fenceType.includes('Stay Tuff') || fenceType.includes('Stay-Tuff');
+  const isBarbedWire = fenceType.toLowerCase().includes('barbed');
+  const isNoClimb = fenceType.toLowerCase().includes('no-climb') || fenceType.toLowerCase().includes('no_climb');
+  const isFieldFence = fenceType.toLowerCase().includes('field');
+  const isPipeFence = fenceType.toLowerCase().includes('pipe');
   const terrainLabel = TERRAIN_LABELS[terrain] || 'moderate conditions';
 
   const materials: SectionMaterial[] = [];
 
-  // -- Wire --
-  if (isStayTuff && stayTuffModel) {
+  // ==============================================================
+  // WIRE — varies by fence type
+  // ==============================================================
+  if (isBarbedWire) {
+    const strands = 4;
+    const barbedRolls = Math.ceil((wireWithOverlap * strands) / 1320);
     materials.push({
-      name: `Stay-Tuff ${stayTuffModel} Fixed Knot wire (${wireHeightIn}" height, 330' rolls) — Made in USA, 20-yr warranty`,
+      name: `Barbed Wire — ${strands}-strand, 15.5 gauge, 4-point barbs, 5" spacing (1,320' rolls). Standard ${strands}-strand configuration for livestock containment. Includes 10% overlap allowance for proper tensioning and corner wraps.`,
+      quantity: `${(wireWithOverlap * strands).toLocaleString()} ft total wire (${strands} strands × ${ft.toLocaleString()} ft = ${barbedRolls} rolls)`,
+    });
+  } else if (isNoClimb) {
+    const noClimbRolls = Math.ceil(wireWithOverlap / 200);
+    materials.push({
+      name: `No-Climb Horse Fence — ${wireHeightIn}" height, 2" × 4" mesh pattern, 12.5 gauge galvanized wire (200' rolls). Designed with small mesh openings to prevent horses from catching hooves. Safe for all equine and small livestock. Includes 10% overlap allowance.`,
+      quantity: `${wireWithOverlap.toLocaleString()} ft (${(wireWithOverlap / 200).toFixed(1)} rolls = ${noClimbRolls} rolls ordered)`,
+    });
+  } else if (isStayTuff && stayTuffModel) {
+    materials.push({
+      name: `Stay-Tuff ${stayTuffModel} Fixed Knot Wire — ${wireHeightIn}" height, high-tensile galvanized steel, 330' rolls. Made in USA with 20-year manufacturer warranty against rust and breakage. Fixed-knot design prevents knot slippage under animal pressure and maintains wire spacing over time. Includes 10% overlap for tensioning.`,
       quantity: `${wireWithOverlap.toLocaleString()} ft (${wireRollsDec} rolls = ${wireRolls} rolls ordered)`,
     });
   } else if (isStayTuff) {
     materials.push({
-      name: `Stay-Tuff field fence wire (${wireHeightIn}" height, 330' rolls) — Made in USA, 20-yr warranty`,
+      name: `Stay-Tuff High-Tensile Field Fence Wire — ${wireHeightIn}" height, 330' rolls. Made in USA, 20-year warranty. Fixed-knot construction for superior strength and longevity. Includes 10% overlap.`,
+      quantity: `${wireWithOverlap.toLocaleString()} ft (${wireRollsDec} rolls = ${wireRolls} rolls ordered)`,
+    });
+  } else if (isFieldFence) {
+    materials.push({
+      name: `Field Fence Wire — ${wireHeightIn}" height, graduated mesh spacing, 12.5 gauge galvanized, 330' rolls. Standard agricultural field fence suitable for cattle, goats, and general livestock containment. Includes 10% overlap for tensioning.`,
       quantity: `${wireWithOverlap.toLocaleString()} ft (${wireRollsDec} rolls = ${wireRolls} rolls ordered)`,
     });
   } else {
     materials.push({
-      name: `Field fence wire (${wireHeightIn}" height, 330' rolls)`,
+      name: `Fence wire — ${wireHeightIn}" height, 330' rolls. General-purpose galvanized wire for the selected fence configuration. Includes 10% overlap allowance.`,
       quantity: `${wireWithOverlap.toLocaleString()} ft (${wireRolls} rolls)`,
     });
   }
 
-  // -- High-tensile smooth wire (top/bottom) --
+  // ==============================================================
+  // HIGH-TENSILE SMOOTH WIRE (top/bottom) — not used with barbed wire
+  // ==============================================================
+  if (!isBarbedWire) {
+    const strandLabel = htStrands === 2 ? 'top & bottom strands' : 'top strand only';
+    materials.push({
+      name: `12.5 Gauge High-Tensile Smooth Wire — ${strandLabel}, 4,000' rolls. Runs along the top${htStrands === 2 ? ' and bottom' : ''} of the fence to add rigidity and prevent livestock from pushing over or under. ${htStrands === 2 ? 'Two strands recommended for fences 72" and taller.' : 'Single top strand for fences under 72".'}`,
+      quantity: `${(wireWithOverlap * htStrands).toLocaleString()} ft (${htStrands} strand${htStrands > 1 ? 's' : ''}, ${((wireWithOverlap * htStrands) / 4000).toFixed(2)} rolls)`,
+    });
+  }
+
+  // ==============================================================
+  // T-POSTS (correctly auto-sized from wire height)
+  // ==============================================================
+  if (!isPipeFence) {
+    materials.push({
+      name: `${tPostSpec.label} T-Posts (1.33 lb/ft, studded) — Spaced every ${tPostSpacing}' on center. Auto-sized: ${wireHeightIn}" wire height requires ${tPostSpec.lengthFeet}' T-posts to provide adequate above-ground height plus burial depth. T-posts are the intermediate support between line posts on ${terrainLabel}.`,
+      quantity: `${tPosts} posts (${ft.toLocaleString()} ft ÷ ${tPostSpacing}' spacing)`,
+    });
+  }
+
+  // ==============================================================
+  // LINE POSTS (user's selected material)
+  // ==============================================================
   materials.push({
-    name: `12.5 ga high-tensile smooth wire — ${htStrands === 2 ? 'top & bottom strands' : 'top strand'} (4,000' rolls)`,
-    quantity: `${(wireWithOverlap * htStrands).toLocaleString()} ft (${htStrands} strand${htStrands > 1 ? 's' : ''})`,
+    name: `${postLabel} Line Posts — Set ${postCalc.belowGroundFeet}' deep in concrete, ${postCalc.aboveGroundFeet.toFixed(1)}' above ground (${postCalc.totalLengthFeet}' total cut length). Spaced every ${linePostSpacing}' on center. ${postMaterial === 'drill_stem' ? 'Heavy-wall oilfield pipe recycled for agricultural use — excellent strength-to-cost ratio, highly resistant to livestock impact and weather.' : `Square tube with ${gaugeSpec ? gaugeSpec.wallThickness : '0.075"'} wall thickness — clean profile with excellent rigidity for straight fence lines.`} Cut from ${jointLen}' joints (${postsPerJoint} posts per joint).`,
+    quantity: `${linePostCount} posts (cut from ${jointsNeeded} joints × ${jointLen}')`,
   });
 
-  // -- T-Posts (correctly sized) --
+  // ==============================================================
+  // BRACE ASSEMBLIES (H-braces at line post locations)
+  // ==============================================================
   materials.push({
-    name: `${tPostSpec.label} T-Posts (1.33 lb/ft) — spaced ${spacing}' apart on ${terrainLabel}`,
-    quantity: `${tPosts} posts`,
+    name: `H-Brace Assemblies — ${postLabel} vertical posts with ${postMaterial === 'drill_stem' ? '2-3/8" OD' : '2" square tube'} horizontal brace rails (10' each). Each assembly uses a diagonal brace wire tensioned between top of one post and base of the other for maximum rigidity. Braces anchor the fence at ends, corners, and gate locations to resist wire tension pull (up to 250 lbs per wire strand).`,
+    quantity: `${braceCount} assemblies (${braceCount} rails + ${braceCount} brace wire coils)`,
   });
 
-  // -- Drill stem corner/end posts --
+  // ==============================================================
+  // CONCRETE
+  // ==============================================================
   materials.push({
-    name: `Drill stem corner & end posts (2-3/8" OD) — ${postCalc.totalLengthFeet}' total length, set ${postCalc.belowGroundFeet}' deep, ${postCalc.aboveGroundFeet.toFixed(1)}' above ground`,
-    quantity: `${drillStemPosts} posts (cut from ${Math.ceil(drillStemPosts / postCalc.postsPerDrillStemJoint)} joints x 31')`,
-  });
-
-  // -- Drill stem brace rails --
-  materials.push({
-    name: `Drill stem brace rails (2-3/8" OD) — 10' horizontal rails for H-brace assemblies`,
-    quantity: `${drillStemBraces} rails`,
-  });
-
-  // -- Brace wire --
-  materials.push({
-    name: `Brace wire (12.5 ga, 20' coils) — diagonal tensioning for each brace assembly`,
-    quantity: `${drillStemBraces} coils`,
-  });
-
-  // -- Concrete --
-  materials.push({
-    name: `Concrete mix (80 lb bags) — ${concreteBagsPerPost} bags per corner/end post for ${postCalc.belowGroundFeet}' depth setting`,
+    name: `Concrete Mix — 80 lb bags, fast-setting. ${concreteBagsPerPost} bags per line post (${postCalc.belowGroundFeet}' depth) + 4 bags per brace assembly for double-post setting. Proper concrete setting prevents frost heave, livestock-induced lean, and soil erosion undermining. ${wireHeightIn >= 72 ? '3 bags per post required for taller fences (72"+) to provide adequate lateral support.' : '2 bags per post is standard for fences under 72".'}`,
     quantity: `${concreteBags} bags (${(concreteBags * 80).toLocaleString()} lbs total)`,
   });
 
-  // -- Inline tensioners --
-  materials.push({
-    name: `Inline wire tensioners — maintains proper tension across long runs`,
-    quantity: `${tensioners} tensioners`,
-  });
+  // ==============================================================
+  // INLINE TENSIONERS (not used with barbed wire or pipe fence)
+  // ==============================================================
+  if (!isBarbedWire && !isPipeFence) {
+    materials.push({
+      name: `Inline Wire Tensioners — Ratchet-style tensioning devices installed at intervals to maintain proper wire tension across long runs. Allows re-tensioning after initial stretch-out period (wire stretches 1-2% in the first 30 days). ${htStrands + 1} tensioners per 660' run (1 per wire strand).`,
+      quantity: `${tensioners} tensioners`,
+    });
+  }
 
-  // -- Clips and hardware --
-  materials.push({
-    name: `Fence clips (${clipsPerTPost} per T-post, boxes of 500) — secures wire to T-posts`,
-    quantity: `${clips} clips (${clipBoxes} box${clipBoxes > 1 ? 'es' : ''})`,
-  });
+  // ==============================================================
+  // CLIPS & HARDWARE
+  // ==============================================================
+  if (!isPipeFence) {
+    materials.push({
+      name: `Fence Clips — ${clipsPerTPost} clips per T-post, sold in boxes of 500. Galvanized steel clips secure the wire mesh to each T-post at evenly spaced intervals. ${clipsPerTPost === 5 ? '5 clips per post for taller fences (72"+) to prevent wire sag between attachment points.' : '4 clips per post is standard for fences under 72".'}`,
+      quantity: `${clips} clips (${clipBoxes} box${clipBoxes > 1 ? 'es' : ''})`,
+    });
+  }
 
   return materials;
 }

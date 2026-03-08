@@ -327,7 +327,10 @@ export default function FencingPage() {
     const ftLabel = FENCE_TYPES[fenceType] || fenceType;
     const stModel = fenceType.startsWith('stay_tuff') ? selectedStayTuff.model : undefined;
     const secs = computed.map(sec => ({
-      ...sec, materials: calculateSectionMaterials(sec.linearFeet, ftLabel, fenceHeight, stModel, sec.terrain || terrain),
+      ...sec, materials: calculateSectionMaterials(
+        sec.linearFeet, ftLabel, fenceHeight, stModel,
+        sec.terrain || terrain, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing,
+      ),
     }));
     const data: FenceBidData = {
       projectName: projectName || 'Fence Installation', clientName: clientName || 'Customer',
@@ -335,6 +338,7 @@ export default function FencingPage() {
       fenceType: ftLabel, fenceHeight, stayTuffModel: stModel,
       stayTuffDescription: stModel ? selectedStayTuff.description : undefined,
       wireHeightInches,
+      postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing,
       sections: secs, gates, projectTotal: projTotal, depositPercent, depositAmount: deposit,
       balanceAmount: balance, timelineWeeks: Math.ceil(timelineDays / 5), workingDays: timelineDays,
       projectOverview: projectOverview + (address ? ` Site located at ${address}.` : ''),
@@ -343,7 +347,7 @@ export default function FencingPage() {
       mapImages: mapImages.length > 0 ? mapImages : undefined,
     };
     generateFenceBidPDF(data);
-  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages]);
+  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing]);
 
   const handleSaveBid = useCallback(() => {
     addFenceBid({
