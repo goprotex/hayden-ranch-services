@@ -81,8 +81,11 @@ export async function POST(req: NextRequest) {
 
 function buildUserPrompt(data: SiteAnalysisRequest): string {
   const parts: string[] = [];
+  const totalFeet = Number(data.totalLinearFeet) || 0;
+  const elevChange = Number(data.elevationChange) || 0;
+
   parts.push(`Property: ${data.propertyAddress || 'Texas Hill Country property'}`);
-  parts.push(`Fence project: ${data.totalLinearFeet.toLocaleString()} linear feet of ${data.fenceType} fencing at ${data.fenceHeight} height`);
+  parts.push(`Fence project: ${totalFeet > 0 ? totalFeet.toLocaleString() : 'TBD'} linear feet of ${data.fenceType || 'fencing'} at ${data.fenceHeight || 'standard'} height`);
   parts.push(`Post material: ${data.postMaterial === 'drill_stem' ? 'Drill stem (2-3/8" OD recycled oilfield pipe)' : '2" square tube'}`);
 
   if (data.soilType) {
@@ -99,8 +102,8 @@ function buildUserPrompt(data: SiteAnalysisRequest): string {
 
   if (data.drainage) parts.push(`Drainage classification: ${data.drainage}`);
   if (data.hydric) parts.push(`Hydric (wetland) indicator: ${data.hydric}`);
-  if (data.elevationChange > 0) parts.push(`Elevation change across fence line: approximately ${Math.round(data.elevationChange)} feet`);
-  parts.push(`Terrain difficulty classification: ${data.suggestedDifficulty}`);
+  if (elevChange > 0) parts.push(`Elevation change across fence line: approximately ${Math.round(elevChange)} feet`);
+  parts.push(`Terrain difficulty classification: ${data.suggestedDifficulty || 'moderate'}`);
 
   return parts.join('\n');
 }
