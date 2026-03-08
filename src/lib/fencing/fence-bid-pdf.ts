@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf';
+import { recommendedTPostLength, calculatePostLength } from './fence-materials';
 
 // ============================================================
 // Types for fence bid PDF
@@ -40,6 +41,7 @@ export interface FenceBidData {
   fenceHeight: string;
   stayTuffModel?: string;
   stayTuffDescription?: string;
+  wireHeightInches?: number; // actual wire height for proper material sizing
 
   // Sections
   sections: FenceBidSection[];
@@ -62,6 +64,12 @@ export interface FenceBidData {
 
   // Terrain description
   terrainDescription: string;
+
+  // Property research / soil narrative for the customer
+  soilNarrative?: string;
+
+  // Map screenshot data URL (base64 PNG)
+  mapImageDataUrl?: string;
 
   // Terms (use default if empty)
   customTerms?: string[];
@@ -174,6 +182,34 @@ export function generateFenceBidPDF(data: FenceBidData): void {
   doc.text(overviewLines, mx, y);
   y += overviewLines.length * 4 + 6;
 
+  // ── Site Map (if captured) ──
+  if (data.mapImageDataUrl) {
+    try {
+      // Calculate image dimensions to fit content width
+      const imgWidth = cw;
+      const imgHeight = imgWidth * 0.55; // ~16:9 aspect ratio
+      y = ensureSpace(doc, y, imgHeight + 16);
+
+      doc.setTextColor(27, 38, 54);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text('SITE MAP & FENCE LAYOUT', mx, y);
+      y += 6;
+
+      doc.addImage(data.mapImageDataUrl, 'PNG', mx, y, imgWidth, imgHeight);
+      y += imgHeight + 2;
+
+      // Legend
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(100, 100, 100);
+      doc.text('Satellite view showing fence line placement, gate locations, and brace positions. Orange = fence line, Red = end posts, Blue = corner braces, Green = H-braces, Yellow = gates.', mx, y);
+      y += 8;
+    } catch {
+      // Skip map image if it fails
+    }
+  }
+
   // ── Stay-Tuff Warranty (if applicable) ──
   if (data.stayTuffModel) {
     y = ensureSpace(doc, y, 25);
@@ -190,6 +226,59 @@ export function generateFenceBidPDF(data: FenceBidData): void {
     const wLines = doc.splitTextToSize(warrantyText, cw);
     doc.text(wLines, mx, y);
     y += wLines.length * 3.5 + 8;
+  }
+
+  // ── Property Research & Site Analysis ──
+  if (data.soilNarrative) {
+    y = ensureSpace(doc, y, 40);
+    doc.setTextColor(27, 38, 54);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('PROPERTY RESEARCH & SITE ANALYSIS', mx, y);
+    y += 6;
+
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(60, 60, 60);
+    const soilLines = doc.splitTextToSize(data.soilNarrative, cw);
+    // May be multiple paragraphs, handle page breaks
+    for (let i = 0; i < soilLines.length; i++) {
+      y = ensureSpace(doc, y, 4);
+      doc.text(soilLines[i], mx, y);
+      y += 3.5;
+    }
+    y += 6;
+  }
+
+  // ── Material Specifications Summary ──
+  if (data.wireHeightInches) {
+    y = ensureSpace(doc, y, 40);
+    doc.setTextColor(27, 38, 54);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('MATERIAL SPECIFICATIONS', mx, y);
+    y += 6;
+
+    const tSpec = recommendedTPostLength(data.wireHeightInches);
+    const pCalc = calculatePostLength(data.wireHeightInches);
+
+    const specLines = [
+      `Wire Height: ${data.wireHeightInches}" (${(data.wireHeightInches / 12).toFixed(1)} ft)${data.stayTuffModel ? ` — Stay-Tuff model ${data.stayTuffModel}` : ''}`,
+      `T-Post Size: ${tSpec.label} — required to support ${data.wireHeightInches}" wire height with proper above-ground clearance`,
+      `Corner/End Post: ${pCalc.totalLengthFeet}' drill stem (2-3/8" OD) — ${pCalc.aboveGroundFeet.toFixed(1)}' above ground, ${pCalc.belowGroundFeet}' below ground for stability`,
+      `Post Material: Drill stem posts cut from 31' joints (${pCalc.postsPerDrillStemJoint} posts per joint) — superior strength vs. standard pipe`,
+      `Concrete Setting: ${data.wireHeightInches >= 72 ? '3' : '2'} bags (80 lb) per corner/end post — ${pCalc.belowGroundFeet}' depth setting ensures wind and livestock resistance`,
+    ];
+
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(60, 60, 60);
+    for (const line of specLines) {
+      y = ensureSpace(doc, y, 5);
+      doc.text(`• ${line}`, mx + 2, y);
+      y += 4.5;
+    }
+    y += 6;
   }
 
   // ── Investment Summary ──
@@ -473,6 +562,28 @@ export function generateFenceBidPDF(data: FenceBidData): void {
 // Helper: Calculate materials for a fence section
 // ============================================================
 
+/** Parse wire height in inches from stayTuffModel (e.g. '15/96/6' → 96) or fenceHeight (e.g. '6ft' → 72) */
+function resolveWireHeight(fenceHeight: string, stayTuffModel?: string): number {
+  if (stayTuffModel) {
+    const parts = stayTuffModel.split('/');
+    if (parts.length >= 2) {
+      const h = parseInt(parts[1], 10);
+      if (!isNaN(h) && h > 0) return h;
+    }
+  }
+  const match = fenceHeight.match(/(\d+)/);
+  if (match) return parseInt(match[1], 10) * 12;
+  return 60; // fallback 5ft
+}
+
+/** Terrain label for PDF descriptions */
+const TERRAIN_LABELS: Record<string, string> = {
+  easy: 'level ground, minimal rock',
+  moderate: 'moderate slope, some rock',
+  difficult: 'steep terrain, heavy rock',
+  very_difficult: 'extreme terrain, solid rock',
+};
+
 export function calculateSectionMaterials(
   linearFeet: number,
   fenceType: string,
@@ -481,34 +592,107 @@ export function calculateSectionMaterials(
   terrain: string = 'moderate'
 ): SectionMaterial[] {
   const ft = linearFeet;
-  const wireWithOverlap = Math.ceil(ft * 1.1); // 10% overlap
-  const wireRolls = (wireWithOverlap / 330).toFixed(2);
+  const wireHeightIn = resolveWireHeight(fenceHeight, stayTuffModel);
+  const wireWithOverlap = Math.ceil(ft * 1.1); // 10% overlap for tensioning
+  const wireRolls = Math.ceil(wireWithOverlap / 330);
+  const wireRollsDec = (wireWithOverlap / 330).toFixed(1);
 
   // Post spacing depends on terrain
   const spacingMap: Record<string, number> = { easy: 16.5, moderate: 14, difficult: 12, very_difficult: 10 };
   const spacing = spacingMap[terrain] || 14;
 
+  // Correct T-post sizing from fence-materials.ts
+  const tPostSpec = recommendedTPostLength(wireHeightIn);
   const tPosts = Math.ceil(ft / spacing);
-  const drillStemPosts = Math.max(2, Math.ceil(ft / 200)); // every ~200ft or corners
+
+  // Correct drill stem post sizing from fence-materials.ts
+  const postCalc = calculatePostLength(wireHeightIn);
+  const drillStemPosts = Math.max(2, Math.ceil(ft / 200)); // corners + end posts ~every 200ft
   const drillStemBraces = drillStemPosts;
-  const concreteBags = drillStemPosts * 2;
-  const clips = tPosts * 4;
+  const concreteBagsPerPost = wireHeightIn >= 72 ? 3 : 2;
+  const concreteBags = drillStemPosts * concreteBagsPerPost;
+
+  // Hardware counts
+  const clipsPerTPost = wireHeightIn >= 72 ? 5 : 4;
+  const clips = tPosts * clipsPerTPost;
+  const clipBoxes = Math.ceil(clips / 500);
+
+  // High-tensile top/bottom wire
+  const htStrands = wireHeightIn >= 72 ? 2 : 1;
+
+  // Tensioners (1 per 660ft run + 1 per strand)
+  const tensioners = Math.max(2, Math.ceil(ft / 660)) * (htStrands + 1);
+
+  const isStayTuff = fenceType.includes('stay_tuff') || fenceType.includes('Stay Tuff') || fenceType.includes('Stay-Tuff');
+  const terrainLabel = TERRAIN_LABELS[terrain] || 'moderate conditions';
 
   const materials: SectionMaterial[] = [];
 
-  if (fenceType.includes('stay_tuff') || fenceType.includes('Stay Tuff') || fenceType.includes('Stay-Tuff')) {
-    materials.push({ name: `Stay-Tuff field fence (330' rolls)`, quantity: `${wireWithOverlap} ft (${wireRolls} rolls)` });
+  // -- Wire --
+  if (isStayTuff && stayTuffModel) {
+    materials.push({
+      name: `Stay-Tuff ${stayTuffModel} Fixed Knot wire (${wireHeightIn}" height, 330' rolls) — Made in USA, 20-yr warranty`,
+      quantity: `${wireWithOverlap.toLocaleString()} ft (${wireRollsDec} rolls = ${wireRolls} rolls ordered)`,
+    });
+  } else if (isStayTuff) {
+    materials.push({
+      name: `Stay-Tuff field fence wire (${wireHeightIn}" height, 330' rolls) — Made in USA, 20-yr warranty`,
+      quantity: `${wireWithOverlap.toLocaleString()} ft (${wireRollsDec} rolls = ${wireRolls} rolls ordered)`,
+    });
   } else {
-    materials.push({ name: `Field fence wire (330' rolls)`, quantity: `${wireWithOverlap} ft (${wireRolls} rolls)` });
+    materials.push({
+      name: `Field fence wire (${wireHeightIn}" height, 330' rolls)`,
+      quantity: `${wireWithOverlap.toLocaleString()} ft (${wireRolls} rolls)`,
+    });
   }
 
-  materials.push({ name: '12.5ga high tensile top wire', quantity: `${wireWithOverlap} ft` });
-  materials.push({ name: `T-posts (6.5' or 7')`, quantity: `${tPosts} posts` });
-  materials.push({ name: `Drill stem posts 8-10'`, quantity: `${drillStemPosts} posts (${drillStemPosts * 9} ft)` });
-  materials.push({ name: `Drill stem brace rails 10'`, quantity: `${drillStemBraces} rails (${drillStemBraces * 10} ft)` });
-  materials.push({ name: 'Brace wire', quantity: `${drillStemBraces} braces` });
-  materials.push({ name: 'Concrete (80 lb bags)', quantity: `${concreteBags} bags` });
-  materials.push({ name: 'Clips and hardware', quantity: `${clips} pieces` });
+  // -- High-tensile smooth wire (top/bottom) --
+  materials.push({
+    name: `12.5 ga high-tensile smooth wire — ${htStrands === 2 ? 'top & bottom strands' : 'top strand'} (4,000' rolls)`,
+    quantity: `${(wireWithOverlap * htStrands).toLocaleString()} ft (${htStrands} strand${htStrands > 1 ? 's' : ''})`,
+  });
+
+  // -- T-Posts (correctly sized) --
+  materials.push({
+    name: `${tPostSpec.label} T-Posts (1.33 lb/ft) — spaced ${spacing}' apart on ${terrainLabel}`,
+    quantity: `${tPosts} posts`,
+  });
+
+  // -- Drill stem corner/end posts --
+  materials.push({
+    name: `Drill stem corner & end posts (2-3/8" OD) — ${postCalc.totalLengthFeet}' total length, set ${postCalc.belowGroundFeet}' deep, ${postCalc.aboveGroundFeet.toFixed(1)}' above ground`,
+    quantity: `${drillStemPosts} posts (cut from ${Math.ceil(drillStemPosts / postCalc.postsPerDrillStemJoint)} joints x 31')`,
+  });
+
+  // -- Drill stem brace rails --
+  materials.push({
+    name: `Drill stem brace rails (2-3/8" OD) — 10' horizontal rails for H-brace assemblies`,
+    quantity: `${drillStemBraces} rails`,
+  });
+
+  // -- Brace wire --
+  materials.push({
+    name: `Brace wire (12.5 ga, 20' coils) — diagonal tensioning for each brace assembly`,
+    quantity: `${drillStemBraces} coils`,
+  });
+
+  // -- Concrete --
+  materials.push({
+    name: `Concrete mix (80 lb bags) — ${concreteBagsPerPost} bags per corner/end post for ${postCalc.belowGroundFeet}' depth setting`,
+    quantity: `${concreteBags} bags (${(concreteBags * 80).toLocaleString()} lbs total)`,
+  });
+
+  // -- Inline tensioners --
+  materials.push({
+    name: `Inline wire tensioners — maintains proper tension across long runs`,
+    quantity: `${tensioners} tensioners`,
+  });
+
+  // -- Clips and hardware --
+  materials.push({
+    name: `Fence clips (${clipsPerTPost} per T-post, boxes of 500) — secures wire to T-posts`,
+    quantity: `${clips} clips (${clipBoxes} box${clipBoxes > 1 ? 'es' : ''})`,
+  });
 
   return materials;
 }

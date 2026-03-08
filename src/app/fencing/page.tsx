@@ -110,6 +110,9 @@ export default function FencingPage() {
   // Terrain analysis
   const [terrainSuggestion, setTerrainSuggestion] = useState<TerrainSuggestion | null>(null);
 
+  // Map capture for PDF
+  const [mapImageDataUrl, setMapImageDataUrl] = useState<string | null>(null);
+
   // UI
   const [activeTab, setActiveTab] = useState<'config' | 'preview' | 'pricing'>('config');
   const [receiptSyncResult, setReceiptSyncResult] = useState<{ matched: number; updated: number } | null>(null);
@@ -258,6 +261,66 @@ export default function FencingPage() {
   }, []);
   const updGate = useCallback((id: string, u: Partial<BidGate>) => { setGates(p => p.map(g => g.id === id ? { ...g, ...u } : g)); }, []);
   const rmGate = useCallback((id: string) => { setGates(p => p.filter(g => g.id !== id)); }, []);
+  /** Build a layman-friendly soil/terrain narrative for the PDF bid */
+  const buildSoilNarrative = useCallback((): string | undefined => {
+    if (!terrainSuggestion) return undefined;
+    const parts: string[] = [];
+
+    // Soil explanation
+    if (terrainSuggestion.soilType) {
+      parts.push(
+        `Our research of your property using the ${terrainSuggestion.source === 'UC_Davis_SoilWeb' ? 'UC Davis SoilWeb database' : 'USDA Natural Resources Conservation Service (NRCS) Web Soil Survey'} identified the primary soil type on your property as "${terrainSuggestion.soilType}."`,
+      );
+
+      // Explain what the soil means in plain English
+      const soil = terrainSuggestion.soilType.toLowerCase();
+      if (soil.includes('rock') || soil.includes('outcrop') || soil.includes('limestone') || soil.includes('caliche')) {
+        parts.push('This soil type contains significant rock or limestone. Post holes will require a hydraulic breaker or core drill in some areas, which we have accounted for in our pricing. Rock conditions can slow installation but result in a stronger, more permanent fence.');
+      } else if (soil.includes('clay') || soil.includes('vertisol')) {
+        parts.push('Clay soils expand and contract with moisture changes. We compensate for this by setting posts deeper with additional concrete to prevent frost heave and shifting. Your fence will be engineered to handle seasonal soil movement.');
+      } else if (soil.includes('sand') || soil.includes('loam')) {
+        parts.push('Sandy or loam soils provide good drainage but require deeper post settings and more concrete per post to ensure structural stability. We\'ve sized our materials accordingly.');
+      } else if (soil.includes('gravel') || soil.includes('alluvial')) {
+        parts.push('Gravelly and alluvial soils drain well but can shift. Our post depths and concrete quantities are designed to anchor securely in these conditions.');
+      } else {
+        parts.push('We have selected post depths and concrete quantities appropriate for your soil conditions to ensure a long-lasting, stable installation.');
+      }
+    }
+
+    // Drainage info
+    if (terrainSuggestion.drainage) {
+      const drain = terrainSuggestion.drainage.toLowerCase();
+      if (drain.includes('well')) {
+        parts.push(`Your soil has "${terrainSuggestion.drainage}" drainage characteristics, meaning water moves through the soil efficiently. This is favorable for concrete curing and long-term post stability.`);
+      } else if (drain.includes('poor') || drain.includes('somewhat')) {
+        parts.push(`Your soil has "${terrainSuggestion.drainage}" drainage. We account for wet-area conditions in post settings, using additional concrete and deeper depths where needed to prevent settling.`);
+      }
+    }
+
+    // Hydric indicator
+    if (terrainSuggestion.hydric && terrainSuggestion.hydric.toLowerCase() === 'yes') {
+      parts.push('Note: Portions of the property contain hydric (wetland-indicator) soils. We may need to adjust post locations in low-lying areas to avoid standing water and ensure structural integrity.');
+    }
+
+    // Elevation / terrain
+    if (terrainSuggestion.elevationChange > 0) {
+      const elev = Math.round(terrainSuggestion.elevationChange);
+      if (elev > 50) {
+        parts.push(`The fence line crosses approximately ${elev} feet of elevation change. Steep terrain requires closer post spacing (reducing from the standard 16.5' down to as little as 10' apart) to maintain proper wire tension on slopes. Bracing assemblies are reinforced at grade changes to handle the additional pull of gravity on the wire.`);
+      } else if (elev > 15) {
+        parts.push(`The fence line crosses approximately ${elev} feet of elevation change. Moderate slopes require slightly closer post spacing to maintain wire tension, which we have incorporated into our material calculations.`);
+      } else {
+        parts.push(`Your fence line is relatively level with only about ${elev} feet of elevation change, which is ideal for efficient installation and consistent wire tension.`);
+      }
+    }
+
+    // Terrain difficulty summary
+    const diffLabel = TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label || terrainSuggestion.suggestedDifficulty;
+    parts.push(`Based on our analysis, we have classified this project as "${diffLabel}" terrain difficulty. All material quantities, post spacing, concrete requirements, and labor estimates in this proposal reflect this assessment.`);
+
+    return parts.length > 0 ? parts.join(' ') : undefined;
+  }, [terrainSuggestion]);
+
   const handleDownloadPDF = useCallback(() => {
     const now = new Date();
     const valid = new Date(now); valid.setDate(valid.getDate() + 30);
@@ -271,13 +334,16 @@ export default function FencingPage() {
       propertyAddress: address, date: fmtDate(now), validUntil: fmtDate(valid),
       fenceType: ftLabel, fenceHeight, stayTuffModel: stModel,
       stayTuffDescription: stModel ? selectedStayTuff.description : undefined,
+      wireHeightInches,
       sections: secs, gates, projectTotal: projTotal, depositPercent, depositAmount: deposit,
       balanceAmount: balance, timelineWeeks: Math.ceil(timelineDays / 5), workingDays: timelineDays,
       projectOverview: projectOverview + (address ? ` Site located at ${address}.` : ''),
       terrainDescription: TERRAIN_MAP[terrain]?.label || terrain,
+      soilNarrative: buildSoilNarrative(),
+      mapImageDataUrl: mapImageDataUrl || undefined,
     };
     generateFenceBidPDF(data);
-  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, timelineDays, projectOverview]);
+  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImageDataUrl]);
 
   const handleSaveBid = useCallback(() => {
     addFenceBid({
@@ -301,6 +367,7 @@ export default function FencingPage() {
           </div>
           <div className="flex items-center gap-3">
             <button onClick={handleSaveBid} className="text-sm glass text-steel-300 px-4 py-2 rounded-lg hover:text-white transition font-medium">Save Bid</button>
+            {mapImageDataUrl && <span className="text-[10px] text-green-400">&#x2713; Map captured</span>}
             <button onClick={handleDownloadPDF} className="text-sm bg-gradient-to-r from-amber-600 to-orange-600 text-white px-5 py-2 rounded-lg hover:from-amber-500 hover:to-orange-500 transition font-semibold shadow-lg shadow-amber-900/30 flex items-center gap-2">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
               Download PDF
@@ -549,7 +616,11 @@ export default function FencingPage() {
 
             {activeTab === 'config' && (
               <div className="space-y-5 animate-fade-in">
-                <FenceMap onFenceLinesChange={handleFenceLinesChange} onTerrainAnalyzed={handleTerrainAnalyzed} />
+                <FenceMap
+                  onFenceLinesChange={handleFenceLinesChange}
+                  onTerrainAnalyzed={handleTerrainAnalyzed}
+                  onMapCapture={(dataUrl) => { setMapImageDataUrl(dataUrl); }}
+                />
 
                 {/* Soil type banner */}
                 {terrainSuggestion?.soilType && (
