@@ -5,7 +5,7 @@ export const PANEL_SPECS: Record<PanelProfile, PanelSpec> = {
   '6v_crimp': {
     id: '6v_crimp',
     name: '6V Crimp Panel',
-    widthInches: 26,
+    widthInches: 36,
     minLengthFeet: 3,
     maxLengthFeet: 40,
     overlapInches: 2,

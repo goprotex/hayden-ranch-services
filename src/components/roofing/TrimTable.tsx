@@ -2,9 +2,7 @@
 
 import { CutList } from '@/types';
 
-interface Props {
-  cutList: CutList;
-}
+interface Props { cutList: CutList; }
 
 const TRIM_LABELS: Record<string, string> = {
   ridge_cap: 'Ridge Cap',
@@ -27,36 +25,27 @@ const TRIM_LABELS: Record<string, string> = {
 export default function TrimTable({ cutList }: Props) {
   return (
     <div>
-      {/* Trim pieces */}
       {cutList.trim.length > 0 && (
         <div>
-          <div className="px-6 py-3 bg-steel-50 border-b border-steel-200">
-            <p className="text-xs font-semibold text-steel-600 uppercase tracking-wide">
-              Trim Components
-            </p>
+          <div className='px-6 py-3 bg-surface-100 border-b border-steel-700/30'>
+            <p className='text-[10px] font-bold text-steel-500 uppercase tracking-wider'>Trim Components</p>
           </div>
-          <table className="w-full text-sm">
+          <table className='w-full text-sm'>
             <thead>
-              <tr className="border-b border-steel-200">
-                <th className="text-left px-6 py-3 text-steel-600 font-medium">Trim Type</th>
-                <th className="text-right px-6 py-3 text-steel-600 font-medium">Pieces</th>
-                <th className="text-right px-6 py-3 text-steel-600 font-medium">Length Each</th>
-                <th className="text-right px-6 py-3 text-steel-600 font-medium">Total LF</th>
+              <tr className='border-b border-steel-700/30 bg-surface-100'>
+                <th className='text-left px-6 py-3 text-steel-500 text-xs font-semibold'>Trim Type</th>
+                <th className='text-right px-6 py-3 text-steel-500 text-xs font-semibold'>Pieces</th>
+                <th className='text-right px-6 py-3 text-steel-500 text-xs font-semibold'>Length Each</th>
+                <th className='text-right px-6 py-3 text-steel-500 text-xs font-semibold'>Total LF</th>
               </tr>
             </thead>
             <tbody>
-              {cutList.trim.map((piece) => (
-                <tr key={piece.id} className="border-b border-steel-100 hover:bg-steel-50">
-                  <td className="px-6 py-2 font-medium text-steel-700">
-                    {TRIM_LABELS[piece.type] || piece.type}
-                  </td>
-                  <td className="px-6 py-2 text-right text-steel-600">{piece.quantity}</td>
-                  <td className="px-6 py-2 text-right text-steel-600">
-                    {piece.lengthFeet}&apos;
-                  </td>
-                  <td className="px-6 py-2 text-right font-medium text-indigo-600">
-                    {(piece.quantity * piece.lengthFeet).toFixed(1)}&apos;
-                  </td>
+              {cutList.trim.map(piece => (
+                <tr key={piece.id} className='border-b border-steel-700/20 hover:bg-surface-200/40 transition'>
+                  <td className='px-6 py-2 font-medium text-steel-300 text-xs'>{TRIM_LABELS[piece.type] || piece.type}</td>
+                  <td className='px-6 py-2 text-right text-steel-400 text-xs'>{piece.quantity}</td>
+                  <td className='px-6 py-2 text-right text-steel-400 text-xs'>{piece.lengthFeet}&apos;</td>
+                  <td className='px-6 py-2 text-right font-semibold text-amber-400 text-xs'>{(piece.quantity * piece.lengthFeet).toFixed(1)}&apos;</td>
                 </tr>
               ))}
             </tbody>
@@ -64,30 +53,25 @@ export default function TrimTable({ cutList }: Props) {
         </div>
       )}
 
-      {/* Fasteners */}
       {cutList.fasteners.length > 0 && (
         <div>
-          <div className="px-6 py-3 bg-steel-50 border-b border-steel-200">
-            <p className="text-xs font-semibold text-steel-600 uppercase tracking-wide">
-              Fasteners
-            </p>
+          <div className='px-6 py-3 bg-surface-100 border-b border-steel-700/30'>
+            <p className='text-[10px] font-bold text-steel-500 uppercase tracking-wider'>Fasteners</p>
           </div>
-          <table className="w-full text-sm">
+          <table className='w-full text-sm'>
             <thead>
-              <tr className="border-b border-steel-200">
-                <th className="text-left px-6 py-3 text-steel-600 font-medium">Type</th>
-                <th className="text-left px-6 py-3 text-steel-600 font-medium">Size</th>
-                <th className="text-right px-6 py-3 text-steel-600 font-medium">Quantity</th>
+              <tr className='border-b border-steel-700/30 bg-surface-100'>
+                <th className='text-left px-6 py-3 text-steel-500 text-xs font-semibold'>Type</th>
+                <th className='text-left px-6 py-3 text-steel-500 text-xs font-semibold'>Size</th>
+                <th className='text-right px-6 py-3 text-steel-500 text-xs font-semibold'>Quantity</th>
               </tr>
             </thead>
             <tbody>
               {cutList.fasteners.map((f, i) => (
-                <tr key={i} className="border-b border-steel-100 hover:bg-steel-50">
-                  <td className="px-6 py-2 font-medium text-steel-700">{f.type}</td>
-                  <td className="px-6 py-2 text-steel-600">{f.size}</td>
-                  <td className="px-6 py-2 text-right font-medium text-indigo-600">
-                    {f.quantity.toLocaleString()}
-                  </td>
+                <tr key={i} className='border-b border-steel-700/20 hover:bg-surface-200/40 transition'>
+                  <td className='px-6 py-2 font-medium text-steel-300 text-xs'>{f.type}</td>
+                  <td className='px-6 py-2 text-steel-400 text-xs'>{f.size}</td>
+                  <td className='px-6 py-2 text-right font-semibold text-amber-400 text-xs'>{f.quantity.toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
@@ -95,28 +79,25 @@ export default function TrimTable({ cutList }: Props) {
         </div>
       )}
 
-      {/* Accessories */}
       {cutList.accessories.length > 0 && (
         <div>
-          <div className="px-6 py-3 bg-steel-50 border-b border-steel-200">
-            <p className="text-xs font-semibold text-steel-600 uppercase tracking-wide">
-              Accessories &amp; Supplies
-            </p>
+          <div className='px-6 py-3 bg-surface-100 border-b border-steel-700/30'>
+            <p className='text-[10px] font-bold text-steel-500 uppercase tracking-wider'>Accessories &amp; Supplies</p>
           </div>
-          <table className="w-full text-sm">
+          <table className='w-full text-sm'>
             <thead>
-              <tr className="border-b border-steel-200">
-                <th className="text-left px-6 py-3 text-steel-600 font-medium">Item</th>
-                <th className="text-right px-6 py-3 text-steel-600 font-medium">Quantity</th>
-                <th className="text-right px-6 py-3 text-steel-600 font-medium">Unit</th>
+              <tr className='border-b border-steel-700/30 bg-surface-100'>
+                <th className='text-left px-6 py-3 text-steel-500 text-xs font-semibold'>Item</th>
+                <th className='text-right px-6 py-3 text-steel-500 text-xs font-semibold'>Quantity</th>
+                <th className='text-right px-6 py-3 text-steel-500 text-xs font-semibold'>Unit</th>
               </tr>
             </thead>
             <tbody>
               {cutList.accessories.map((acc, i) => (
-                <tr key={i} className="border-b border-steel-100 hover:bg-steel-50">
-                  <td className="px-6 py-2 font-medium text-steel-700">{acc.name}</td>
-                  <td className="px-6 py-2 text-right text-steel-600">{acc.quantity}</td>
-                  <td className="px-6 py-2 text-right text-steel-500">{acc.unit}</td>
+                <tr key={i} className='border-b border-steel-700/20 hover:bg-surface-200/40 transition'>
+                  <td className='px-6 py-2 font-medium text-steel-300 text-xs'>{acc.name}</td>
+                  <td className='px-6 py-2 text-right text-steel-400 text-xs'>{acc.quantity}</td>
+                  <td className='px-6 py-2 text-right text-steel-500 text-xs'>{acc.unit}</td>
                 </tr>
               ))}
             </tbody>

@@ -62,7 +62,7 @@ const EDGE_LABELS: Record<EdgeType, string> = {
   endwall: 'Endwall', step_flashing: 'Step Flash',
 };
 
-const INTERIOR_TYPES: EdgeType[] = ['ridge', 'valley', 'hip', 'endwall', 'step_flashing'];
+const INTERIOR_TYPES: EdgeType[] = ['ridge', 'valley', 'hip', 'eave', 'rake', 'endwall', 'step_flashing'];
 
 const SNAP_PX = 14;
 const ANGLE_SNAP_DEG = 8;
