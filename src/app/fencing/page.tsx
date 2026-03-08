@@ -63,7 +63,8 @@ export default function FencingPage() {
   const [preferredCornerBrace, setPreferredCornerBrace] = useState<BraceType>('corner_brace');
 
   // Pricing
-  const [baseRate, setBaseRate] = useState(12);
+  const [laborRate, setLaborRate] = useState(6); // $/ft labor only
+  const [tPostHeight, setTPostHeight] = useState<'6ft' | '7ft' | '8ft'>('7ft');
   const [terrain, setTerrain] = useState('moderate');
   const [depositPercent, setDepositPercent] = useState(50);
   const [timelineDays, setTimelineDays] = useState(12);
@@ -119,7 +120,77 @@ export default function FencingPage() {
   }, []);
 
   const terrainMult = TERRAIN_MAP[terrain]?.mult || 1;
-  const effectiveRate = useMemo(() => Math.round(baseRate * terrainMult * 100) / 100, [baseRate, terrainMult]);
+
+  // === Material cost per foot calculation ===
+  const materialCostPerFoot = useMemo(() => {
+    // Find prices from store (falls back to defaults)
+    const findPrice = (id: string) => materialPrices.find(m => m.id === id)?.price ?? 0;
+
+    // -- Wire cost per foot --
+    let wireCostPerFt = 0;
+    if (fenceType.startsWith('stay_tuff')) {
+      wireCostPerFt = findPrice('stay_tuff_roll') / 330;          // ~$1.17/ft
+    } else if (fenceType === 'field_fence') {
+      wireCostPerFt = findPrice('field_fence_roll') / 330;        // ~$0.56/ft
+    } else if (fenceType === 'barbed_wire') {
+      // Barbed wire: 4 strands
+      wireCostPerFt = (findPrice('barbed_wire') / 1320) * 4;     // ~$0.29/ft
+    } else if (fenceType === 'no_climb') {
+      wireCostPerFt = findPrice('no_climb_roll') / 200;           // ~$1.40/ft
+    } else if (fenceType === 't_post_wire') {
+      wireCostPerFt = findPrice('field_fence_roll') / 330;
+    } else {
+      wireCostPerFt = findPrice('field_fence_roll') / 330;
+    }
+    // Add 10% overlap factor
+    wireCostPerFt *= 1.10;
+
+    // Top wire (barbed or HT smooth) unless it IS barbed wire fence
+    let topWireCostPerFt = 0;
+    if (fenceType !== 'barbed_wire') {
+      const strands = fenceHeight >= '6ft' ? 2 : 1;
+      topWireCostPerFt = (findPrice('ht_smooth') / 4000) * strands;
+    }
+
+    // -- T-Post cost per foot --
+    const tPostPriceMap: Record<string, string> = { '6ft': 't_post_6', '7ft': 't_post_7', '8ft': 't_post_8' };
+    const tPostPrice = findPrice(tPostPriceMap[tPostHeight] || 't_post_7');
+    const tPostCostPerFt = tPostPrice / tPostSpacing;
+
+    // -- Line post (drill stem / square tube) cost per foot --
+    const heightNeedsLong = fenceHeight >= '7ft';
+    let linePostPrice = 0;
+    if (postMaterial === 'drill_stem') {
+      linePostPrice = findPrice(heightNeedsLong ? 'drill_stem_10' : 'drill_stem_8');
+    } else {
+      linePostPrice = findPrice(heightNeedsLong ? 'square_tube_10' : 'square_tube_8');
+    }
+    const linePostCostPerFt = linePostPrice / linePostSpacing;
+
+    // -- Concrete per foot (2 bags per line post) --
+    const concreteCostPerFt = (findPrice('concrete_80') * 2) / linePostSpacing;
+
+    // -- Hardware per foot (clips, tensioners, brace wire) --
+    const clipsCostPerFt = (findPrice('clips_100') / 100) * (4 / tPostSpacing); // ~4 clips per post
+    const tensionerCostPerFt = findPrice('tensioner') / 330; // roughly 1 per roll length
+    const braceWireCostPerFt = findPrice('brace_wire') / 200; // avg spread
+
+    const hardwareCostPerFt = clipsCostPerFt + tensionerCostPerFt + braceWireCostPerFt;
+
+    const total = wireCostPerFt + topWireCostPerFt + tPostCostPerFt + linePostCostPerFt + concreteCostPerFt + hardwareCostPerFt;
+    return {
+      wire: Math.round(wireCostPerFt * 100) / 100,
+      topWire: Math.round(topWireCostPerFt * 100) / 100,
+      tPosts: Math.round(tPostCostPerFt * 100) / 100,
+      linePosts: Math.round(linePostCostPerFt * 100) / 100,
+      concrete: Math.round(concreteCostPerFt * 100) / 100,
+      hardware: Math.round(hardwareCostPerFt * 100) / 100,
+      total: Math.round(total * 100) / 100,
+    };
+  }, [fenceType, fenceHeight, tPostHeight, tPostSpacing, linePostSpacing, postMaterial, materialPrices]);
+
+  const baseRate = materialCostPerFoot.total + laborRate;
+  const effectiveRate = useMemo(() => Math.round((materialCostPerFoot.total + laborRate * terrainMult) * 100) / 100, [materialCostPerFoot.total, laborRate, terrainMult]);
 
   const computed = useMemo(() => sections.map(sec => {
     const rate = sec.ratePerFoot > 0 ? sec.ratePerFoot : effectiveRate;
@@ -318,19 +389,53 @@ export default function FencingPage() {
               </div>
             </Card>
 
-            <Card title="Pricing" icon="\ud83d\udcb0">
+            <Card title="Pricing" icon="💰">
               <div className="space-y-4">
-                <DSlider label="Base Rate per Foot" value={baseRate} min={4} max={30} step={0.5}
-                  display={`$$${baseRate.toFixed(2)}/ft`.replace('$$','$')} onChange={setBaseRate} minLabel="$4" maxLabel="$30" />
+                {/* T-Post Height selector */}
+                <div>
+                  <label className="block text-xs font-medium text-steel-400 mb-1.5">T-Post Height</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(['6ft', '7ft', '8ft'] as const).map(h => (
+                      <button key={h} onClick={() => setTPostHeight(h)}
+                        className={`py-1.5 rounded-lg text-xs font-semibold transition ${tPostHeight === h ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30' : 'bg-surface-200 text-steel-400 hover:bg-surface-50 hover:text-steel-200'}`}>{h}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Material cost breakdown (auto-calculated) */}
+                <div className="bg-surface-200/60 rounded-lg p-3 space-y-1.5">
+                  <p className="text-[10px] font-bold text-steel-400 uppercase tracking-wider mb-2">Material Cost / Ft (auto)</p>
+                  {[
+                    { label: `Wire (${FENCE_TYPES[fenceType]?.split(' ').slice(-2).join(' ') || fenceType})`, value: materialCostPerFoot.wire },
+                    { label: 'Top Wire (HT smooth)', value: materialCostPerFoot.topWire },
+                    { label: `T-Posts (${tPostHeight} @ ${tPostSpacing}' spacing)`, value: materialCostPerFoot.tPosts },
+                    { label: `Line Posts (${postMaterial === 'drill_stem' ? 'Drill Stem' : 'Sq Tube'} @ ${linePostSpacing}')`, value: materialCostPerFoot.linePosts },
+                    { label: 'Concrete', value: materialCostPerFoot.concrete },
+                    { label: 'Hardware (clips, tensioners, etc.)', value: materialCostPerFoot.hardware },
+                  ].map(row => (
+                    <div key={row.label} className="flex justify-between items-center">
+                      <span className="text-[10px] text-steel-500">{row.label}</span>
+                      <span className="text-[10px] text-steel-300 font-mono">${row.value.toFixed(2)}</span>
+                    </div>
+                  ))}
+                  <div className="border-t border-steel-700/30 pt-1.5 mt-1.5 flex justify-between items-center">
+                    <span className="text-xs text-steel-300 font-semibold">Material Total</span>
+                    <span className="text-xs text-amber-400 font-bold font-mono">${materialCostPerFoot.total.toFixed(2)}/ft</span>
+                  </div>
+                </div>
+
+                {/* Labor rate slider */}
+                <DSlider label="Labor Rate per Foot" value={laborRate} min={2} max={20} step={0.5}
+                  display={`$${laborRate.toFixed(2)}/ft`} onChange={setLaborRate} minLabel="$2" maxLabel="$20" />
 
                 <div>
                   <div className="flex justify-between items-center mb-1.5">
                     <label className="text-xs font-medium text-steel-400">Terrain Difficulty</label>
-                    <span className={`text-xs font-bold ${TERRAIN_MAP[terrain]?.color || 'text-steel-300'}`}>{terrainMult}x</span>
+                    <span className={`text-xs font-bold ${TERRAIN_MAP[terrain]?.color || 'text-steel-300'}`}>{terrainMult}x labor</span>
                   </div>
                   {terrainSuggestion && (
                     <div className="mb-2 bg-amber-900/20 border border-amber-700/30 rounded-lg p-2 text-[10px] text-amber-300">
-                      <span className="font-semibold">\u26a1 AI Suggested: {TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label}</span>
+                      <span className="font-semibold">⚡ AI Suggested: {TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label}</span>
                       {terrainSuggestion.soilType && <span className="block text-amber-400/70 mt-0.5">Soil: {terrainSuggestion.soilType}</span>}
                       <span className="block text-amber-400/70">Elev change: {Math.round(terrainSuggestion.elevationChange)} ft | Confidence: {Math.round(terrainSuggestion.confidence * 100)}%</span>
                     </div>
@@ -339,18 +444,23 @@ export default function FencingPage() {
                     {Object.entries(TERRAIN_MAP).map(([k, v]) => (
                       <button key={k} onClick={() => setTerrain(k)}
                         className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition text-left ${terrain === k ? 'bg-amber-600/20 text-amber-300 border border-amber-500/50' : 'bg-surface-200 text-steel-400 border border-steel-700/20 hover:bg-surface-50'}`}>
-                        {v.label}<span className="block text-[9px] opacity-70">{v.mult}x rate</span>
+                        {v.label}<span className="block text-[9px] opacity-70">{v.mult}x labor rate</span>
                       </button>
                     ))}
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-r from-amber-900/30 to-orange-900/30 rounded-lg p-3 border border-amber-700/30">
+                {/* Effective rate summary */}
+                <div className="bg-gradient-to-r from-amber-900/30 to-orange-900/30 rounded-lg p-3 border border-amber-700/30 space-y-1.5">
                   <div className="flex justify-between items-center">
                     <span className="text-xs font-medium text-amber-300">Effective Rate</span>
                     <span className="text-lg font-bold text-amber-400">${effectiveRate.toFixed(2)}/ft</span>
                   </div>
-                  <p className="text-[10px] text-amber-400/60 mt-1">${baseRate.toFixed(2)} base \u00d7 {terrainMult}x terrain</p>
+                  <div className="text-[10px] text-amber-400/60 space-y-0.5">
+                    <div className="flex justify-between"><span>Material:</span><span>${materialCostPerFoot.total.toFixed(2)}/ft</span></div>
+                    <div className="flex justify-between"><span>Labor ({terrainMult}x):</span><span>${(laborRate * terrainMult).toFixed(2)}/ft</span></div>
+                    <div className="flex justify-between border-t border-amber-700/30 pt-0.5"><span className="font-semibold">Combined:</span><span className="font-semibold">${effectiveRate.toFixed(2)}/ft</span></div>
+                  </div>
                 </div>
 
                 <DSlider label="Deposit %" value={depositPercent} min={25} max={75} step={5}
