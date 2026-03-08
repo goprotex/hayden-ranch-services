@@ -196,10 +196,16 @@ export default function RoofMap({
     const edgeF: GeoJSON.Feature[] = [];
     const labelF: GeoJSON.Feature[] = [];
     const vertF: GeoJSON.Feature[] = [];
+    const pitchF: GeoJSON.Feature[] = [];
 
     polysRef.current.forEach((poly, pi) => {
       const ring = [...poly.coordinates, poly.coordinates[0]];
       polyF.push({ type: 'Feature', properties: { color: poly.color || FACET_COLORS[pi % FACET_COLORS.length] }, geometry: { type: 'Polygon', coordinates: [ring] } });
+
+      // Pitch label at centroid
+      const cx = poly.coordinates.reduce((s, v) => s + v[0], 0) / poly.coordinates.length;
+      const cy = poly.coordinates.reduce((s, v) => s + v[1], 0) / poly.coordinates.length;
+      pitchF.push({ type: 'Feature', properties: { label: poly.pitch, color: poly.color || FACET_COLORS[pi % FACET_COLORS.length] }, geometry: { type: 'Point', coordinates: [cx, cy] } });
 
       // Perimeter edges
       for (const e of poly.edges) {
@@ -235,6 +241,7 @@ export default function RoofMap({
     const set = (id: string, fc: GeoJSON.Feature[]) => { const s = map.getSource(id) as mapboxgl.GeoJSONSource | undefined; if (s) s.setData({ type: 'FeatureCollection', features: fc }); };
     set('roof-polygons', polyF); set('roof-edges', edgeF); set('roof-labels', labelF);
     set('roof-vertices', vertF); set('roof-drawing', drawF); set('roof-panels', panelF);
+    set('roof-pitch', pitchF);
   }, [cutListPanels]);
 
   /* == Geocode == */
@@ -409,7 +416,7 @@ export default function RoofMap({
         map.on('load', () => {
           if (cancelled) return;
           const empty: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
-          ['roof-polygons','roof-edges','roof-labels','roof-vertices','roof-drawing','roof-panels'].forEach(id => map.addSource(id, { type: 'geojson', data: empty }));
+          ['roof-polygons','roof-edges','roof-labels','roof-vertices','roof-drawing','roof-panels','roof-pitch'].forEach(id => map.addSource(id, { type: 'geojson', data: empty }));
           map.addLayer({ id: 'roof-poly-fill', type: 'fill', source: 'roof-polygons', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.25 } });
           map.addLayer({ id: 'roof-poly-outline', type: 'line', source: 'roof-polygons', paint: { 'line-color': ['get', 'color'], 'line-width': 1, 'line-opacity': 0.4 } });
           map.addLayer({ id: 'roof-edge-lines', type: 'line', source: 'roof-edges', paint: { 'line-color': ['get', 'color'], 'line-width': 3.5 } });
@@ -419,6 +426,7 @@ export default function RoofMap({
           map.addLayer({ id: 'roof-draw-pts', type: 'circle', source: 'roof-drawing', paint: { 'circle-radius': 5, 'circle-color': '#fbbf24', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' }, filter: ['==', ['geometry-type'], 'Point'] });
           map.addLayer({ id: 'roof-panel-fill', type: 'fill', source: 'roof-panels', paint: { 'fill-color': '#60a5fa', 'fill-opacity': 0.3 } });
           map.addLayer({ id: 'roof-panel-stroke', type: 'line', source: 'roof-panels', paint: { 'line-color': '#93c5fd', 'line-width': 0.5 } });
+          map.addLayer({ id: 'roof-pitch-labels', type: 'symbol', source: 'roof-pitch', layout: { 'text-field': ['get', 'label'], 'text-size': 16, 'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': true }, paint: { 'text-color': '#fff', 'text-halo-color': '#000', 'text-halo-width': 2.5 } });
           setMapLoaded(true);
         });
         mapRef.current = map;

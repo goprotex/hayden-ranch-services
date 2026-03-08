@@ -16,7 +16,6 @@ import {
   RoofSketchFacet,
 } from '@/lib/roofing/roofing-bid-pdf';
 import { RoofModel, RoofFacet, PanelProfile, ReportSource, CutList } from '@/types';
-import RoofSketchBuilder from '@/components/roofing/RoofSketchBuilder';
 import CutListTable from '@/components/roofing/CutListTable';
 import TrimTable from '@/components/roofing/TrimTable';
 import HaydenLogo from '@/components/HaydenLogo';
@@ -84,8 +83,7 @@ export default function RoofingPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [manualFacets, setManualFacets] = useState<RoofFacet[]>([]);
-  const [selectedFacetId, setSelectedFacetId] = useState<string | null>(null);
-  const [mode, setMode] = useState<'manual' | 'import' | 'bid'>('bid');
+  const [mode, setMode] = useState<'import' | 'bid'>('bid');
 
   // Bid creator state
   const [bidClientName, setBidClientName] = useState('');
@@ -165,7 +163,7 @@ export default function RoofingPage() {
     if (manualFacets.length === 0) return;
     const totalArea = manualFacets.reduce((s, f) => s + f.areaSquareFeet, 0);
     const model: RoofModel = {
-      id: `rm_${Date.now()}`, projectName: projectName || 'Manual Sketch',
+      id: `rm_${Date.now()}`, projectName: projectName || 'Imported Model',
       address: projectAddress || '', source: 'manual', totalAreaSqFt: totalArea,
       facets: manualFacets, createdAt: new Date().toISOString(),
     };
@@ -359,7 +357,7 @@ export default function RoofingPage() {
       <main className="max-w-[1600px] mx-auto px-6 py-6">
         {/* Mode Tabs */}
         <div className="flex gap-2 mb-6 animate-fade-in">
-          {([['manual', '\ud83d\udccd Build Manually'], ['import', '\ud83d\udcc4 Import Report'], ['bid', '\ud83d\udcb0 Bid Creator']] as const).map(([m, label]) => (
+          {([['import', '\ud83d\udcc4 Import Report'], ['bid', '\ud83d\udcb0 Bid Creator']] as const).map(([m, label]) => (
             <button key={m} onClick={() => setMode(m as typeof mode)}
               className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${mode === m ? 'bg-gradient-to-r from-amber-600 to-amber-500 text-white glow-amber shadow-lg' : 'glass text-steel-300 hover:text-steel-100 hover:border-steel-600 card-dark-hover'}`}>{label}</button>
           ))}
@@ -538,25 +536,6 @@ export default function RoofingPage() {
                     </div>
                   )}
 
-                  {/* Fallback manual sketch */}
-                  <div className="card-dark p-4">
-                    <h3 className="text-steel-200 font-semibold text-sm mb-3 flex items-center gap-2">
-                      <span className="text-blue-400">\u270d</span> Manual Sketch Builder
-                    </h3>
-                    <p className="text-xs text-steel-500 mb-3">Or build a sketch using shapes. Drag to resize and position facets.</p>
-                    <RoofSketchBuilder facets={manualFacets} onFacetsChange={setManualFacets} selectedFacetId={selectedFacetId} onSelectFacet={setSelectedFacetId} />
-                    {manualFacets.length > 0 && (
-                      <button onClick={() => {
-                        setBidSections(manualFacets.map(f => ({
-                          id: f.id, name: f.label, areaSqFt: f.areaSquareFeet, ratePerSqFt: 0, total: 0, pitch: f.pitchRatio,
-                        })));
-                        setBidView('sections');
-                      }}
-                        className="mt-3 text-sm bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-xl hover:bg-blue-600/30 transition font-medium">
-                        \u2192 Use Sketch Facets as Bid Sections
-                      </button>
-                    )}
-                  </div>
                 </div>
               )}
 
@@ -805,10 +784,6 @@ export default function RoofingPage() {
                     </select>
                   </div>
                   <div className="space-y-2">
-                    {mode === 'manual' && !activeModel && (
-                      <button onClick={handleBuildFromSketch} disabled={manualFacets.length === 0}
-                        className="w-full bg-amber-600 text-white font-semibold py-2.5 px-4 rounded-xl hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed transition">Save Roof Model</button>
-                    )}
                     <button onClick={handleGenerateCutList} disabled={!activeModel && manualFacets.length === 0}
                       className="w-full bg-blue-600 text-white font-semibold py-2.5 px-4 rounded-xl hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition">Generate Cut List</button>
                     {activeCutList && (
@@ -843,20 +818,6 @@ export default function RoofingPage() {
             </div>
 
             <div className="lg:col-span-2 space-y-6">
-              <div className="card-dark overflow-hidden">
-                <div className="px-6 py-4 border-b border-steel-700/30 flex items-center justify-between">
-                  <h2 className="text-steel-200 font-semibold">Roof Sketch Builder</h2>
-                  {manualFacets.length > 0 && (
-                    <span className="text-sm text-steel-400">
-                      {manualFacets.length} facet(s) \u2022 {manualFacets.reduce((s, f) => s + f.areaSquareFeet, 0).toLocaleString()} sq ft
-                    </span>
-                  )}
-                </div>
-                <div className="p-4">
-                  <RoofSketchBuilder facets={manualFacets} onFacetsChange={setManualFacets} selectedFacetId={selectedFacetId} onSelectFacet={setSelectedFacetId} />
-                </div>
-              </div>
-
               {activeCutList && (
                 <>
                   <div className="card-dark overflow-hidden">
