@@ -10,6 +10,7 @@ import {
   FenceBid,
 } from '@/types';
 import { DEFAULT_MATERIAL_PRICES, MaterialPrice } from '@/lib/fencing/fence-materials';
+import { matchReceiptToMaterial } from '@/lib/pricing/receipt-matcher';
 
 interface AppState {
   // Projects
@@ -43,6 +44,7 @@ interface AppState {
   materialPrices: MaterialPrice[];
   updateMaterialPrice: (id: string, price: number) => void;
   resetMaterialPrices: () => void;
+  syncReceiptPrices: () => { matched: number; updated: number };
 
   // UI state
   selectedPanelProfile: PanelProfile;
@@ -106,6 +108,26 @@ export const useAppStore = create<AppState>()(
         })),
       resetMaterialPrices: () =>
         set({ materialPrices: [...DEFAULT_MATERIAL_PRICES] }),
+      syncReceiptPrices: () => {
+        let matched = 0;
+        let updated = 0;
+        set((state) => {
+          const newPrices = [...state.materialPrices];
+          for (const entry of state.priceDatabase) {
+            const match = matchReceiptToMaterial(entry, newPrices);
+            if (match) {
+              matched++;
+              const idx = newPrices.findIndex(m => m.id === match.id);
+              if (idx >= 0 && newPrices[idx].price !== match.newPrice) {
+                newPrices[idx] = { ...newPrices[idx], price: match.newPrice };
+                updated++;
+              }
+            }
+          }
+          return { materialPrices: newPrices };
+        });
+        return { matched, updated };
+      },
 
       // UI state
       selectedPanelProfile: 'standing_seam_snap_lock_16',
@@ -116,6 +138,22 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'hayden-ranch-store',
+      version: 2,
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState || {}) as Partial<AppState>;
+        const merged = { ...currentState, ...persisted } as AppState;
+        // Ensure all default material prices exist (handles schema additions)
+        if (merged.materialPrices) {
+          const existingIds = new Set(merged.materialPrices.map(m => m.id));
+          const missing = DEFAULT_MATERIAL_PRICES.filter(d => !existingIds.has(d.id));
+          if (missing.length > 0) {
+            merged.materialPrices = [...merged.materialPrices, ...missing];
+          }
+        } else {
+          merged.materialPrices = [...DEFAULT_MATERIAL_PRICES];
+        }
+        return merged;
+      },
     }
   )
 );

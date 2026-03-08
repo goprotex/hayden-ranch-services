@@ -53,7 +53,7 @@ function heightFromInches(inches: number): FenceHeight {
 }
 
 export default function FencingPage() {
-  const { addFenceBid, materialPrices, updateMaterialPrice, resetMaterialPrices } = useAppStore();
+  const { addFenceBid, materialPrices, updateMaterialPrice, resetMaterialPrices, priceDatabase, syncReceiptPrices } = useAppStore();
 
   // Project info
   const [projectName, setProjectName] = useState('');
@@ -112,6 +112,7 @@ export default function FencingPage() {
 
   // UI
   const [activeTab, setActiveTab] = useState<'config' | 'preview' | 'pricing'>('config');
+  const [receiptSyncResult, setReceiptSyncResult] = useState<{ matched: number; updated: number } | null>(null);
   const [projectOverview, setProjectOverview] = useState(
     'Professional installation of high tensile fence with drill stem bracing system. All materials are commercial grade with concrete setting for structural posts.'
   );
@@ -139,6 +140,17 @@ export default function FencingPage() {
   const terrainMult = TERRAIN_MAP[terrain]?.mult || 1;
 
   // === Material cost per foot ===
+  // Soil difficulty affects concrete requirements and hardware costs
+  const soilMultiplier = useMemo(() => {
+    if (!terrainSuggestion?.soilType) return 1.0;
+    const difficulty = terrainSuggestion.suggestedDifficulty;
+    // Harder soil = more concrete per hole, potential augering costs
+    if (difficulty === 'very_difficult') return 1.5;
+    if (difficulty === 'difficult') return 1.25;
+    if (difficulty === 'moderate') return 1.1;
+    return 1.0;
+  }, [terrainSuggestion]);
+
   const materialCostPerFoot = useMemo(() => {
     const findPrice = (id: string) => materialPrices.find(m => m.id === id)?.price ?? 0;
 
@@ -178,8 +190,8 @@ export default function FencingPage() {
     const pricePerPost = postsPerJoint > 0 ? jointPrice / postsPerJoint : jointPrice;
     const linePostCostPerFt = pricePerPost / linePostSpacing;
 
-    // Concrete per foot (2 bags per line post)
-    const concreteCostPerFt = (findPrice('concrete_bag') * 2) / linePostSpacing;
+    // Concrete per foot (2 bags per line post, adjusted for soil difficulty)
+    const concreteCostPerFt = (findPrice('concrete_bag') * 2 * soilMultiplier) / linePostSpacing;
 
     // Hardware per foot
     const clipsCostPerFt = (findPrice('clips') / 500) * (4 / tPostSpacing);
@@ -197,7 +209,7 @@ export default function FencingPage() {
       hardware: Math.round(hardwareCostPerFt * 100) / 100,
       total: Math.round(total * 100) / 100,
     };
-  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices]);
+  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier]);
 
   const baseRate = materialCostPerFoot.total + laborRate;
   const effectiveRate = useMemo(() => Math.round((materialCostPerFoot.total + laborRate * terrainMult) * 100) / 100, [materialCostPerFoot.total, laborRate, terrainMult]);
@@ -425,7 +437,7 @@ export default function FencingPage() {
                     { label: 'Top Wire (HT smooth)', value: materialCostPerFoot.topWire },
                     { label: `T-Posts (${tPostRec.label} @ ${tPostSpacing}' spacing)`, value: materialCostPerFoot.tPosts },
                     { label: `Line Posts (${postMaterial === 'drill_stem' ? 'Drill Stem 31\'' : `Sq Tube ${squareTubeGauge} 20'`} @ ${linePostSpacing}')`, value: materialCostPerFoot.linePosts },
-                    { label: 'Concrete', value: materialCostPerFoot.concrete },
+                    { label: `Concrete${soilMultiplier > 1 ? ` (${soilMultiplier}x soil adj.)` : ''}`, value: materialCostPerFoot.concrete },
                     { label: 'Hardware (clips, tensioners, etc.)', value: materialCostPerFoot.hardware },
                   ].map(row => (
                     <div key={row.label} className="flex justify-between items-center">
@@ -451,7 +463,15 @@ export default function FencingPage() {
                   {terrainSuggestion && (
                     <div className="mb-2 bg-amber-900/20 border border-amber-700/30 rounded-lg p-2 text-[10px] text-amber-300">
                       <span className="font-semibold">&#x26a1; AI Suggested: {TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label}</span>
-                      {terrainSuggestion.soilType && <span className="block text-amber-400/80 mt-0.5 font-semibold">&#x1f30d; Predominant Soil: {terrainSuggestion.soilType}</span>}
+                      {terrainSuggestion.soilType && (
+                        <>
+                          <span className="block text-amber-400/80 mt-0.5 font-semibold">&#x1f30d; USDA Soil: {terrainSuggestion.soilType}</span>
+                          <span className="block text-amber-400/70">Concrete multiplier: {soilMultiplier}x (based on soil difficulty)</span>
+                        </>
+                      )}
+                      {!terrainSuggestion.soilType && (
+                        <span className="block text-steel-500 mt-0.5">&#x26a0;&#xfe0f; Soil data unavailable &mdash; using default difficulty</span>
+                      )}
                       <span className="block text-amber-400/70">Elev change: {Math.round(terrainSuggestion.elevationChange)} ft | Confidence: {Math.round(terrainSuggestion.confidence * 100)}%</span>
                     </div>
                   )}
@@ -532,12 +552,29 @@ export default function FencingPage() {
                 {terrainSuggestion?.soilType && (
                   <div className="bg-gradient-to-r from-amber-900/30 to-orange-900/30 rounded-xl p-4 border border-amber-700/30 flex items-center gap-3">
                     <span className="text-2xl">&#x1f30d;</span>
-                    <div>
-                      <p className="text-sm font-bold text-amber-300">Predominant Soil Type: {terrainSuggestion.soilType}</p>
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-amber-300">USDA Soil Survey: {terrainSuggestion.soilType}</p>
                       <p className="text-[11px] text-amber-400/70 mt-0.5">
                         Elevation change: {Math.round(terrainSuggestion.elevationChange)} ft &bull;
                         Avg elevation: {Math.round(terrainSuggestion.avgElevation)} ft &bull;
                         Suggested difficulty: {TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label}
+                      </p>
+                      <p className="text-[10px] text-amber-400/50 mt-0.5">
+                        Soil affects concrete requirements ({soilMultiplier}x) and labor difficulty.
+                        Source: USDA NRCS Web Soil Survey
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {terrainSuggestion && !terrainSuggestion.soilType && (
+                  <div className="bg-surface-200/50 rounded-xl p-3 border border-steel-700/30 flex items-center gap-3">
+                    <span className="text-xl">&#x26a0;&#xfe0f;</span>
+                    <div>
+                      <p className="text-xs text-steel-400">Soil data unavailable for this location</p>
+                      <p className="text-[10px] text-steel-500">
+                        Elevation: {Math.round(terrainSuggestion.avgElevation)} ft &bull;
+                        Change: {Math.round(terrainSuggestion.elevationChange)} ft &bull;
+                        Using terrain-based difficulty estimate
                       </p>
                     </div>
                   </div>
@@ -691,6 +728,34 @@ export default function FencingPage() {
             )}
             {activeTab === 'pricing' && (
               <div className="space-y-4 animate-fade-in">
+                {/* Receipt sync section */}
+                {priceDatabase.length > 0 && (
+                  <div className="card-dark p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">&#x1f4cb;</span>
+                        <h3 className="text-sm font-bold text-steel-200">Receipt Price Sync</h3>
+                      </div>
+                      <button onClick={() => {
+                        const result = syncReceiptPrices();
+                        setReceiptSyncResult(result);
+                      }} className="text-xs bg-amber-600/20 text-amber-400 px-3 py-1.5 rounded-lg font-semibold hover:bg-amber-600/30 transition">
+                        &#x26a1; Sync from Receipts ({priceDatabase.length} prices)
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-steel-500">
+                      Update material prices below using your uploaded receipts. Go to
+                      <Link href="/pricing" className="text-amber-400 hover:text-amber-300 mx-1 underline">Material Pricing</Link>
+                      to upload more receipts.
+                    </p>
+                    {receiptSyncResult && (
+                      <div className="mt-2 bg-emerald-900/20 border border-emerald-700/30 rounded-lg p-2 text-[10px] text-emerald-300 flex items-center justify-between">
+                        <span>&#x2705; {receiptSyncResult.matched} items matched, {receiptSyncResult.updated} prices updated from receipts</span>
+                        <button onClick={() => setReceiptSyncResult(null)} className="text-emerald-400/50 hover:text-emerald-300">&times;</button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="card-dark p-4">
                   <h3 className="text-sm font-bold text-steel-200 mb-3">Custom Material Pricing</h3>
                   <p className="text-xs text-steel-500 mb-4">Adjust unit prices for each material. Changes recalculate costs automatically.</p>

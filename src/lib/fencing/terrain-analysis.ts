@@ -99,9 +99,26 @@ export async function getElevationProfile(
 }
 
 /**
- * Query USDA NRCS Web Soil Survey for soil type at a location
+ * Query soil type via our server-side proxy (avoids CORS)
+ * Falls back to direct USDA query if proxy unavailable
  */
 export async function getSoilType(lng: number, lat: number): Promise<string | null> {
+  // Try our API proxy first (server-side, no CORS issues)
+  try {
+    const proxyRes = await fetch('/api/soil', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lng, lat }),
+    });
+    if (proxyRes.ok) {
+      const data = await proxyRes.json();
+      if (data?.soilType) return data.soilType;
+    }
+  } catch {
+    // Proxy failed, fall through to direct query
+  }
+
+  // Fallback: direct USDA SDA query (may hit CORS in browser)
   try {
     const url = `https://SDMDataAccess.sc.egov.usda.gov/Tabular/post.rest`;
     const query = `SELECT musym, muname FROM mapunit 

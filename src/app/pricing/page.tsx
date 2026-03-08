@@ -9,7 +9,7 @@ import { Receipt, PriceEntry, ReceiptItem } from '@/types';
 type UploadStatus = 'idle' | 'uploading' | 'processing' | 'done' | 'error';
 
 export default function PricingPage() {
-  const { receipts, priceDatabase, addReceipt, addPriceEntries } = useAppStore();
+  const { receipts, priceDatabase, addReceipt, addPriceEntries, syncReceiptPrices, materialPrices } = useAppStore();
   const [receiptText, setReceiptText] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [activeReceipt, setActiveReceipt] = useState<Receipt | null>(null);
@@ -17,6 +17,8 @@ export default function PricingPage() {
   const [uploadError, setUploadError] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [syncResult, setSyncResult] = useState<{ matched: number; updated: number } | null>(null);
 
   const processAIResult = useCallback(
     (data: Record<string, unknown>) => {
@@ -44,10 +46,13 @@ export default function PricingPage() {
       addReceipt(receipt);
       const entries = receiptToPriceEntries(receipt);
       addPriceEntries(entries);
+      // Auto-sync receipt prices to fencing material prices
+      const result = syncReceiptPrices();
+      setSyncResult(result);
       setActiveReceipt(receipt);
       setSupplierName('');
     },
-    [supplierName, addReceipt, addPriceEntries]
+    [supplierName, addReceipt, addPriceEntries, syncReceiptPrices]
   );
 
   const handleParseReceipt = useCallback(async () => {
@@ -75,6 +80,9 @@ export default function PricingPage() {
     addReceipt(receipt);
     const entries = receiptToPriceEntries(receipt);
     addPriceEntries(entries);
+    // Auto-sync receipt prices to fencing material prices
+    const result = syncReceiptPrices();
+    setSyncResult(result);
     setActiveReceipt(receipt);
     setReceiptText('');
     setSupplierName('');
@@ -137,6 +145,41 @@ export default function PricingPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Sync notification banner */}
+        {syncResult && (
+          <div className="mb-6 bg-gradient-to-r from-emerald-900/30 to-teal-900/30 border border-emerald-700/40 rounded-xl p-4 flex items-center justify-between animate-fade-in">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">&#x1f517;</span>
+              <div>
+                <p className="text-sm font-bold text-emerald-300">
+                  Receipt prices synced to fencing materials
+                </p>
+                <p className="text-xs text-emerald-400/70">
+                  {syncResult.matched} items matched &bull; {syncResult.updated} prices updated
+                </p>
+              </div>
+            </div>
+            <button onClick={() => setSyncResult(null)} className="text-emerald-400/50 hover:text-emerald-300 text-lg">&times;</button>
+          </div>
+        )}
+
+        {/* Manual sync button when receipts exist but haven't been synced */}
+        {priceDatabase.length > 0 && !syncResult && (
+          <div className="mb-6 bg-surface-300 border border-steel-700/30 rounded-xl p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-xl">&#x1f4cb;</span>
+              <p className="text-xs text-steel-400">
+                {priceDatabase.length} receipt prices available &mdash; sync them to your fencing material prices for accurate bids.
+              </p>
+            </div>
+            <button onClick={() => {
+              const result = syncReceiptPrices();
+              setSyncResult(result);
+            }} className="text-xs bg-amber-600/20 text-amber-400 px-4 py-2 rounded-lg font-semibold hover:bg-amber-600/30 transition whitespace-nowrap">
+              &#x26a1; Sync to Fencing Prices
+            </button>
+          </div>
+        )}
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Upload Panel */}
           <div className="space-y-6 animate-slide-in-left">
