@@ -53,7 +53,7 @@ function heightFromInches(inches: number): FenceHeight {
 }
 
 export default function FencingPage() {
-  const { addFenceBid, materialPrices, updateMaterialPrice, resetMaterialPrices, priceDatabase, syncReceiptPrices } = useAppStore();
+  const { addFenceBid, materialPrices, updateMaterialPrice, resetMaterialPrices, priceDatabase, syncReceiptPrices, loadSharedPrices, saveSharedPricesToServer } = useAppStore();
 
   // Project info
   const [projectName, setProjectName] = useState('');
@@ -146,6 +146,11 @@ export default function FencingPage() {
     setTerrainSuggestion(analysis);
     if (analysis.confidence > 0.4) setTerrain(analysis.suggestedDifficulty);
   }, []);
+
+  // Load shared material prices from server on mount
+  useEffect(() => {
+    loadSharedPrices();
+  }, [loadSharedPrices]);
 
   // Generate AI site analysis when terrain data arrives
   useEffect(() => {
@@ -1062,6 +1067,7 @@ export default function FencingPage() {
                       <button onClick={() => {
                         const result = syncReceiptPrices();
                         setReceiptSyncResult(result);
+                        if (result.updated > 0) saveSharedPricesToServer();
                       }} className="text-xs bg-amber-600/20 text-amber-400 px-3 py-1.5 rounded-lg font-semibold hover:bg-amber-600/30 transition">
                         &#x26a1; Sync from Receipts ({priceDatabase.length} prices)
                       </button>
@@ -1099,9 +1105,10 @@ export default function FencingPage() {
                                   const v = parseFloat(e.target.value) || 0;
                                   updateMaterialPrice(mp.id, v);
                                 }}
+                                onBlur={() => saveSharedPricesToServer()}
                               />
                               <button className="text-xs text-steel-600 hover:text-amber-400" title="Reset"
-                                onClick={() => updateMaterialPrice(mp.id, mp.defaultPrice)}
+                                onClick={() => { updateMaterialPrice(mp.id, mp.defaultPrice); saveSharedPricesToServer(); }}
                               >?</button>
                             </div>
                           ))}
@@ -1110,7 +1117,7 @@ export default function FencingPage() {
                     ));
                   })()}
                   <button className="mt-2 text-xs text-steel-500 hover:text-amber-400 underline"
-                    onClick={() => resetMaterialPrices()}>
+                    onClick={() => { resetMaterialPrices(); saveSharedPricesToServer(); }}>
                     Reset All to Defaults
                   </button>
                 </div>

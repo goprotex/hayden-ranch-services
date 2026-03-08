@@ -11,6 +11,7 @@ import {
 } from '@/types';
 import { DEFAULT_MATERIAL_PRICES, MaterialPrice } from '@/lib/fencing/fence-materials';
 import { matchReceiptToMaterial } from '@/lib/pricing/receipt-matcher';
+import { fetchSharedPrices, saveSharedPrices } from '@/lib/pricing/shared-pricing';
 
 interface AppState {
   // Projects
@@ -46,6 +47,10 @@ interface AppState {
   resetMaterialPrices: () => void;
   syncReceiptPrices: () => { matched: number; updated: number };
 
+  // Shared pricing — persist across all users via server API
+  loadSharedPrices: () => Promise<void>;
+  saveSharedPricesToServer: () => Promise<boolean>;
+
   // UI state
   selectedPanelProfile: PanelProfile;
   selectedGauge: number;
@@ -55,7 +60,7 @@ interface AppState {
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       // Projects
       projects: [],
       activeProjectId: null,
@@ -127,6 +132,23 @@ export const useAppStore = create<AppState>()(
           return { materialPrices: newPrices };
         });
         return { matched, updated };
+      },
+
+      // Shared pricing — persist to server so all users get the same prices
+      loadSharedPrices: async () => {
+        const shared = await fetchSharedPrices();
+        if (shared && shared.length > 0) {
+          set((state) => {
+            // Server prices win — merge with any new defaults not on server
+            const serverIds = new Set(shared.map(p => p.id));
+            const localOnly = state.materialPrices.filter(p => !serverIds.has(p.id));
+            return { materialPrices: [...shared, ...localOnly] };
+          });
+        }
+      },
+      saveSharedPricesToServer: async (): Promise<boolean> => {
+        const prices = get().materialPrices;
+        return saveSharedPrices(prices);
       },
 
       // UI state

@@ -31,6 +31,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# shared pricing data
+/data/*.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

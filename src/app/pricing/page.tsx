@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useAppStore } from '@/lib/store';
 import { parseReceiptText, receiptToPriceEntries } from '@/lib/pricing/receipt-parser';
@@ -9,7 +9,7 @@ import { Receipt, PriceEntry, ReceiptItem } from '@/types';
 type UploadStatus = 'idle' | 'uploading' | 'processing' | 'done' | 'error';
 
 export default function PricingPage() {
-  const { receipts, priceDatabase, addReceipt, addPriceEntries, syncReceiptPrices, materialPrices } = useAppStore();
+  const { receipts, priceDatabase, addReceipt, addPriceEntries, syncReceiptPrices, materialPrices, loadSharedPrices, saveSharedPricesToServer } = useAppStore();
   const [receiptText, setReceiptText] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [activeReceipt, setActiveReceipt] = useState<Receipt | null>(null);
@@ -19,6 +19,11 @@ export default function PricingPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [syncResult, setSyncResult] = useState<{ matched: number; updated: number } | null>(null);
+
+  // Load shared prices from server on mount
+  useEffect(() => {
+    loadSharedPrices();
+  }, [loadSharedPrices]);
 
   const processAIResult = useCallback(
     (data: Record<string, unknown>) => {
@@ -49,10 +54,12 @@ export default function PricingPage() {
       // Auto-sync receipt prices to fencing material prices
       const result = syncReceiptPrices();
       setSyncResult(result);
+      // Persist updated prices to server for all users
+      if (result.updated > 0) saveSharedPricesToServer();
       setActiveReceipt(receipt);
       setSupplierName('');
     },
-    [supplierName, addReceipt, addPriceEntries, syncReceiptPrices]
+    [supplierName, addReceipt, addPriceEntries, syncReceiptPrices, saveSharedPricesToServer]
   );
 
   const handleParseReceipt = useCallback(async () => {
@@ -83,12 +90,14 @@ export default function PricingPage() {
     // Auto-sync receipt prices to fencing material prices
     const result = syncReceiptPrices();
     setSyncResult(result);
+    // Persist updated prices to server for all users
+    if (result.updated > 0) saveSharedPricesToServer();
     setActiveReceipt(receipt);
     setReceiptText('');
     setSupplierName('');
     setUploadStatus('done');
     setTimeout(() => setUploadStatus('idle'), 2000);
-  }, [receiptText, supplierName, addReceipt, addPriceEntries, processAIResult]);
+  }, [receiptText, supplierName, addReceipt, addPriceEntries, processAIResult, syncReceiptPrices, saveSharedPricesToServer]);
 
   const handleFileUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -175,6 +184,7 @@ export default function PricingPage() {
             <button onClick={() => {
               const result = syncReceiptPrices();
               setSyncResult(result);
+              if (result.updated > 0) saveSharedPricesToServer();
             }} className="text-xs bg-amber-600/20 text-amber-400 px-4 py-2 rounded-lg font-semibold hover:bg-amber-600/30 transition whitespace-nowrap">
               &#x26a1; Sync to Fencing Prices
             </button>
