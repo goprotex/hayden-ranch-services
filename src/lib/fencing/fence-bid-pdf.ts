@@ -68,8 +68,8 @@ export interface FenceBidData {
   // Property research / soil narrative for the customer
   soilNarrative?: string;
 
-  // Map screenshot data URL (base64 PNG)
-  mapImageDataUrl?: string;
+  // Map screenshot data URLs (base64 PNGs) — supports multiple captures
+  mapImages?: string[];
 
   // Terms (use default if empty)
   customTerms?: string[];
@@ -183,30 +183,40 @@ export function generateFenceBidPDF(data: FenceBidData): void {
   y += overviewLines.length * 4 + 6;
 
   // ── Site Map (if captured) ──
-  if (data.mapImageDataUrl) {
-    try {
-      // Calculate image dimensions to fit content width
-      const imgWidth = cw;
-      const imgHeight = imgWidth * 0.55; // ~16:9 aspect ratio
-      y = ensureSpace(doc, y, imgHeight + 16);
+  if (data.mapImages && data.mapImages.length > 0) {
+    const imgWidth = cw;
+    const imgHeight = imgWidth * 0.55; // ~16:9 aspect ratio
 
-      doc.setTextColor(27, 38, 54);
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.text('SITE MAP & FENCE LAYOUT', mx, y);
-      y += 6;
+    for (let mi = 0; mi < data.mapImages.length; mi++) {
+      try {
+        y = ensureSpace(doc, y, imgHeight + 18);
 
-      doc.addImage(data.mapImageDataUrl, 'PNG', mx, y, imgWidth, imgHeight);
-      y += imgHeight + 2;
+        doc.setTextColor(27, 38, 54);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        if (mi === 0) {
+          doc.text(data.mapImages.length === 1 ? 'SITE MAP & FENCE LAYOUT' : `SITE MAP & FENCE LAYOUT (${mi + 1} of ${data.mapImages.length})`, mx, y);
+        } else {
+          doc.text(`SITE MAP — VIEW ${mi + 1} of ${data.mapImages.length}`, mx, y);
+        }
+        y += 6;
 
-      // Legend
-      doc.setFontSize(7);
-      doc.setFont('helvetica', 'italic');
-      doc.setTextColor(100, 100, 100);
-      doc.text('Satellite view showing fence line placement, gate locations, and brace positions. Orange = fence line, Red = end posts, Blue = corner braces, Green = H-braces, Yellow = gates.', mx, y);
-      y += 8;
-    } catch {
-      // Skip map image if it fails
+        doc.addImage(data.mapImages[mi], 'PNG', mx, y, imgWidth, imgHeight);
+        y += imgHeight + 2;
+
+        // Legend on first image only
+        if (mi === 0) {
+          doc.setFontSize(7);
+          doc.setFont('helvetica', 'italic');
+          doc.setTextColor(100, 100, 100);
+          doc.text('Satellite view showing fence line placement, gate locations, and brace positions. Orange = fence line, Red = end posts, Blue = corner braces, Green = H-braces, Yellow = gates.', mx, y);
+          y += 8;
+        } else {
+          y += 4;
+        }
+      } catch {
+        // Skip image if it fails
+      }
     }
   }
 

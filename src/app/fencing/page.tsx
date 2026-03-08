@@ -110,8 +110,8 @@ export default function FencingPage() {
   // Terrain analysis
   const [terrainSuggestion, setTerrainSuggestion] = useState<TerrainSuggestion | null>(null);
 
-  // Map capture for PDF
-  const [mapImageDataUrl, setMapImageDataUrl] = useState<string | null>(null);
+  // Map captures for PDF (supports multiple screenshots)
+  const [mapImages, setMapImages] = useState<string[]>([]);
 
   // UI
   const [activeTab, setActiveTab] = useState<'config' | 'preview' | 'pricing'>('config');
@@ -340,10 +340,10 @@ export default function FencingPage() {
       projectOverview: projectOverview + (address ? ` Site located at ${address}.` : ''),
       terrainDescription: TERRAIN_MAP[terrain]?.label || terrain,
       soilNarrative: buildSoilNarrative(),
-      mapImageDataUrl: mapImageDataUrl || undefined,
+      mapImages: mapImages.length > 0 ? mapImages : undefined,
     };
     generateFenceBidPDF(data);
-  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImageDataUrl]);
+  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages]);
 
   const handleSaveBid = useCallback(() => {
     addFenceBid({
@@ -367,7 +367,12 @@ export default function FencingPage() {
           </div>
           <div className="flex items-center gap-3">
             <button onClick={handleSaveBid} className="text-sm glass text-steel-300 px-4 py-2 rounded-lg hover:text-white transition font-medium">Save Bid</button>
-            {mapImageDataUrl && <span className="text-[10px] text-green-400">&#x2713; Map captured</span>}
+            {mapImages.length > 0 && (
+              <span className="flex items-center gap-1.5 text-[10px]">
+                <span className="text-green-400">&#x2713; {mapImages.length} map{mapImages.length > 1 ? 's' : ''} captured</span>
+                <button onClick={() => setMapImages([])} className="text-red-400 hover:text-red-300 underline">clear</button>
+              </span>
+            )}
             <button onClick={handleDownloadPDF} className="text-sm bg-gradient-to-r from-amber-600 to-orange-600 text-white px-5 py-2 rounded-lg hover:from-amber-500 hover:to-orange-500 transition font-semibold shadow-lg shadow-amber-900/30 flex items-center gap-2">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
               Download PDF
@@ -619,7 +624,7 @@ export default function FencingPage() {
                 <FenceMap
                   onFenceLinesChange={handleFenceLinesChange}
                   onTerrainAnalyzed={handleTerrainAnalyzed}
-                  onMapCapture={(dataUrl) => { setMapImageDataUrl(dataUrl); }}
+                  onMapCapture={(dataUrl) => { setMapImages(prev => [...prev, dataUrl]); }}
                 />
 
                 {/* Soil type banner */}
