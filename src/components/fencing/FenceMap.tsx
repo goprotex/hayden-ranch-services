@@ -374,6 +374,7 @@ export default function FenceMap({
           style: 'mapbox://styles/mapbox/satellite-streets-v12',
           center, zoom,
           attributionControl: false,
+          preserveDrawingBuffer: true, // required for canvas.toDataURL() map capture
         });
 
         map.addControl(new mapboxgl.NavigationControl(), 'top-right');
