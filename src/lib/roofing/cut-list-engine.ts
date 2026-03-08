@@ -10,6 +10,7 @@ import {
   FastenerRequirement,
   Accessory,
   FacetEdge,
+  Point2D,
 } from '@/types';
 import {
   PANEL_SPECS,
@@ -79,63 +80,133 @@ export function generateCutList(
   };
 }
 
+/* ── Geometry helpers ─────────────────────────────────────────── */
+
+/** Rotate point around an origin by angle (radians). */
+function rotPt(p: Point2D, o: Point2D, a: number): Point2D {
+  const c = Math.cos(a), s = Math.sin(a);
+  const dx = p.x - o.x, dy = p.y - o.y;
+  return { x: o.x + dx * c - dy * s, y: o.y + dx * s + dy * c };
+}
+
+/**
+ * For a closed polygon, find all Y-values where a vertical line at X
+ * intersects the polygon edges.  Uses a small epsilon nudge so we
+ * never land exactly on a vertex.
+ */
+function polyYsAtX(verts: Point2D[], rawX: number): number[] {
+  const EPS = 1e-9;
+  const onVtx = verts.some(v => Math.abs(v.x - rawX) < EPS);
+  const x = onVtx ? rawX + EPS * 10 : rawX;
+  const ys: number[] = [];
+  const n = verts.length;
+  for (let i = 0; i < n; i++) {
+    const a = verts[i];
+    const b = verts[(i + 1) % n];
+    const lo = Math.min(a.x, b.x);
+    const hi = Math.max(a.x, b.x);
+    if (x < lo || x > hi || Math.abs(a.x - b.x) < EPS) continue;
+    const t = (x - a.x) / (b.x - a.x);
+    if (t >= 0 && t <= 1) ys.push(a.y + t * (b.y - a.y));
+  }
+  return ys.sort((a, b) => a - b);
+}
+
 /**
  * Generate panel cuts for a single roof facet.
- * Panels run from eave edge toward ridge edge.
+ *
+ * All panels within a facet are PARALLEL, running perpendicular to the
+ * eave edge.  Each panel is clipped to the closed polygon shape of the
+ * facet so hip-end / valley facets produce progressively shorter panels.
  */
 function generateFacetPanels(
   facet: RoofFacet,
   spec: PanelSpec,
-  profile: PanelProfile
+  profile: PanelProfile,
 ): PanelCut[] {
   const panels: PanelCut[] = [];
-  const coverageWidthFeet = spec.widthInches / 12;
+  const verts = facet.vertices;
+  if (verts.length < 3) return panels;
 
-  // Find eave and ridge edges to determine panel run direction
-  const eaveEdges = facet.edgeTypes.filter(e => e.type === 'eave');
-  const ridgeEdges = facet.edgeTypes.filter(e => e.type === 'ridge');
+  const coverW = spec.widthInches / 12;          // coverage width (ft)
 
-  // Calculate bounding box
-  const minX = Math.min(...facet.vertices.map(v => v.x));
-  const maxX = Math.max(...facet.vertices.map(v => v.x));
-  const minY = Math.min(...facet.vertices.map(v => v.y));
-  const maxY = Math.max(...facet.vertices.map(v => v.y));
+  /* ── 1. Determine eave direction so we can align panels ──────── */
+  const eaveEdges = facet.edgeTypes.filter(
+    e => e.type === 'eave' || e.type === 'drip_edge',
+  );
 
-  // Determine eave and ridge Y positions
-  let eaveY = minY;
-  let ridgeY = maxY;
+  let eaveAngle = 0;                              // radians
   if (eaveEdges.length > 0) {
-    eaveY = eaveEdges.reduce((s, e) => s + (e.start.y + e.end.y) / 2, 0) / eaveEdges.length;
-  }
-  if (ridgeEdges.length > 0) {
-    ridgeY = ridgeEdges.reduce((s, e) => s + (e.start.y + e.end.y) / 2, 0) / ridgeEdges.length;
-  }
-
-  // Panel length = eave-to-ridge distance, accounting for pitch
-  const eaveToRidgeFeet = Math.abs(ridgeY - eaveY);
-  const pitchFactor = 1 / Math.cos((facet.pitchDegrees * Math.PI) / 180);
-  const panelLength = eaveToRidgeFeet * pitchFactor;
-
-  // Lay panels side by side across the facet width (perpendicular to eave)
-  const facetWidthFeet = maxX - minX;
-  const numPanels = Math.ceil(facetWidthFeet / coverageWidthFeet);
-
-  for (let i = 0; i < numPanels; i++) {
-    const xPos = minX + i * coverageWidthFeet;
-    const clampedLength = Math.min(
-      Math.max(panelLength, spec.minLengthFeet),
-      spec.maxLengthFeet
+    const longest = eaveEdges.reduce((a, b) =>
+      a.lengthFeet >= b.lengthFeet ? a : b,
     );
+    eaveAngle = Math.atan2(
+      longest.end.y - longest.start.y,
+      longest.end.x - longest.start.x,
+    );
+  } else {
+    // fallback: polygon edge with lowest average Y (likely eave)
+    let bestIdx = 0, bestAvg = Infinity;
+    for (let i = 0; i < verts.length; i++) {
+      const a = verts[i], b = verts[(i + 1) % verts.length];
+      const avg = (a.y + b.y) / 2;
+      if (avg < bestAvg) { bestAvg = avg; bestIdx = i; }
+    }
+    const a = verts[bestIdx], b = verts[(bestIdx + 1) % verts.length];
+    eaveAngle = Math.atan2(b.y - a.y, b.x - a.x);
+  }
+
+  /* ── 2. Rotate polygon so eave is horizontal ─────────────────── */
+  const origin = verts[0];
+  const rot = -eaveAngle;
+  const rv = verts.map(v => rotPt(v, origin, rot));   // rotated verts
+
+  const rMinX = Math.min(...rv.map(v => v.x));
+  const rMaxX = Math.max(...rv.map(v => v.x));
+  const facetW = rMaxX - rMinX;
+  if (facetW < 0.1) return panels;
+
+  const numPanels = Math.ceil(facetW / coverW);
+  const pitchFactor =
+    1 / Math.cos((facet.pitchDegrees * Math.PI) / 180);
+
+  /* ── 3. For each panel strip, clip to polygon ────────────────── */
+  for (let i = 0; i < numPanels; i++) {
+    // sample at the centre of this strip
+    const cx = rMinX + (i + 0.5) * coverW;
+    if (cx > rMaxX) continue;
+
+    const ys = polyYsAtX(rv, cx);
+    if (ys.length < 2) continue;
+
+    const yMin = ys[0];
+    const yMax = ys[ys.length - 1];
+    const run = yMax - yMin;
+    if (run < 0.1) continue;                       // skip tiny slivers
+
+    const len = run * pitchFactor;
+    const clamped = Math.min(
+      Math.max(len, spec.minLengthFeet),
+      spec.maxLengthFeet,
+    );
+    const rounded = Math.ceil(clamped * 4) / 4;    // nearest ¼ ft up
+
+    // position in rotated space (left-x, bottom-y of panel rect)
+    const rPos: Point2D = { x: rMinX + i * coverW, y: yMin };
+
+    // rotate back to original model coordinates
+    const oPos = rotPt(rPos, origin, -rot);
+
     panels.push({
-      id: 'p_' + facet.id + '_' + i,
+      id: `p_${facet.id}_${i}`,
       facetId: facet.id,
       panelProfile: profile,
-      lengthFeet: Math.ceil(clampedLength * 4) / 4,
+      lengthFeet: rounded,
       widthInches: spec.widthInches,
       position: {
-        x: xPos,
-        y: Math.min(eaveY, ridgeY),
-        rotation: 0,
+        x: oPos.x,
+        y: oPos.y,
+        rotation: (eaveAngle * 180) / Math.PI + 90,
       },
     });
   }

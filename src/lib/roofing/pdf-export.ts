@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import { CutList, RoofModel, RoofFacet, PanelCut } from '@/types';
+import { CutList, RoofModel, RoofFacet, PanelCut, Point2D } from '@/types';
 import { PANEL_SPECS } from './panel-specs';
 
 const TRIM_LABELS: Record<string, string> = {
@@ -51,6 +51,13 @@ function fmtLen(feet: number): string {
   if (inches === 0) return `${whole}'`;
   if (inches === 12) return `${whole + 1}'`;
   return `${whole}'${inches}"`;
+}
+
+/** Rotate a point around an origin by angle (radians) */
+function rotPt(p: Point2D, o: Point2D, a: number): Point2D {
+  const c = Math.cos(a), s = Math.sin(a);
+  const dx = p.x - o.x, dy = p.y - o.y;
+  return { x: o.x + dx * c - dy * s, y: o.y + dx * s + dy * c };
 }
 export function generateCutListPDF(cutList: CutList, roofModel: RoofModel): void {
   const doc = new jsPDF('p', 'mm', 'letter');
@@ -116,7 +123,6 @@ export function generateCutListPDF(cutList: CutList, roofModel: RoofModel): void
     doc.text(item, margin + colW * i + colW / 2, y + 10, { align: 'center' });
   });
   y += 25;
-
   // ---- UNIQUE CUT LENGTHS ----
   const uniqueLengths = [...new Set(cutList.panels.map(p => p.lengthFeet))].sort((a, b) => b - a);
   doc.setFont('helvetica', 'bold');
@@ -132,14 +138,15 @@ export function generateCutListPDF(cutList: CutList, roofModel: RoofModel): void
   });
   doc.text(lengthChunks.join('   |   '), margin, y);
   y += 10;
+
   // ---- PANEL SUMMARY TABLE ----
   y = drawSectionHeader(doc, 'Panel Summary by Facet', margin, y, contentWidth);
   const sumCols = [
     { label: 'Facet', width: 40, align: 'left' as const },
     { label: 'Pitch', width: 20, align: 'center' as const },
     { label: 'Panels', width: 20, align: 'right' as const },
-    { label: 'Panel Length', width: 30, align: 'right' as const },
-    { label: 'Width', width: 22, align: 'right' as const },
+    { label: 'Shortest', width: 28, align: 'right' as const },
+    { label: 'Longest', width: 28, align: 'right' as const },
     { label: 'Sq Ft', width: 25, align: 'right' as const },
   ];
   y = drawTableHeader(doc, sumCols, margin, y);
@@ -148,12 +155,13 @@ export function generateCutListPDF(cutList: CutList, roofModel: RoofModel): void
     if (fp.length === 0) continue;
     if (y > 255) { doc.addPage(); y = margin; y = drawTableHeader(doc, sumCols, margin, y); }
     const sqft = fp.reduce((s, p) => s + (p.lengthFeet * p.widthInches) / 12, 0);
+    const lengths = fp.map(p => p.lengthFeet);
     const row = [
       facet.label || facet.id,
       facet.pitchRatio,
       String(fp.length),
-      fmtLen(fp[0].lengthFeet),
-      `${fp[0].widthInches}"`,
+      fmtLen(Math.min(...lengths)),
+      fmtLen(Math.max(...lengths)),
       `${Math.round(sqft)} sf`,
     ];
     const rowIdx = roofModel.facets.indexOf(facet);
@@ -173,7 +181,6 @@ export function generateCutListPDF(cutList: CutList, roofModel: RoofModel): void
     y += 5.5;
   }
   y += 8;
-
   // ---- FACET DIAGRAM PAGES ----
   for (const facet of roofModel.facets) {
     const facetPanels = cutList.panels.filter(p => p.facetId === facet.id);
@@ -187,10 +194,9 @@ export function generateCutListPDF(cutList: CutList, roofModel: RoofModel): void
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.setTextColor(255, 255, 255);
-    doc.text(
-      `${facet.label || facet.id}  \u2014  ${facet.pitchRatio} pitch  \u2014  ${facetPanels.length} panels  \u2014  ${Math.round(facet.areaSquareFeet)} sq ft`,
-      margin + 4, y + 6.5,
-    );
+    const lengths = facetPanels.map(p => p.lengthFeet);
+    const titleStr = `${facet.label || facet.id}  \u2014  ${facet.pitchRatio} pitch  \u2014  ${facetPanels.length} panels  \u2014  ${Math.round(facet.areaSquareFeet)} sq ft`;
+    doc.text(titleStr, margin + 4, y + 6.5);
     y += 14;
 
     // Visual diagram
@@ -214,7 +220,7 @@ export function generateCutListPDF(cutList: CutList, roofModel: RoofModel): void
     }
     y += 6;
 
-    // Per-facet panel list
+    // Per-facet panel list with individual lengths
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(30, 41, 59);
@@ -315,7 +321,11 @@ export function generateCutListPDF(cutList: CutList, roofModel: RoofModel): void
   const fileName = `CutList_${roofModel.projectName.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
   doc.save(fileName);
 }
-/** Draw a visual panel layout diagram for one facet */
+/**
+ * Draw a visual panel layout diagram for one facet.
+ * Rotates the coordinate system so the eave is horizontal and panels
+ * appear as parallel vertical strips clipped to the polygon shape.
+ */
 function drawFacetDiagram(
   doc: jsPDF,
   facet: RoofFacet,
@@ -328,28 +338,58 @@ function drawFacetDiagram(
   const verts = facet.vertices;
   if (verts.length < 3) return startY;
 
-  // Bounding box of facet vertices
-  const fMinX = Math.min(...verts.map(v => v.x));
-  const fMaxX = Math.max(...verts.map(v => v.x));
-  const fMinY = Math.min(...verts.map(v => v.y));
-  const fMaxY = Math.max(...verts.map(v => v.y));
+  // -- Determine eave angle and rotate everything so eave is horizontal --
+  const eaveEdges = facet.edgeTypes.filter(e => e.type === 'eave' || e.type === 'drip_edge');
+  let eaveAngle = 0;
+  if (eaveEdges.length > 0) {
+    const longest = eaveEdges.reduce((a, b) => a.lengthFeet >= b.lengthFeet ? a : b);
+    eaveAngle = Math.atan2(longest.end.y - longest.start.y, longest.end.x - longest.start.x);
+  } else {
+    let bestIdx = 0, bestAvg = Infinity;
+    for (let i = 0; i < verts.length; i++) {
+      const a = verts[i], b = verts[(i + 1) % verts.length];
+      const avg = (a.y + b.y) / 2;
+      if (avg < bestAvg) { bestAvg = avg; bestIdx = i; }
+    }
+    const a = verts[bestIdx], b = verts[(bestIdx + 1) % verts.length];
+    eaveAngle = Math.atan2(b.y - a.y, b.x - a.x);
+  }
 
-  // Expand bounding box to include full panel rectangles (may overhang past facet at hip/valley)
-  let bMinX = fMinX;
-  let bMaxX = fMaxX;
-  let bMinY = fMinY;
-  let bMaxY = fMaxY;
-  for (const p of panels) {
-    bMinX = Math.min(bMinX, p.position.x);
-    bMaxX = Math.max(bMaxX, p.position.x + p.widthInches / 12);
-    bMinY = Math.min(bMinY, p.position.y);
-    bMaxY = Math.max(bMaxY, p.position.y + p.lengthFeet);
+  const origin = verts[0];
+  const rot = -eaveAngle;
+
+  // Rotate vertices into eave-horizontal space
+  const rv = verts.map(v => rotPt(v, origin, rot));
+
+  // Rotate edge endpoints too
+  const rEdges = facet.edgeTypes.map(e => ({
+    ...e,
+    start: rotPt(e.start, origin, rot),
+    end: rotPt(e.end, origin, rot),
+  }));
+
+  // Rotate panel positions (panels store bottom-left of rectangle in model space)
+  const rPanels = panels.map(p => ({
+    ...p,
+    _rx: rotPt({ x: p.position.x, y: p.position.y }, origin, rot).x,
+    _ry: rotPt({ x: p.position.x, y: p.position.y }, origin, rot).y,
+  }));
+
+  // -- Bounding box in rotated space --
+  let bMinX = Math.min(...rv.map(v => v.x));
+  let bMaxX = Math.max(...rv.map(v => v.x));
+  let bMinY = Math.min(...rv.map(v => v.y));
+  let bMaxY = Math.max(...rv.map(v => v.y));
+  for (const p of rPanels) {
+    const pw = p.widthInches / 12;
+    bMinX = Math.min(bMinX, p._rx);
+    bMaxX = Math.max(bMaxX, p._rx + pw);
+    bMinY = Math.min(bMinY, p._ry);
+    bMaxY = Math.max(bMaxY, p._ry + p.lengthFeet);
   }
 
   const totalW = bMaxX - bMinX || 1;
   const totalH = bMaxY - bMinY || 1;
-
-  // Scale to fit diagram area
   const scaleX = maxW / totalW;
   const scaleY = maxH / totalH;
   const scale = Math.min(scaleX, scaleY) * 0.88;
@@ -359,7 +399,7 @@ function drawFacetDiagram(
   const offX = startX + (maxW - drawW) / 2;
   const offY = startY + (maxH - drawH) / 2;
 
-  // Transform model-feet to PDF-mm (Y flipped so eave at bottom)
+  // Transform rotated-model coords to PDF-mm (Y flipped so eave at bottom)
   const tx = (x: number) => offX + (x - bMinX) * scale;
   const ty = (yVal: number) => offY + (bMaxY - yVal) * scale;
 
@@ -369,15 +409,14 @@ function drawFacetDiagram(
   doc.setLineWidth(0.15);
   doc.roundedRect(startX, startY, maxW, maxH, 2, 2, 'FD');
 
-  // Draw full uncut panel rectangles
-  for (let i = 0; i < panels.length; i++) {
-    const p = panels[i];
+  // -- Draw panel rectangles (axis-aligned in rotated space) --
+  for (let i = 0; i < rPanels.length; i++) {
+    const p = rPanels[i];
     const pw = (p.widthInches / 12) * scale;
     const ph = p.lengthFeet * scale;
-    const px = tx(p.position.x);
-    const py = ty(p.position.y + p.lengthFeet);
+    const px = tx(p._rx);
+    const py = ty(p._ry + p.lengthFeet);
 
-    // Alternate panel fill colors
     if (i % 2 === 0) {
       doc.setFillColor(225, 235, 252);
     } else {
@@ -405,8 +444,8 @@ function drawFacetDiagram(
     doc.text(`${p.widthInches}"`, px + pw / 2, py + ph - 1.5, { align: 'center' });
   }
 
-  // Draw facet outline edges on top (color-coded by edge type)
-  for (const edge of facet.edgeTypes) {
+  // -- Draw facet outline edges on top (color-coded) --
+  for (const edge of rEdges) {
     const c = EDGE_COLORS[edge.type] || [30, 41, 59];
     doc.setDrawColor(c[0], c[1], c[2]);
     doc.setLineWidth(1.2);
@@ -416,15 +455,15 @@ function drawFacetDiagram(
   // Close any gaps in the polygon outline
   doc.setDrawColor(30, 41, 59);
   doc.setLineWidth(0.6);
-  for (let i = 0; i < verts.length; i++) {
-    const a = verts[i];
-    const b = verts[(i + 1) % verts.length];
-    const alreadyDrawn = facet.edgeTypes.some(
+  for (let i = 0; i < rv.length; i++) {
+    const a = rv[i];
+    const b = rv[(i + 1) % rv.length];
+    const alreadyDrawn = rEdges.some(
       e =>
         (Math.abs(e.start.x - a.x) < 0.1 && Math.abs(e.start.y - a.y) < 0.1 &&
-         Math.abs(e.end.x - b.x) < 0.1 && Math.abs(e.end.y - b.y) < 0.1) ||
+          Math.abs(e.end.x - b.x) < 0.1 && Math.abs(e.end.y - b.y) < 0.1) ||
         (Math.abs(e.start.x - b.x) < 0.1 && Math.abs(e.start.y - b.y) < 0.1 &&
-         Math.abs(e.end.x - a.x) < 0.1 && Math.abs(e.end.y - a.y) < 0.1),
+          Math.abs(e.end.x - a.x) < 0.1 && Math.abs(e.end.y - a.y) < 0.1),
     );
     if (!alreadyDrawn) {
       doc.line(tx(a.x), ty(a.y), tx(b.x), ty(b.y));
@@ -432,8 +471,8 @@ function drawFacetDiagram(
   }
 
   // Pitch label in centroid with white pill background
-  const cx = verts.reduce((s, v) => s + v.x, 0) / verts.length;
-  const cy = verts.reduce((s, v) => s + v.y, 0) / verts.length;
+  const cx = rv.reduce((s, v) => s + v.x, 0) / rv.length;
+  const cy = rv.reduce((s, v) => s + v.y, 0) / rv.length;
   const pitchText = facet.pitchRatio;
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
@@ -445,7 +484,7 @@ function drawFacetDiagram(
   doc.setTextColor(30, 41, 59);
   doc.text(pitchText, tx(cx), ty(cy) + 1, { align: 'center' });
 
-  // Scale reference bar (bottom-right of diagram)
+  // Scale reference bar (bottom-right)
   const refFeet = Math.max(1, Math.round(totalW / 4));
   const refMm = refFeet * scale;
   const rx = startX + maxW - 8 - refMm;

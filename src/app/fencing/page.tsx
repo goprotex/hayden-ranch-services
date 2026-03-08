@@ -7,8 +7,10 @@ import { useAppStore } from '@/lib/store';
 import { STAY_TUFF_OPTIONS } from '@/lib/fencing/fence-calculator';
 import {
   POST_MATERIALS, BRACE_SPECS, GATE_SPECS, DEFAULT_MATERIAL_PRICES,
+  SQUARE_TUBE_GAUGES,
   determineBraceType, estimatePainting, calculateVertexAngle,
-  type PostMaterial, type BraceType, type GateSize, type GateSpec, type BraceRecommendation,
+  recommendedTPostLength, wireRollPriceId, postJointPriceId, calculatePostLength,
+  type PostMaterial, type SquareTubeGauge, type BraceType, type GateSize, type GateSpec, type BraceRecommendation,
 } from '@/lib/fencing/fence-materials';
 import { generateFenceBidPDF, calculateSectionMaterials, type FenceBidSection, type BidGate, type FenceBidData } from '@/lib/fencing/fence-bid-pdf';
 import type { DrawnLine, VertexAngle, TerrainSuggestion } from '@/components/fencing/FenceMap';
@@ -40,6 +42,16 @@ function fmt(n: number) { return n.toLocaleString(undefined, { minimumFractionDi
 function fmtDate(d: Date) { return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }); }
 function uid() { return `${Date.now()}_${Math.random().toString(36).slice(2,7)}`; }
 
+/** Derive FenceHeight string from wire height inches (for backward compat) */
+function heightFromInches(inches: number): FenceHeight {
+  const ft = Math.round(inches / 12);
+  if (ft <= 4) return '4ft';
+  if (ft <= 5) return '5ft';
+  if (ft <= 6) return '6ft';
+  if (ft <= 7) return '7ft';
+  return '8ft';
+}
+
 export default function FencingPage() {
   const { addFenceBid, materialPrices, updateMaterialPrice, resetMaterialPrices } = useAppStore();
 
@@ -50,9 +62,23 @@ export default function FencingPage() {
 
   // Fence config
   const [fenceType, setFenceType] = useState<FenceType>('stay_tuff_fixed_knot');
-  const [fenceHeight, setFenceHeight] = useState<FenceHeight>('5ft');
   const [selectedStayTuff, setSelectedStayTuff] = useState<StayTuffOption>(STAY_TUFF_OPTIONS[0]);
   const [postMaterial, setPostMaterial] = useState<PostMaterial>('drill_stem');
+  const [squareTubeGauge, setSquareTubeGauge] = useState<SquareTubeGauge>('14ga');
+  // Height for non-Stay-Tuff fences (manual)
+  const [manualHeight, setManualHeight] = useState<FenceHeight>('5ft');
+
+  // Derived: use Stay-Tuff height when applicable, otherwise manual height
+  const wireHeightInches = useMemo(() => {
+    if (fenceType.startsWith('stay_tuff')) return selectedStayTuff.height;
+    const map: Record<FenceHeight, number> = { '4ft': 48, '5ft': 60, '6ft': 72, '7ft': 84, '8ft': 96 };
+    return map[manualHeight] || 60;
+  }, [fenceType, selectedStayTuff, manualHeight]);
+
+  const fenceHeight: FenceHeight = useMemo(() => heightFromInches(wireHeightInches), [wireHeightInches]);
+
+  // Auto t-post sizing from wire height
+  const tPostRec = useMemo(() => recommendedTPostLength(wireHeightInches), [wireHeightInches]);
 
   // Spacing
   const [linePostSpacing, setLinePostSpacing] = useState(66); // ft
@@ -64,7 +90,6 @@ export default function FencingPage() {
 
   // Pricing
   const [laborRate, setLaborRate] = useState(6); // $/ft labor only
-  const [tPostHeight, setTPostHeight] = useState<'6ft' | '7ft' | '8ft'>('7ft');
   const [terrain, setTerrain] = useState('moderate');
   const [depositPercent, setDepositPercent] = useState(50);
   const [timelineDays, setTimelineDays] = useState(12);
@@ -90,19 +115,14 @@ export default function FencingPage() {
   const [projectOverview, setProjectOverview] = useState(
     'Professional installation of high tensile fence with drill stem bracing system. All materials are commercial grade with concrete setting for structural posts.'
   );
-
   const handleFenceLinesChange = useCallback((lines: DrawnLine[]) => {
     setDrawnLines(lines);
-    // Collect all vertex angles
     const allAngles = lines.flatMap(l => l.vertexAngles);
     setVertexAngles(allAngles);
-
-    // Calculate brace recommendations for each vertex
     const braces = allAngles
       .map(a => determineBraceType(a.angleDegrees, preferredCornerBrace, preferredHBrace))
       .filter((b): b is BraceRecommendation => b !== null);
     setBraceRecommendations(braces);
-
     if (lines.length > 0) {
       setSections(lines.map((line, i) => ({
         id: line.id, name: `Line ${i + 1}`, linearFeet: Math.round(line.lengthFeet),
@@ -113,68 +133,58 @@ export default function FencingPage() {
 
   const handleTerrainAnalyzed = useCallback((analysis: TerrainSuggestion) => {
     setTerrainSuggestion(analysis);
-    // Auto-apply suggested difficulty
-    if (analysis.confidence > 0.4) {
-      setTerrain(analysis.suggestedDifficulty);
-    }
+    if (analysis.confidence > 0.4) setTerrain(analysis.suggestedDifficulty);
   }, []);
 
   const terrainMult = TERRAIN_MAP[terrain]?.mult || 1;
 
-  // === Material cost per foot calculation ===
+  // === Material cost per foot ===
   const materialCostPerFoot = useMemo(() => {
-    // Find prices from store (falls back to defaults)
     const findPrice = (id: string) => materialPrices.find(m => m.id === id)?.price ?? 0;
 
-    // -- Wire cost per foot --
+    // Wire cost per foot (varies by product height for Stay-Tuff)
     let wireCostPerFt = 0;
     if (fenceType.startsWith('stay_tuff')) {
-      wireCostPerFt = findPrice('stay_tuff_roll') / 330;          // ~$1.17/ft
+      const rollId = wireRollPriceId(selectedStayTuff.height);
+      wireCostPerFt = findPrice(rollId) / 330;
     } else if (fenceType === 'field_fence') {
-      wireCostPerFt = findPrice('field_fence_roll') / 330;        // ~$0.56/ft
-    } else if (fenceType === 'barbed_wire') {
-      // Barbed wire: 4 strands
-      wireCostPerFt = (findPrice('barbed_wire') / 1320) * 4;     // ~$0.29/ft
-    } else if (fenceType === 'no_climb') {
-      wireCostPerFt = findPrice('no_climb_roll') / 200;           // ~$1.40/ft
-    } else if (fenceType === 't_post_wire') {
       wireCostPerFt = findPrice('field_fence_roll') / 330;
+    } else if (fenceType === 'barbed_wire') {
+      wireCostPerFt = (findPrice('barbed_wire') / 1320) * 4;
+    } else if (fenceType === 'no_climb') {
+      wireCostPerFt = findPrice('no_climb_roll') / 200;
     } else {
       wireCostPerFt = findPrice('field_fence_roll') / 330;
     }
-    // Add 10% overlap factor
-    wireCostPerFt *= 1.10;
+    wireCostPerFt *= 1.10; // 10% overlap
 
-    // Top wire (barbed or HT smooth) unless it IS barbed wire fence
+    // Top wire
     let topWireCostPerFt = 0;
     if (fenceType !== 'barbed_wire') {
-      const strands = fenceHeight >= '6ft' ? 2 : 1;
+      const strands = wireHeightInches >= 72 ? 2 : 1;
       topWireCostPerFt = (findPrice('ht_smooth') / 4000) * strands;
     }
 
-    // -- T-Post cost per foot --
-    const tPostPriceMap: Record<string, string> = { '6ft': 't_post_6', '7ft': 't_post_7', '8ft': 't_post_8' };
-    const tPostPrice = findPrice(tPostPriceMap[tPostHeight] || 't_post_7');
+    // T-Post cost per foot (auto-sized)
+    const tPostPrice = findPrice(tPostRec.priceId);
     const tPostCostPerFt = tPostPrice / tPostSpacing;
 
-    // -- Line post (drill stem / square tube) cost per foot --
-    const heightNeedsLong = fenceHeight >= '7ft';
-    let linePostPrice = 0;
-    if (postMaterial === 'drill_stem') {
-      linePostPrice = findPrice(heightNeedsLong ? 'drill_stem_10' : 'drill_stem_8');
-    } else {
-      linePostPrice = findPrice(heightNeedsLong ? 'square_tube_10' : 'square_tube_8');
-    }
-    const linePostCostPerFt = linePostPrice / linePostSpacing;
+    // Line post cost per foot (joint-based)
+    const postPriceId = postJointPriceId(postMaterial, squareTubeGauge);
+    const jointPrice = findPrice(postPriceId);
+    const jointLen = postMaterial === 'drill_stem' ? 31 : 20;
+    const postCalc = calculatePostLength(wireHeightInches);
+    const postsPerJoint = postMaterial === 'drill_stem' ? postCalc.postsPerDrillStemJoint : postCalc.postsPerSquareTubeJoint;
+    const pricePerPost = postsPerJoint > 0 ? jointPrice / postsPerJoint : jointPrice;
+    const linePostCostPerFt = pricePerPost / linePostSpacing;
 
-    // -- Concrete per foot (2 bags per line post) --
-    const concreteCostPerFt = (findPrice('concrete_80') * 2) / linePostSpacing;
+    // Concrete per foot (2 bags per line post)
+    const concreteCostPerFt = (findPrice('concrete_bag') * 2) / linePostSpacing;
 
-    // -- Hardware per foot (clips, tensioners, brace wire) --
-    const clipsCostPerFt = (findPrice('clips_100') / 100) * (4 / tPostSpacing); // ~4 clips per post
-    const tensionerCostPerFt = findPrice('tensioner') / 330; // roughly 1 per roll length
-    const braceWireCostPerFt = findPrice('brace_wire') / 200; // avg spread
-
+    // Hardware per foot
+    const clipsCostPerFt = (findPrice('clips') / 500) * (4 / tPostSpacing);
+    const tensionerCostPerFt = findPrice('tensioner') / 330;
+    const braceWireCostPerFt = findPrice('brace_wire') / 200;
     const hardwareCostPerFt = clipsCostPerFt + tensionerCostPerFt + braceWireCostPerFt;
 
     const total = wireCostPerFt + topWireCostPerFt + tPostCostPerFt + linePostCostPerFt + concreteCostPerFt + hardwareCostPerFt;
@@ -187,7 +197,7 @@ export default function FencingPage() {
       hardware: Math.round(hardwareCostPerFt * 100) / 100,
       total: Math.round(total * 100) / 100,
     };
-  }, [fenceType, fenceHeight, tPostHeight, tPostSpacing, linePostSpacing, postMaterial, materialPrices]);
+  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices]);
 
   const baseRate = materialCostPerFoot.total + laborRate;
   const effectiveRate = useMemo(() => Math.round((materialCostPerFoot.total + laborRate * terrainMult) * 100) / 100, [materialCostPerFoot.total, laborRate, terrainMult]);
@@ -229,7 +239,6 @@ export default function FencingPage() {
   const rmSec = useCallback((id: string) => { setSections(p => p.filter(s => s.id !== id)); }, []);
 
   const addGate = useCallback((spec: GateSpec) => {
-    const totalHardware = spec.hardware.reduce((s, h) => s + h.quantity * h.defaultUnitPrice, 0);
     setGates(p => [...p, {
       id: uid(), type: spec.label, width: spec.widthFeet,
       cost: spec.defaultPrice + spec.defaultInstallCost,
@@ -237,7 +246,6 @@ export default function FencingPage() {
   }, []);
   const updGate = useCallback((id: string, u: Partial<BidGate>) => { setGates(p => p.map(g => g.id === id ? { ...g, ...u } : g)); }, []);
   const rmGate = useCallback((id: string) => { setGates(p => p.filter(g => g.id !== id)); }, []);
-
   const handleDownloadPDF = useCallback(() => {
     const now = new Date();
     const valid = new Date(now); valid.setDate(valid.getDate() + 30);
@@ -276,8 +284,8 @@ export default function FencingPage() {
       <header className="glass border-b border-steel-700/20 sticky top-0 z-50">
         <div className="max-w-[1500px] mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/" className="text-steel-400 hover:text-amber-400 transition text-sm">\u2190 Back</Link>
-            <h1 className="text-steel-100 font-bold text-lg">\u26a1 Fence Bid Creator</h1>
+            <Link href="/" className="text-steel-400 hover:text-amber-400 transition text-sm">&larr; Back</Link>
+            <h1 className="text-steel-100 font-bold text-lg">&#x26a1; Fence Bid Creator</h1>
           </div>
           <div className="flex items-center gap-3">
             <button onClick={handleSaveBid} className="text-sm glass text-steel-300 px-4 py-2 rounded-lg hover:text-white transition font-medium">Save Bid</button>
@@ -295,7 +303,7 @@ export default function FencingPage() {
           {/* LEFT CONFIG SIDEBAR */}
           <div className="lg:col-span-4 xl:col-span-3 space-y-4 animate-slide-in-left">
 
-            <Card title="Project Info" icon="\ud83d\udcdd">
+            <Card title="Project Info" icon="&#x1f4dd;">
               <div className="space-y-2.5">
                 <DInput value={projectName} onChange={setProjectName} placeholder="Project Name" />
                 <DInput value={clientName} onChange={setClientName} placeholder="Client Name" />
@@ -303,22 +311,25 @@ export default function FencingPage() {
               </div>
             </Card>
 
-            <Card title="Fence Type" icon="\ud83e\uddf1">
+            <Card title="Fence Type" icon="&#x1f9f1;">
               <div className="space-y-3">
                 <select title="Fence type" value={fenceType} onChange={e => setFenceType(e.target.value as FenceType)}
                   className="w-full bg-surface-200 border border-steel-700/30 rounded-lg px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-amber-500/50">
                   {Object.entries(FENCE_TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
 
-                <div>
-                  <label className="block text-xs font-medium text-steel-400 mb-1.5">Height</label>
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {(['4ft','5ft','6ft','7ft','8ft'] as FenceHeight[]).map(h => (
-                      <button key={h} onClick={() => setFenceHeight(h)}
-                        className={`py-1.5 rounded-lg text-xs font-semibold transition ${fenceHeight === h ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30' : 'bg-surface-200 text-steel-400 hover:bg-surface-50 hover:text-steel-200'}`}>{h}</button>
-                    ))}
+                {/* Height selector: only for non-Stay-Tuff fences */}
+                {!fenceType.startsWith('stay_tuff') && (
+                  <div>
+                    <label className="block text-xs font-medium text-steel-400 mb-1.5">Height</label>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {(['4ft','5ft','6ft','7ft','8ft'] as FenceHeight[]).map(h => (
+                        <button key={h} onClick={() => setManualHeight(h)}
+                          className={`py-1.5 rounded-lg text-xs font-semibold transition ${manualHeight === h ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30' : 'bg-surface-200 text-steel-400 hover:bg-surface-50 hover:text-steel-200'}`}>{h}</button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-medium text-steel-400 mb-1.5">Post Material</label>
@@ -326,11 +337,26 @@ export default function FencingPage() {
                     {POST_MATERIALS.map(pm => (
                       <button key={pm.id} onClick={() => setPostMaterial(pm.id)}
                         className={`py-2 px-2 rounded-lg text-[11px] font-medium transition text-left ${postMaterial === pm.id ? 'bg-amber-600/20 text-amber-300 border border-amber-500/50' : 'bg-surface-200 text-steel-400 border border-steel-700/20 hover:bg-surface-50'}`}>
-                        {pm.label}<span className="block text-[9px] opacity-70">{pm.diameter}</span>
+                        {pm.label}<span className="block text-[9px] opacity-70">{pm.diameter} &mdash; {pm.jointLengthFeet}ft joints</span>
                       </button>
                     ))}
                   </div>
                 </div>
+
+                {/* Square tube gauge selector */}
+                {postMaterial === 'square_tube' && (
+                  <div>
+                    <label className="block text-xs font-medium text-steel-400 mb-1.5">Tube Gauge</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {SQUARE_TUBE_GAUGES.map(g => (
+                        <button key={g.gauge} onClick={() => setSquareTubeGauge(g.gauge)}
+                          className={`py-1.5 px-2 rounded-lg text-[10px] font-medium transition text-center ${squareTubeGauge === g.gauge ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30' : 'bg-surface-200 text-steel-400 hover:bg-surface-50 hover:text-steel-200'}`}>
+                          {g.gauge}<span className="block text-[9px] opacity-70">${g.pricePerJoint}/joint</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {fenceType.startsWith('stay_tuff') && (
                   <div>
@@ -340,12 +366,12 @@ export default function FencingPage() {
                       className="w-full bg-surface-200 border border-steel-700/30 rounded-lg px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-amber-500/50">
                       {STAY_TUFF_OPTIONS.map(o => <option key={o.model} value={o.model}>{o.model} - {o.description}</option>)}
                     </select>
+                    <p className="text-[10px] text-amber-400/70 mt-1">Wire height: {selectedStayTuff.height}" &rarr; fence height: {fenceHeight} | T-Post: {tPostRec.label}</p>
                   </div>
                 )}
               </div>
             </Card>
-
-            <Card title="Post Spacing" icon="\ud83d\udccf">
+            <Card title="Post Spacing" icon="&#x1f4cf;">
               <div className="space-y-4">
                 <DSlider label="Line Post Spacing" value={linePostSpacing} min={50} max={100} step={1}
                   display={`${linePostSpacing} ft`} onChange={setLinePostSpacing} minLabel="50 ft" maxLabel="100 ft" />
@@ -353,12 +379,12 @@ export default function FencingPage() {
                   display={`${tPostSpacing} ft`} onChange={setTPostSpacing} minLabel="7 ft" maxLabel="15 ft" />
                 <div className="bg-surface-200 rounded-lg p-3 text-xs text-steel-400">
                   <div className="flex justify-between"><span>Line Posts (est):</span><span className="text-steel-200 font-semibold">{materialCalc.linePostCount}</span></div>
-                  <div className="flex justify-between mt-1"><span>T-Posts (est):</span><span className="text-steel-200 font-semibold">{materialCalc.tPostCount}</span></div>
+                  <div className="flex justify-between mt-1"><span>T-Posts ({tPostRec.label}):</span><span className="text-steel-200 font-semibold">{materialCalc.tPostCount}</span></div>
                 </div>
               </div>
             </Card>
 
-            <Card title="Bracing" icon="\ud83d\udd27">
+            <Card title="Bracing" icon="&#x1f527;">
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium text-steel-400 mb-1">H-Brace Style</label>
@@ -389,27 +415,16 @@ export default function FencingPage() {
               </div>
             </Card>
 
-            <Card title="Pricing" icon="💰">
+            <Card title="Pricing" icon="&#x1f4b0;">
               <div className="space-y-4">
-                {/* T-Post Height selector */}
-                <div>
-                  <label className="block text-xs font-medium text-steel-400 mb-1.5">T-Post Height</label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {(['6ft', '7ft', '8ft'] as const).map(h => (
-                      <button key={h} onClick={() => setTPostHeight(h)}
-                        className={`py-1.5 rounded-lg text-xs font-semibold transition ${tPostHeight === h ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30' : 'bg-surface-200 text-steel-400 hover:bg-surface-50 hover:text-steel-200'}`}>{h}</button>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Material cost breakdown (auto-calculated) */}
                 <div className="bg-surface-200/60 rounded-lg p-3 space-y-1.5">
                   <p className="text-[10px] font-bold text-steel-400 uppercase tracking-wider mb-2">Material Cost / Ft (auto)</p>
                   {[
-                    { label: `Wire (${FENCE_TYPES[fenceType]?.split(' ').slice(-2).join(' ') || fenceType})`, value: materialCostPerFoot.wire },
+                    { label: `Wire (${fenceType.startsWith('stay_tuff') ? selectedStayTuff.height + '"' : FENCE_TYPES[fenceType]?.split(' ').slice(-2).join(' ') || fenceType})`, value: materialCostPerFoot.wire },
                     { label: 'Top Wire (HT smooth)', value: materialCostPerFoot.topWire },
-                    { label: `T-Posts (${tPostHeight} @ ${tPostSpacing}' spacing)`, value: materialCostPerFoot.tPosts },
-                    { label: `Line Posts (${postMaterial === 'drill_stem' ? 'Drill Stem' : 'Sq Tube'} @ ${linePostSpacing}')`, value: materialCostPerFoot.linePosts },
+                    { label: `T-Posts (${tPostRec.label} @ ${tPostSpacing}' spacing)`, value: materialCostPerFoot.tPosts },
+                    { label: `Line Posts (${postMaterial === 'drill_stem' ? 'Drill Stem 31\'' : `Sq Tube ${squareTubeGauge} 20'`} @ ${linePostSpacing}')`, value: materialCostPerFoot.linePosts },
                     { label: 'Concrete', value: materialCostPerFoot.concrete },
                     { label: 'Hardware (clips, tensioners, etc.)', value: materialCostPerFoot.hardware },
                   ].map(row => (
@@ -435,8 +450,8 @@ export default function FencingPage() {
                   </div>
                   {terrainSuggestion && (
                     <div className="mb-2 bg-amber-900/20 border border-amber-700/30 rounded-lg p-2 text-[10px] text-amber-300">
-                      <span className="font-semibold">⚡ AI Suggested: {TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label}</span>
-                      {terrainSuggestion.soilType && <span className="block text-amber-400/70 mt-0.5">Soil: {terrainSuggestion.soilType}</span>}
+                      <span className="font-semibold">&#x26a1; AI Suggested: {TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label}</span>
+                      {terrainSuggestion.soilType && <span className="block text-amber-400/80 mt-0.5 font-semibold">&#x1f30d; Predominant Soil: {terrainSuggestion.soilType}</span>}
                       <span className="block text-amber-400/70">Elev change: {Math.round(terrainSuggestion.elevationChange)} ft | Confidence: {Math.round(terrainSuggestion.confidence * 100)}%</span>
                     </div>
                   )}
@@ -470,7 +485,7 @@ export default function FencingPage() {
               </div>
             </Card>
 
-            <Card title="Painting" icon="\ud83c\udfa8">
+            <Card title="Painting" icon="&#x1f3a8;">
               <div className="space-y-3">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <div className={`w-10 h-5 rounded-full transition relative ${includePainting ? 'bg-amber-600' : 'bg-surface-200'}`}
@@ -495,26 +510,38 @@ export default function FencingPage() {
               </div>
             </Card>
 
-            <Card title="Overview Text" icon="\ud83d\udcdd">
+            <Card title="Overview Text" icon="&#x1f4dd;">
               <textarea value={projectOverview} onChange={e => setProjectOverview(e.target.value)} rows={3}
                 className="w-full bg-surface-200 border border-steel-700/30 rounded-lg px-3 py-2 text-xs text-steel-300 focus:ring-2 focus:ring-amber-500/50" placeholder="Describe the project scope..." />
             </Card>
           </div>
-
           {/* RIGHT MAIN AREA */}
           <div className="lg:col-span-8 xl:col-span-9 space-y-5 animate-fade-in">
 
             <div className="flex gap-2">
               {(['config', 'preview', 'pricing'] as const).map(t => (
-                <TabBtn key={t} active={activeTab === t} onClick={() => setActiveTab(t)}>
-                  {t === 'config' ? 'Sections & Map' : t === 'preview' ? 'Bid Preview' : 'Material Pricing'}
-                </TabBtn>
+                <TabBtn key={t} label={t === 'config' ? 'Sections & Map' : t === 'preview' ? 'Bid Preview' : 'Material Pricing'} active={activeTab === t} onClick={() => setActiveTab(t)} />
               ))}
             </div>
 
             {activeTab === 'config' && (
               <div className="space-y-5 animate-fade-in">
                 <FenceMap onFenceLinesChange={handleFenceLinesChange} onTerrainAnalyzed={handleTerrainAnalyzed} />
+
+                {/* Soil type banner */}
+                {terrainSuggestion?.soilType && (
+                  <div className="bg-gradient-to-r from-amber-900/30 to-orange-900/30 rounded-xl p-4 border border-amber-700/30 flex items-center gap-3">
+                    <span className="text-2xl">&#x1f30d;</span>
+                    <div>
+                      <p className="text-sm font-bold text-amber-300">Predominant Soil Type: {terrainSuggestion.soilType}</p>
+                      <p className="text-[11px] text-amber-400/70 mt-0.5">
+                        Elevation change: {Math.round(terrainSuggestion.elevationChange)} ft &bull;
+                        Avg elevation: {Math.round(terrainSuggestion.avgElevation)} ft &bull;
+                        Suggested difficulty: {TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="card-dark overflow-hidden">
                   <div className="px-5 py-3 border-b border-steel-700/20 flex items-center justify-between">
@@ -527,9 +554,9 @@ export default function FencingPage() {
                         <div className="grid grid-cols-12 gap-3 items-center">
                           <div className="col-span-4"><input type="text" value={sec.name} onChange={e => updSec(sec.id, { name: e.target.value })} className="w-full bg-surface-200 border border-steel-700/30 rounded px-2.5 py-1.5 text-sm text-steel-200 font-medium focus:ring-1 focus:ring-amber-500/50" /></div>
                           <div className="col-span-2"><input title="Linear feet" type="number" value={sections[idx]?.linearFeet || 0} onChange={e => updSec(sec.id, { linearFeet: parseInt(e.target.value) || 0 })} className="w-full bg-surface-200 border border-steel-700/30 rounded px-2.5 py-1.5 text-sm text-right text-steel-200 focus:ring-1 focus:ring-amber-500/50" /></div>
-                          <div className="col-span-2"><input type="number" step={0.5} value={sections[idx]?.ratePerFoot || ''} onChange={e => updSec(sec.id, { ratePerFoot: parseFloat(e.target.value) || 0 })} className="w-full bg-surface-200 border border-steel-700/30 rounded px-2.5 py-1.5 text-sm text-right text-steel-200 focus:ring-1 focus:ring-amber-500/50" placeholder={effectiveRate.toFixed(2)} /></div>
+                          <div className="col-span-2"><input type="number" step={0.5} value={sections[idx]?.ratePerFoot || ''} onChange={e => updSec(sec.id, { ratePerFoot: parseFloat(e.target.value) || 0 })} className="w-full bg-surface-200 border border-steel-700/30 rounded px-2.5 py-1.5 text-sm text-right text-steel-200 pl-5 focus:ring-1 focus:ring-amber-500/50" placeholder={effectiveRate.toFixed(2)} /></div>
                           <div className="col-span-3 text-right"><span className="text-sm font-bold text-amber-400">${fmt(sec.total)}</span></div>
-                          <div className="col-span-1 text-right">{computed.length > 1 && <button onClick={() => rmSec(sec.id)} className="text-steel-500 hover:text-red-400 transition">\u00d7</button>}</div>
+                          <div className="col-span-1 text-right">{computed.length > 1 && <button onClick={() => rmSec(sec.id)} className="text-steel-500 hover:text-red-400 transition">&times;</button>}</div>
                         </div>
                       </div>
                     ))}
@@ -560,7 +587,7 @@ export default function FencingPage() {
                                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-steel-500">$</span>
                                 <input title="Gate cost" type="number" value={g.cost} onChange={e => updGate(g.id, { cost: parseFloat(e.target.value) || 0 })} className="w-full bg-surface-200 border border-steel-700/30 rounded px-2.5 py-1.5 text-sm text-right text-steel-200 pl-5 focus:ring-1 focus:ring-amber-500/50" />
                               </div>
-                              <button onClick={() => rmGate(g.id)} className="text-steel-500 hover:text-red-400 transition">\u00d7</button>
+                              <button onClick={() => rmGate(g.id)} className="text-steel-500 hover:text-red-400 transition">&times;</button>
                             </div>
                             {spec && (
                               <div className="mt-2 bg-surface-200/50 rounded p-2 text-[10px] text-steel-500">
@@ -578,12 +605,11 @@ export default function FencingPage() {
                 </div>
               </div>
             )}
-
             {activeTab === 'preview' && (
               <div className="card-dark overflow-hidden animate-fade-in">
                 <div className="px-6 py-4 bg-gradient-to-r from-steel-900 to-steel-800 border-b border-steel-700/30">
                   <h2 className="text-xl font-bold text-white">HAYDEN RANCH SERVICES</h2>
-                  <p className="text-xs text-steel-400 mt-1">5900 Balcones Dr #26922, Austin, TX 78731 \u2022 (830) 777-9111 \u2022 office@haydenclaim.com</p>
+                  <p className="text-xs text-steel-400 mt-1">5900 Balcones Dr #26922, Austin, TX 78731 &bull; (830) 777-9111 &bull; office@haydenclaim.com</p>
                 </div>
                 <div className="p-6 space-y-6">
                   <div className="text-center">
@@ -610,7 +636,7 @@ export default function FencingPage() {
                         {gates.map(g => (
                           <tr key={g.id} className="bg-surface-50/30">
                             <td className="px-3 py-2 text-steel-300">{g.type}</td>
-                            <td className="px-3 py-2 text-right text-steel-500">incl. hardware & install</td>
+                            <td className="px-3 py-2 text-right text-steel-500">incl. hardware &amp; install</td>
                             <td className="px-3 py-2 text-right font-semibold text-steel-200">${fmt(g.cost)}</td>
                           </tr>
                         ))}
@@ -633,9 +659,9 @@ export default function FencingPage() {
                   <div className="bg-surface-200/50 rounded-lg p-4">
                     <h4 className="text-sm font-bold text-steel-300 mb-2">Material Summary</h4>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-                      <div><span className="text-steel-500">Post Material:</span> <span className="text-steel-200">{postMaterial === 'drill_stem' ? 'Drill Stem' : '2" Square Tube'}</span></div>
+                      <div><span className="text-steel-500">Post Material:</span> <span className="text-steel-200">{postMaterial === 'drill_stem' ? 'Drill Stem (31\' joints)' : `2" Square Tube ${squareTubeGauge} (20' joints)`}</span></div>
                       <div><span className="text-steel-500">Line Posts:</span> <span className="text-steel-200">{materialCalc.linePostCount} @ {linePostSpacing}' spacing</span></div>
-                      <div><span className="text-steel-500">T-Posts:</span> <span className="text-steel-200">{materialCalc.tPostCount} @ {tPostSpacing}' spacing</span></div>
+                      <div><span className="text-steel-500">T-Posts:</span> <span className="text-steel-200">{materialCalc.tPostCount} ({tPostRec.label}) @ {tPostSpacing}' spacing</span></div>
                       <div><span className="text-steel-500">H-Braces:</span> <span className="text-steel-200">{materialCalc.hBraces}</span></div>
                       <div><span className="text-steel-500">Corner Braces:</span> <span className="text-steel-200">{materialCalc.cornerBraces}</span></div>
                       <div><span className="text-steel-500">Wire Rolls:</span> <span className="text-steel-200">{materialCalc.wireRolls} (330' ea)</span></div>
@@ -658,52 +684,66 @@ export default function FencingPage() {
 
                   <button onClick={handleDownloadPDF}
                     className="w-full bg-gradient-to-r from-amber-600 to-orange-600 text-white font-bold py-3 px-4 rounded-lg hover:from-amber-500 hover:to-orange-500 transition text-sm shadow-lg shadow-amber-900/30">
-                    Download Complete Bid PDF (with Terms & Signature Block)
+                    Download Complete Bid PDF (with Terms &amp; Signature Block)
                   </button>
                 </div>
               </div>
             )}
-
             {activeTab === 'pricing' && (
-              <div className="card-dark overflow-hidden animate-fade-in">
-                <div className="px-5 py-3 border-b border-steel-700/20 flex items-center justify-between">
-                  <h2 className="text-steel-200 font-semibold text-sm">Custom Material Pricing</h2>
-                  <button onClick={resetMaterialPrices} className="text-xs text-steel-400 hover:text-amber-400 transition">Reset to Defaults</button>
-                </div>
-                <div className="p-5">
-                  <p className="text-xs text-steel-500 mb-4">Set custom prices for all materials used in bid calculations. These prices persist across sessions.</p>
-                  {Object.entries(materialPrices.reduce((acc, m) => { if (!acc[m.category]) acc[m.category] = []; acc[m.category].push(m); return acc; }, {} as Record<string, typeof materialPrices>)).map(([cat, items]) => (
-                    <div key={cat} className="mb-6">
-                      <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">{cat}</h3>
-                      <div className="space-y-1.5">
-                        {items.map(item => (
-                          <div key={item.id} className="flex items-center justify-between gap-3 bg-surface-200/50 rounded-lg px-3 py-2">
-                            <span className="text-xs text-steel-300 flex-1">{item.name}</span>
-                            <span className="text-[10px] text-steel-500">/{item.unit}</span>
-                            <div className="relative w-24">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-steel-500">$</span>
-                              <input type="number" step={0.01} value={item.price} onChange={e => updateMaterialPrice(item.id, parseFloat(e.target.value) || 0)}
-                                className="w-full bg-surface-300 border border-steel-700/30 rounded px-2 py-1 text-xs text-right text-steel-200 pl-5 focus:ring-1 focus:ring-amber-500/50" />
+              <div className="space-y-4 animate-fade-in">
+                <div className="card-dark p-4">
+                  <h3 className="text-sm font-bold text-steel-200 mb-3">Custom Material Pricing</h3>
+                  <p className="text-xs text-steel-500 mb-4">Adjust unit prices for each material. Changes recalculate costs automatically.</p>
+                  {(() => {
+                    const cats = Array.from(new Set(materialPrices.map(m => m.category)));
+                    return cats.map(cat => (
+                      <div key={cat} className="mb-4">
+                        <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wide mb-2">{cat}</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {materialPrices.filter(m => m.category === cat).map(mp => (
+                            <div key={mp.id} className="flex items-center gap-2 bg-surface-100/50 rounded px-3 py-2">
+                              <span className="flex-1 text-xs text-steel-300 truncate" title={mp.name}>{mp.name}</span>
+                              <span className="text-xs text-steel-500">/{mp.unit}</span>
+                              <input type="number" step="0.01" min="0"
+                                className="w-20 bg-steel-800 text-right text-sm text-steel-200 px-2 py-1 rounded border border-steel-700 focus:border-amber-500 focus:outline-none"
+                                value={mp.price}
+                                onChange={e => {
+                                  const v = parseFloat(e.target.value) || 0;
+                                  updateMaterialPrice(mp.id, v);
+                                }}
+                              />
+                              <button className="text-xs text-steel-600 hover:text-amber-400" title="Reset"
+                                onClick={() => updateMaterialPrice(mp.id, mp.defaultPrice)}
+                              >?</button>
                             </div>
-                            {item.price !== item.defaultPrice && <span className="text-[9px] text-amber-400">\u2022</span>}
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ));
+                  })()}
+                  <button className="mt-2 text-xs text-steel-500 hover:text-amber-400 underline"
+                    onClick={() => resetMaterialPrices()}>
+                    Reset All to Defaults
+                  </button>
                 </div>
               </div>
             )}
+          </div>
+        </div>
 
-            <div className="bg-gradient-to-r from-steel-900 via-steel-800 to-steel-900 rounded-xl p-5 text-white shadow-xl border border-steel-700/30 sticky bottom-4 glow-amber">
-              <div className="grid grid-cols-6 gap-4 text-center">
-                <div><p className="text-[10px] text-steel-400 uppercase tracking-wide">Sections</p><p className="text-lg font-bold">{computed.length}</p></div>
-                <div><p className="text-[10px] text-steel-400 uppercase tracking-wide">Total Feet</p><p className="text-lg font-bold">{totalFeet.toLocaleString()}</p></div>
-                <div><p className="text-[10px] text-steel-400 uppercase tracking-wide">Eff. Rate</p><p className="text-lg font-bold">${effectiveRate.toFixed(2)}/ft</p></div>
-                <div><p className="text-[10px] text-steel-400 uppercase tracking-wide">Gates</p><p className="text-lg font-bold">{gates.length}</p></div>
-                <div><p className="text-[10px] text-steel-400 uppercase tracking-wide">Braces</p><p className="text-lg font-bold">{materialCalc.totalBraces}</p></div>
-                <div><p className="text-[10px] text-amber-400 uppercase tracking-wide font-semibold">Total</p><p className="text-2xl font-bold text-amber-400">${fmt(projTotal)}</p></div>
-              </div>
+        {/* Bottom Summary Bar */}
+        <div className="fixed bottom-0 left-0 right-0 bg-steel-900/95 backdrop-blur-xl border-t border-steel-700/40 px-4 py-2 z-50">
+          <div className="max-w-screen-2xl mx-auto flex items-center justify-between text-xs">
+            <div className="flex items-center gap-4">
+              <span className="text-steel-500">Sections: <strong className="text-steel-200">{sections.length}</strong></span>
+              <span className="text-steel-500">Total: <strong className="text-steel-200">{totalFeet.toLocaleString()} ft</strong></span>
+              <span className="text-steel-500">Eff Rate: <strong className="text-amber-400">${effectiveRate.toFixed(2)}/ft</strong></span>
+              <span className="text-steel-500">Gates: <strong className="text-steel-200">{gates.length}</strong></span>
+              <span className="text-steel-500">Braces: <strong className="text-steel-200">{materialCalc.hBraces + materialCalc.cornerBraces}</strong></span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-steel-400">Deposit ({depositPercent}%): <strong className="text-steel-200">${fmt(deposit)}</strong></span>
+              <span className="text-lg font-bold text-amber-400">${fmt(projTotal)}</span>
             </div>
           </div>
         </div>
@@ -712,43 +752,59 @@ export default function FencingPage() {
   );
 }
 
-function Card({ title, icon, children }: { title: string; icon?: string; children: React.ReactNode }) {
+/* -- Helper Components -- */
+function Card({ title, icon, children, className = '' }: { title?: string; icon?: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className="card-dark p-4 animate-scale-in">
-      <h2 className="text-steel-200 font-semibold text-sm mb-3 flex items-center gap-2">
-        {icon && <span>{icon}</span>}{title}
-      </h2>
+    <div className={`card-dark p-4 ${className}`}>
+      {title && <h3 className="text-sm font-bold text-steel-200 mb-3">{icon ? <span className="mr-1">{icon}</span> : null}{title}</h3>}
       {children}
     </div>
   );
 }
 
-function DInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
-  return <input type="text" value={value} onChange={e => onChange(e.target.value)}
-    className="w-full bg-surface-200 border border-steel-700/30 rounded-lg px-3 py-2 text-sm text-steel-200 placeholder-steel-500 focus:ring-2 focus:ring-amber-500/50" placeholder={placeholder} />;
-}
-
-function DSlider({ label, value, min, max, step, display, onChange, minLabel, maxLabel }: {
-  label: string; value: number; min: number; max: number; step: number; display: string; onChange: (v: number) => void; minLabel: string; maxLabel: string;
+function DInput({ label, value, onChange, type = 'text', placeholder, suffix }: {
+  label?: string; value: string | number; onChange: (v: string) => void; type?: string; placeholder?: string; suffix?: string;
 }) {
   return (
     <div>
-      <div className="flex justify-between items-center mb-1">
-        <label className="text-xs font-medium text-steel-400">{label}</label>
-        <span className="text-sm font-bold text-amber-400">{display}</span>
+      {label && <label className="block text-xs text-steel-400 mb-1">{label}</label>}
+      <div className="flex items-center gap-1">
+        <input type={type} value={value} placeholder={placeholder}
+          className="w-full bg-steel-800 text-sm text-steel-200 px-3 py-2 rounded-lg border border-steel-700 focus:border-amber-500 focus:outline-none transition"
+          onChange={e => onChange(e.target.value)} />
+        {suffix && <span className="text-xs text-steel-500 whitespace-nowrap">{suffix}</span>}
       </div>
-      <input title={label} type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(parseFloat(e.target.value))}
-        className="w-full" />
-      <div className="flex justify-between text-[10px] text-steel-500 mt-0.5"><span>{minLabel}</span><span>{maxLabel}</span></div>
     </div>
   );
 }
 
-function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function DSlider({ label, value, onChange, min, max, step = 1, display, minLabel, maxLabel }: {
+  label: string; value: number; onChange: (v: number) => void; min: number; max: number; step?: number; display?: string; minLabel?: string; maxLabel?: string;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <label className="text-xs text-steel-400">{label}</label>
+        <span className="text-xs font-mono text-amber-400">{display ?? value}</span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value}
+        className="w-full accent-amber-500"
+        onChange={e => onChange(Number(e.target.value))} />
+      {(minLabel || maxLabel) && (
+        <div className="flex justify-between mt-0.5">
+          <span className="text-[9px] text-steel-600">{minLabel}</span>
+          <span className="text-[9px] text-steel-600">{maxLabel}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TabBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick}
-      className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${active ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30' : 'glass text-steel-400 hover:text-steel-200'}`}>
-      {children}
+      className={`px-4 py-2 text-sm font-medium rounded-t-lg transition ${active ? 'bg-steel-800 text-amber-400 border-b-2 border-amber-500' : 'text-steel-400 hover:text-steel-200'}`}>
+      {label}
     </button>
   );
 }
