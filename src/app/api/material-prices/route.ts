@@ -2,71 +2,77 @@
 // Shared Material Prices API
 // GET  → returns the current shared prices (or defaults)
 // POST → saves updated prices for all users
+//
+// Uses @vercel/blob in production for persistent cross-instance
+// storage, and local filesystem in development.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 import { DEFAULT_MATERIAL_PRICES, MaterialPrice } from '@/lib/fencing/fence-materials';
 
-/**
- * Resolve the path to the shared prices JSON file.
- * - Local dev: `data/shared-prices.json` in the project root (persistent)
- * - Vercel/serverless: `/tmp/shared-prices.json` (per-instance, but allows writes)
- */
-function getStoragePath(): string {
-  const projectPath = path.join(process.cwd(), 'data', 'shared-prices.json');
-  try {
-    // Ensure `data/` directory exists
-    const dir = path.dirname(projectPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    // Test writability by touching the directory
-    fs.accessSync(dir, fs.constants.W_OK);
-    return projectPath;
-  } catch {
-    // Filesystem is read-only (Vercel) — use /tmp
-    return path.join('/tmp', 'shared-prices.json');
-  }
-}
+const BLOB_NAME = 'shared-prices.json';
+const IS_VERCEL = !!process.env.BLOB_READ_WRITE_TOKEN;
 
-function readSharedPrices(): MaterialPrice[] {
-  const storagePath = getStoragePath();
+// ── Local filesystem fallback (dev only) ──────────────────
+async function readLocal(): Promise<MaterialPrice[]> {
+  const fs = await import('fs');
+  const path = await import('path');
+  const filePath = path.join(process.cwd(), 'data', 'shared-prices.json');
   try {
-    if (fs.existsSync(storagePath)) {
-      const raw = fs.readFileSync(storagePath, 'utf-8');
-      const data = JSON.parse(raw) as { prices: MaterialPrice[]; updatedAt: string };
+    if (fs.existsSync(filePath)) {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const data = JSON.parse(raw) as { prices: MaterialPrice[] };
       if (Array.isArray(data.prices) && data.prices.length > 0) {
-        // Merge with defaults to pick up any new materials added since last save
         const savedIds = new Set(data.prices.map(p => p.id));
         const missing = DEFAULT_MATERIAL_PRICES.filter(d => !savedIds.has(d.id));
         return [...data.prices, ...missing];
       }
     }
-  } catch {
-    // File doesn't exist or is corrupted — return defaults
+  } catch { /* corrupted or missing */ }
+  return [...DEFAULT_MATERIAL_PRICES];
+}
+
+async function writeLocal(prices: MaterialPrice[]): Promise<void> {
+  const fs = await import('fs');
+  const path = await import('path');
+  const dir = path.join(process.cwd(), 'data');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const payload = { prices, updatedAt: new Date().toISOString(), version: 1 };
+  fs.writeFileSync(path.join(dir, 'shared-prices.json'), JSON.stringify(payload, null, 2), 'utf-8');
+}
+
+// ── Vercel Blob storage (production) ──────────────────────
+async function readBlob(): Promise<MaterialPrice[]> {
+  const { list, head } = await import('@vercel/blob');
+  try {
+    // Find the blob by listing with prefix
+    const { blobs } = await list({ prefix: BLOB_NAME, limit: 1 });
+    if (blobs.length === 0) return [...DEFAULT_MATERIAL_PRICES];
+    const blobMeta = await head(blobs[0].url);
+    const res = await fetch(blobMeta.url);
+    if (!res.ok) return [...DEFAULT_MATERIAL_PRICES];
+    const data = await res.json() as { prices: MaterialPrice[] };
+    if (Array.isArray(data.prices) && data.prices.length > 0) {
+      const savedIds = new Set(data.prices.map(p => p.id));
+      const missing = DEFAULT_MATERIAL_PRICES.filter(d => !savedIds.has(d.id));
+      return [...data.prices, ...missing];
+    }
+  } catch (err) {
+    console.error('[SharedPricing] Blob read error:', err);
   }
   return [...DEFAULT_MATERIAL_PRICES];
 }
 
-function writeSharedPrices(prices: MaterialPrice[]): void {
-  const storagePath = getStoragePath();
-  const dir = path.dirname(storagePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  const payload = {
-    prices,
-    updatedAt: new Date().toISOString(),
-    version: 1,
-  };
-  fs.writeFileSync(storagePath, JSON.stringify(payload, null, 2), 'utf-8');
+async function writeBlob(prices: MaterialPrice[]): Promise<void> {
+  const { put } = await import('@vercel/blob');
+  const payload = JSON.stringify({ prices, updatedAt: new Date().toISOString(), version: 1 });
+  await put(BLOB_NAME, payload, { access: 'public', contentType: 'application/json', addRandomSuffix: false });
 }
 
+// ── Route handlers ────────────────────────────────────────
 export async function GET() {
   try {
-    const prices = readSharedPrices();
+    const prices = IS_VERCEL ? await readBlob() : await readLocal();
     return NextResponse.json({
       prices,
       count: prices.length,
@@ -104,7 +110,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    writeSharedPrices(prices);
+    if (IS_VERCEL) {
+      await writeBlob(prices);
+    } else {
+      await writeLocal(prices);
+    }
 
     return NextResponse.json({
       success: true,

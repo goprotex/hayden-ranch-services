@@ -4,17 +4,18 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useAppStore } from '@/lib/store';
-import { STAY_TUFF_OPTIONS } from '@/lib/fencing/fence-calculator';
+import { STAY_TUFF_CATALOG, WIRE_CATEGORY_LABELS, toStayTuffProduct, type StayTuffOption, type WireCategory } from '@/lib/fencing/fence-calculator';
 import {
   POST_MATERIALS, BRACE_SPECS, GATE_SPECS, DEFAULT_MATERIAL_PRICES,
-  SQUARE_TUBE_GAUGES,
+  getGaugeOptions,
   determineBraceType, estimatePainting, calculateVertexAngle,
   recommendedTPostLength, wireRollPriceId, postJointPriceId, calculatePostLength,
   type PostMaterial, type SquareTubeGauge, type BraceType, type GateSize, type GateSpec, type BraceRecommendation,
+  type BarbedWireType, type TiePattern,
 } from '@/lib/fencing/fence-materials';
 import { generateFenceBidPDF, calculateSectionMaterials, calculateLaborEstimate, buildSiteAdjustments, type FenceBidSection, type BidGate, type FenceBidData, type TopWireType } from '@/lib/fencing/fence-bid-pdf';
 import type { DrawnLine, VertexAngle, TerrainSuggestion } from '@/components/fencing/FenceMap';
-import type { FenceType, FenceHeight, StayTuffOption } from '@/types';
+import type { FenceType, FenceHeight } from '@/types';
 
 const FenceMap = dynamic(() => import('@/components/fencing/FenceMap'), {
   ssr: false,
@@ -62,14 +63,24 @@ export default function FencingPage() {
 
   // Fence config
   const [fenceType, setFenceType] = useState<FenceType>('stay_tuff_fixed_knot');
-  const [selectedStayTuff, setSelectedStayTuff] = useState<StayTuffOption>(STAY_TUFF_OPTIONS[0]);
-  const [postMaterial, setPostMaterial] = useState<PostMaterial>('drill_stem');
+  const [selectedStayTuff, setSelectedStayTuff] = useState<StayTuffOption>(STAY_TUFF_CATALOG[0]);
+  const [wireCategory, setWireCategory] = useState<WireCategory>('cattle');
+  const [postMaterial, setPostMaterial] = useState<PostMaterial>('drill_stem_238');
   const [squareTubeGauge, setSquareTubeGauge] = useState<SquareTubeGauge>('14ga');
   // Height for non-Stay-Tuff fences (manual)
   const [manualHeight, setManualHeight] = useState<FenceHeight>('5ft');
 
   // Top & bottom wire type: smooth HT, barbed, or double barbed top
   const [topWireType, setTopWireType] = useState<TopWireType>('barbed');
+  // Barbed wire point type
+  const [barbedWireType, setBarbedWireType] = useState<BarbedWireType>('4_point');
+  // Tie pattern
+  const [tiePattern, setTiePattern] = useState<TiePattern>('every_strand');
+  // Accessories
+  const [includePostCaps, setIncludePostCaps] = useState(false);
+  const [includeTensioners, setIncludeTensioners] = useState(true);
+  const [includeSpringIndicators, setIncludeSpringIndicators] = useState(false);
+  const [concreteFillPosts, setConcreteFillPosts] = useState(false);
 
   // Derived: use Stay-Tuff height when applicable, otherwise manual height
   const wireHeightInches = useMemo(() => {
@@ -82,6 +93,11 @@ export default function FencingPage() {
 
   // Auto t-post sizing from wire height
   const tPostRec = useMemo(() => recommendedTPostLength(wireHeightInches), [wireHeightInches]);
+
+  // Filtered Stay-Tuff catalog by selected category
+  const filteredStayTuff = useMemo(() => STAY_TUFF_CATALOG.filter(p => p.category === wireCategory), [wireCategory]);
+  // Gauge options for current post material
+  const currentGaugeOptions = useMemo(() => getGaugeOptions(postMaterial), [postMaterial]);
 
   // Spacing
   const [linePostSpacing, setLinePostSpacing] = useState(66); // ft
@@ -221,13 +237,14 @@ export default function FencingPage() {
 
     // Wire cost per foot (varies by product height for Stay-Tuff)
     let wireCostPerFt = 0;
+    const barbedId = barbedWireType === '2_point' ? 'barbed_wire_2pt' : 'barbed_wire_4pt';
     if (fenceType.startsWith('stay_tuff')) {
-      const rollId = wireRollPriceId(selectedStayTuff.height);
-      wireCostPerFt = findPrice(rollId) / 330;
+      const rollId = wireRollPriceId(selectedStayTuff.id);
+      wireCostPerFt = findPrice(rollId) / selectedStayTuff.rollLength;
     } else if (fenceType === 'field_fence') {
       wireCostPerFt = findPrice('field_fence_roll') / 330;
     } else if (fenceType === 'barbed_wire') {
-      wireCostPerFt = (findPrice('barbed_wire') / 1320) * 4;
+      wireCostPerFt = (findPrice(barbedId) / 1320) * 4;
     } else if (fenceType === 'no_climb') {
       wireCostPerFt = findPrice('no_climb_roll') / 200;
     } else {
@@ -243,7 +260,7 @@ export default function FencingPage() {
       const bottomStrands = wireHeightInches >= 72 ? 1 : 0;
       const totalStrands = topStrands + bottomStrands;
       if (useBarbed) {
-        topWireCostPerFt = (findPrice('barbed_wire') / 1320) * totalStrands;
+        topWireCostPerFt = (findPrice(barbedId) / 1320) * totalStrands;
       } else {
         topWireCostPerFt = (findPrice('ht_smooth') / 4000) * totalStrands;
       }
@@ -256,9 +273,10 @@ export default function FencingPage() {
     // Line post cost per foot (joint-based)
     const postPriceId = postJointPriceId(postMaterial, squareTubeGauge);
     const jointPrice = findPrice(postPriceId);
-    const jointLen = postMaterial === 'drill_stem' ? 31 : 20;
+    const postSpec = POST_MATERIALS.find(p => p.id === postMaterial);
+    const jointLen = postSpec?.jointLengthFeet ?? 20;
     const postCalc = calculatePostLength(wireHeightInches);
-    const postsPerJoint = postMaterial === 'drill_stem' ? postCalc.postsPerDrillStemJoint : postCalc.postsPerSquareTubeJoint;
+    const postsPerJoint = postCalc.postsPerJoint(postMaterial);
     const pricePerPost = postsPerJoint > 0 ? jointPrice / postsPerJoint : jointPrice;
     const linePostCostPerFt = pricePerPost / linePostSpacing;
 
@@ -285,7 +303,7 @@ export default function FencingPage() {
       hardware: Math.round(hardwareCostPerFt * 100) / 100,
       total: Math.round(total * 100) / 100,
     };
-  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType]);
+  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType, barbedWireType]);
 
   const baseRate = materialCostPerFoot.total + laborRate;
   const effectiveRate = useMemo(() => Math.round((materialCostPerFoot.total + laborRate * terrainMult) * 100) / 100, [materialCostPerFoot.total, laborRate, terrainMult]);
@@ -305,10 +323,10 @@ export default function FencingPage() {
     const hBraces = braceRecommendations.filter(b => b.type === 'h_brace' || b.type === 'n_brace').length + 2;
     const cornerBraces = braceRecommendations.filter(b => b.type === 'corner_brace').length;
     const totalBraces = hBraces + cornerBraces;
-    const wireRolls = Math.ceil((totalFeet * 1.1) / 330);
+    const wireRolls = Math.ceil((totalFeet * 1.1) / (fenceType.startsWith('stay_tuff') ? selectedStayTuff.rollLength : 330));
     const concreteBags = (linePostCount * 2) + (totalBraces * 4);
     return { linePostCount, tPostCount: Math.max(0, tPostCount), hBraces, cornerBraces, totalBraces, wireRolls, concreteBags };
-  }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations]);
+  }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations, fenceType, selectedStayTuff]);
 
   const paintEst = useMemo(() => {
     if (!includePainting) return null;
@@ -355,7 +373,7 @@ export default function FencingPage() {
         'alfisols': 'Alfisols are moderately fertile soils that formed under hardwood forest cover. In the Hill Country, these often formed under post oak and blackjack oak woodlands. They have a distinctive feature: a clay-enriched subsoil layer (called the "Bt horizon") that forms when clay particles wash down from the surface over centuries. This clay layer actually provides excellent anchorage for fence posts once you bore through the sandier topsoil to reach it.',
         'inceptisols': 'Inceptisols are geologically young soils — they have not had enough time or stable enough conditions to develop the distinct layers that older soils have. In the Hill Country, Inceptisols typically form on moderate to steep slopes where erosion keeps stripping away the surface faster than soil can develop. The practical implication is that there is often not much soil depth to work with — you hit rock or partially weathered limestone relatively quickly when digging.',
         'entisols': 'Entisols are the youngest soils in the classification system — essentially weathered rock with minimal soil development. On your property, this likely means the soil is thin, sitting directly on limestone bedrock or within rocky hillside material. These soils formed where the terrain is too steep or too rocky for deep soil development. Fence post installation in Entisols almost always involves rock drilling, because there simply is not enough loose soil to auger through.',
-        'aridisols': 'Aridisols form in dry climates and are common in parts of west-central Texas. A notorious feature of many Aridisols is a cemented calcium carbonate layer called "caliche" — the bane of post hole diggers across Texas. Caliche forms when dissolved calcium from limestone leaches downward and re-precipitates in a rock-hard layer that can be inches to feet thick. Standard auger bits bounce off caliche; it requires specialized carbide-tipped bits or a hydraulic rock drill to penetrate.',
+        'aridisols': 'Aridisols form in dry climates and are common in parts of west-central Texas. A notorious feature of many Aridisols is a cemented calcium carbonate layer called "caliche" — the bane of post hole diggers across Texas. Caliche forms when dissolved calcium from limestone leaches downward and re-precipitates in a rock-hard layer that can be inches to feet thick. Standard auger bits bounce off caliche; it requires our 80-horse tractor with Beltech capable of drilling through concrete to penetrate.',
       };
       const storyKey = Object.keys(orderStories).find(k => taxOrder.includes(k));
       const orderStory = storyKey ? orderStories[storyKey] : null;
@@ -371,7 +389,7 @@ export default function FencingPage() {
     if (terrainSuggestion.texture) {
       let textureExplain = `The top soil layer (the material our auger hits first) is classified as "${terrainSuggestion.texture}."`;
       if (terrainSuggestion.rockFragmentPct != null && terrainSuggestion.rockFragmentPct >= 25) {
-        textureExplain += ` That ${terrainSuggestion.rockFragmentPct}% rock fragment content means that roughly ${terrainSuggestion.rockFragmentPct >= 50 ? 'one out of every two shovelfuls is rock' : 'one in every three to four shovelfuls is rock'}. These are not small pebbles — "coarse fragments" in USDA terminology means cobbles and stones 3 inches and larger mixed throughout the soil matrix. This is the result of millions of years of limestone bedrock slowly weathering and breaking apart, mixing gravel and cobbles into the upper soil. Our crew uses heavy-duty carbide-tipped auger bits rated for this type of material, and we carry backup bits for rocky jobs.`;
+        textureExplain += ` That ${terrainSuggestion.rockFragmentPct}% rock fragment content means that roughly ${terrainSuggestion.rockFragmentPct >= 50 ? 'one out of every two shovelfuls is rock' : 'one in every three to four shovelfuls is rock'}. These are not small pebbles — "coarse fragments" in USDA terminology means cobbles and stones 3 inches and larger mixed throughout the soil matrix. This is the result of millions of years of limestone bedrock slowly weathering and breaking apart, mixing gravel and cobbles into the upper soil. Our crew uses a skid steer mounted auger with heavy-duty carbide-tipped bits rated for this type of material, and we carry backup bits for rocky jobs.`;
       } else if (terrainSuggestion.rockFragmentPct != null && terrainSuggestion.rockFragmentPct > 0) {
         textureExplain += ` The soil contains about ${terrainSuggestion.rockFragmentPct}% rock fragments — moderate for the Hill Country — which our equipment handles well.`;
       }
@@ -388,16 +406,16 @@ export default function FencingPage() {
       const depthStr = ft > 0 ? `${ft} feet${inches > 0 ? ' ' + inches + ' inches' : ''}` : `${depth} inches`;
       const restrictType = terrainSuggestion.restrictionType || 'bedrock';
       if (depth <= 18) {
-        parts.push(`Perhaps the most important finding from our research: USDA subsurface data indicates ${restrictType} at approximately ${depthStr} below the surface. For context, a properly set fence post needs to be buried 30 to 36 inches deep. At ${depthStr}, every single post hole on your property will hit solid rock well before reaching that depth. This is not unusual in the Hill Country — much of this region sits on Cretaceous-era limestone that was deposited as marine sediment roughly 100 million years ago when central Texas was the floor of a shallow sea. Our crew will arrive with a truck-mounted hydraulic rock drill that can bore directly into limestone. A post anchored into solid bedrock is actually the strongest possible installation — that post is not going anywhere, ever.`);
+        parts.push(`Perhaps the most important finding from our research: USDA subsurface data indicates ${restrictType} at approximately ${depthStr} below the surface. For context, a properly set fence post needs to be buried 30 to 36 inches deep. At ${depthStr}, every single post hole on your property will hit solid rock well before reaching that depth. This is not unusual in the Hill Country — much of this region sits on Cretaceous-era limestone that was deposited as marine sediment roughly 100 million years ago when central Texas was the floor of a shallow sea. Our crew will arrive with an 80-horse tractor with a Beltech that's capable of drilling through concrete and solid limestone. A post anchored into solid bedrock is actually the strongest possible installation — that post is not going anywhere, ever.`);
       } else if (depth <= 30) {
-        parts.push(`USDA subsurface data indicates ${restrictType} at approximately ${depthStr} below the surface. Since a standard fence post is set 30 to 36 inches deep, most post holes will encounter rock before reaching ideal depth. This is common in the Texas Hill Country, where limestone bedrock from the Cretaceous period (roughly 100 million years old) lies relatively close to the surface. Our crew will bring rock drilling equipment to finish these holes and ensure each post reaches maximum achievable depth, anchoring directly into the rock shelf where possible.`);
+        parts.push(`USDA subsurface data indicates ${restrictType} at approximately ${depthStr} below the surface. Since a standard fence post is set 30 to 36 inches deep, most post holes will encounter rock before reaching ideal depth. This is common in the Texas Hill Country, where limestone bedrock from the Cretaceous period (roughly 100 million years old) lies relatively close to the surface. Our crew will bring our 80-horse tractor with a Beltech capable of drilling through rock to finish these holes and ensure each post reaches maximum achievable depth, anchoring directly into the rock shelf where possible.`);
       } else if (depth <= 48) {
-        parts.push(`USDA data indicates ${restrictType} at approximately ${depthStr} below grade. While this is deep enough for most post holes, our corner posts and end posts (which are set deeper for added stability) may encounter rock. We keep rock drilling equipment on the truck as standard practice for all Hill Country installations.`);
+        parts.push(`USDA data indicates ${restrictType} at approximately ${depthStr} below grade. While this is deep enough for most post holes, our corner posts and end posts (which are set deeper for added stability) may encounter rock. We keep our skid steer mounted auger and 80-horse tractor with Beltech on site as standard practice for all Hill Country installations.`);
       }
     } else if (terrainSuggestion.soilType) {
       const soil = terrainSuggestion.soilType.toLowerCase();
       if (soil.includes('rock') || soil.includes('outcrop') || soil.includes('limestone') || soil.includes('caliche')) {
-        parts.push('Based on the soil type name, your property contains significant rock or limestone near the surface. Post holes will likely require a hydraulic breaker or core drill in some areas, which we have accounted for in our approach.');
+        parts.push('Based on the soil type name, your property contains significant rock or limestone near the surface. Post holes will likely require our 80-horse tractor with Beltech or skid steer mounted auger in some areas, which we have accounted for in our approach.');
       }
     }
 
@@ -459,7 +477,7 @@ export default function FencingPage() {
     const now = new Date();
     const valid = new Date(now); valid.setDate(valid.getDate() + 30);
     const ftLabel = FENCE_TYPES[fenceType] || fenceType;
-    const stModel = fenceType.startsWith('stay_tuff') ? selectedStayTuff.model : undefined;
+    const stModel = fenceType.startsWith('stay_tuff') ? selectedStayTuff.spec : undefined;
     const secs = computed.map(sec => ({
       ...sec, materials: calculateSectionMaterials(
         sec.linearFeet, ftLabel, fenceHeight, stModel,
@@ -547,8 +565,8 @@ export default function FencingPage() {
     addFenceBid({
       id: `fb_${Date.now()}`, projectName: projectName || 'Fence Project', clientName, address,
       fenceLines: [], fenceType, fenceHeight,
-      stayTuffOption: fenceType.startsWith('stay_tuff') ? selectedStayTuff : undefined,
-      materials: { cornerPosts: { quantity: 0, lengthFeet: 0, type: '' }, linePosts: { quantity: materialCalc.linePostCount, lengthFeet: 0, spacingFeet: linePostSpacing, type: postMaterial === 'drill_stem' ? 'Drill Stem' : '2" Square Tube' }, tPosts: { quantity: materialCalc.tPostCount, lengthFeet: 0, spacingFeet: tPostSpacing }, bracingAssemblies: { quantity: materialCalc.totalBraces, type: '' }, gateAssemblies: [], wire: { rolls: materialCalc.wireRolls, feetPerRoll: 330, totalFeet: totalFeet, type: '' }, barbedWire: { rolls: 0, strands: 0, totalFeet: 0 }, clips: { quantity: 0, type: '' }, staples: { pounds: 0 }, concrete: { bags: materialCalc.concreteBags, poundsPerBag: 80 }, tensioners: { quantity: 0 }, extras: [] },
+      stayTuffOption: fenceType.startsWith('stay_tuff') ? toStayTuffProduct(selectedStayTuff) : undefined,
+      materials: { cornerPosts: { quantity: 0, lengthFeet: 0, type: '' }, linePosts: { quantity: materialCalc.linePostCount, lengthFeet: 0, spacingFeet: linePostSpacing, type: POST_MATERIALS.find(p => p.id === postMaterial)?.label ?? postMaterial }, tPosts: { quantity: materialCalc.tPostCount, lengthFeet: 0, spacingFeet: tPostSpacing }, bracingAssemblies: { quantity: materialCalc.totalBraces, type: '' }, gateAssemblies: [], wire: { rolls: materialCalc.wireRolls, feetPerRoll: fenceType.startsWith('stay_tuff') ? selectedStayTuff.rollLength : 330, totalFeet: totalFeet, type: '' }, barbedWire: { rolls: 0, strands: 0, totalFeet: 0 }, clips: { quantity: 0, type: '' }, staples: { pounds: 0 }, concrete: { bags: materialCalc.concreteBags, poundsPerBag: 80 }, tensioners: { quantity: 0 }, extras: [] },
       laborEstimate: { totalHours: timelineDays * 24, crewSize: 3, days: timelineDays, difficultyMultiplier: terrainMult, hourlyRate: 45, totalLaborCost: secTotal },
       totalCost: projTotal, createdAt: new Date().toISOString(),
     });
@@ -580,6 +598,82 @@ export default function FencingPage() {
       </header>
 
       <main className="max-w-[1500px] mx-auto px-6 py-6">
+        {/* MAP FIRST — full width above everything on config tab */}
+        {activeTab === 'config' && (
+          <div className="mb-6 animate-fade-in">
+            <Card title="Draw Your Fence" icon="&#x1f5fa;&#xfe0f;" className="!p-0 overflow-hidden">
+              <div className="p-4 pb-2">
+                <p className="text-[11px] text-steel-400 mb-2">Click on the map to draw your fence lines. The map will analyze terrain, soil, and elevation automatically.</p>
+              </div>
+              <FenceMap
+                onFenceLinesChange={handleFenceLinesChange}
+                onTerrainAnalyzed={handleTerrainAnalyzed}
+                onMapCapture={(dataUrl) => { setMapImages(prev => [...prev, dataUrl]); }}
+              />
+            </Card>
+
+            {/* Soil type banner */}
+            {terrainSuggestion?.soilType && (
+              <div className="mt-4 bg-gradient-to-r from-amber-900/30 to-orange-900/30 rounded-xl p-4 border border-amber-700/30 flex items-center gap-3">
+                <span className="text-2xl">&#x1f30d;</span>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-amber-300">Soil: {terrainSuggestion.soilType}</p>
+                  <p className="text-[11px] text-amber-400/70 mt-0.5">
+                    Elevation change: {Math.round(terrainSuggestion.elevationChange)} ft &bull;
+                    Avg elevation: {Math.round(terrainSuggestion.avgElevation)} ft &bull;
+                    Suggested difficulty: {TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label}
+                  </p>
+                  {terrainSuggestion.drainage && (
+                    <p className="text-[11px] text-amber-400/60 mt-0.5">
+                      Drainage: {terrainSuggestion.drainage}
+                      {terrainSuggestion.hydric ? ` \u2022 Hydric: ${terrainSuggestion.hydric}` : ''}
+                    </p>
+                  )}
+                  {terrainSuggestion.components && terrainSuggestion.components.length > 1 && (
+                    <p className="text-[10px] text-amber-400/50 mt-0.5">
+                      Components: {terrainSuggestion.components.slice(0, 3).map((c: { name: string; percent: number }) => `${c.name} (${c.percent}%)`).join(', ')}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-amber-400/50 mt-0.5">
+                    Soil affects concrete requirements ({soilMultiplier}x) and labor difficulty.
+                    Source: {terrainSuggestion.source === 'UC_Davis_SoilWeb' ? 'UC Davis SoilWeb' : 'USDA NRCS Web Soil Survey'}
+                  </p>
+                </div>
+              </div>
+            )}
+            {terrainSuggestion && !terrainSuggestion.soilType && (
+              <div className="mt-4 bg-surface-200/50 rounded-xl p-3 border border-steel-700/30 flex items-center gap-3">
+                <span className="text-xl">&#x26a0;&#xfe0f;</span>
+                <div>
+                  <p className="text-xs text-steel-400">Soil data unavailable for this location</p>
+                  <p className="text-[10px] text-steel-500">
+                    Elevation: {Math.round(terrainSuggestion.avgElevation)} ft &bull;
+                    Change: {Math.round(terrainSuggestion.elevationChange)} ft &bull;
+                    Using terrain-based difficulty estimate
+                  </p>
+                </div>
+              </div>
+            )}
+            {/* AI site analysis status */}
+            {generatingNarrative && (
+              <div className="mt-4 bg-purple-900/20 rounded-lg p-3 border border-purple-700/30 flex items-center gap-2">
+                <span className="animate-pulse text-purple-400">&#x1f916;</span>
+                <p className="text-xs text-purple-300">Generating AI site analysis for this property&hellip;</p>
+              </div>
+            )}
+            {aiNarrative && !generatingNarrative && (
+              <div className="mt-4 bg-emerald-900/20 rounded-lg p-3 border border-emerald-700/30">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-emerald-400 text-sm">&#x2713;</span>
+                  <p className="text-xs font-semibold text-emerald-300">AI Site Analysis Ready</p>
+                  <button onClick={() => setAiNarrative(null)} className="ml-auto text-[10px] text-red-400 hover:text-red-300 underline">clear</button>
+                </div>
+                <p className="text-[11px] text-steel-300 leading-relaxed line-clamp-4">{aiNarrative}</p>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="grid lg:grid-cols-12 gap-6">
 
           {/* LEFT CONFIG SIDEBAR */}
@@ -626,14 +720,14 @@ export default function FencingPage() {
                 </div>
 
                 {/* Square tube gauge selector */}
-                {postMaterial === 'square_tube' && (
+                {currentGaugeOptions.length > 0 && (
                   <div>
                     <label className="block text-xs font-medium text-steel-400 mb-1.5">Tube Gauge</label>
                     <div className="grid grid-cols-3 gap-1.5">
-                      {SQUARE_TUBE_GAUGES.map(g => (
+                      {currentGaugeOptions.map(g => (
                         <button key={g.gauge} onClick={() => setSquareTubeGauge(g.gauge)}
                           className={`py-1.5 px-2 rounded-lg text-[10px] font-medium transition text-center ${squareTubeGauge === g.gauge ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30' : 'bg-surface-200 text-steel-400 hover:bg-surface-50 hover:text-steel-200'}`}>
-                          {g.gauge}<span className="block text-[9px] opacity-70">${g.pricePerJoint}/joint</span>
+                          {g.gauge}<span className="block text-[9px] opacity-70">{g.wallThickness}</span>
                         </button>
                       ))}
                     </div>
@@ -642,13 +736,26 @@ export default function FencingPage() {
 
                 {fenceType.startsWith('stay_tuff') && (
                   <div>
+                    <label className="block text-xs font-medium text-steel-400 mb-1">Wire Category</label>
+                    <div className="grid grid-cols-2 gap-1.5 mb-2">
+                      {(Object.entries(WIRE_CATEGORY_LABELS) as [WireCategory, string][]).map(([cat, label]) => (
+                        <button key={cat} onClick={() => { setWireCategory(cat); const first = STAY_TUFF_CATALOG.find(p => p.category === cat); if (first) setSelectedStayTuff(first); }}
+                          className={`py-1.5 px-2 rounded-lg text-[10px] font-medium transition text-left ${wireCategory === cat ? 'bg-amber-600/20 text-amber-300 border border-amber-500/50' : 'bg-surface-200 text-steel-400 border border-steel-700/20 hover:bg-surface-50'}`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                     <label className="block text-xs font-medium text-steel-400 mb-1">Stay-Tuff Product</label>
-                    <select title="Stay-Tuff product" value={selectedStayTuff.model}
-                      onChange={e => { const o = STAY_TUFF_OPTIONS.find(x => x.model === e.target.value); if (o) setSelectedStayTuff(o); }}
+                    <select title="Stay-Tuff product" value={selectedStayTuff.id}
+                      onChange={e => { const o = STAY_TUFF_CATALOG.find(x => x.id === e.target.value); if (o) setSelectedStayTuff(o); }}
                       className="w-full bg-surface-200 border border-steel-700/30 rounded-lg px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-amber-500/50">
-                      {STAY_TUFF_OPTIONS.map(o => <option key={o.model} value={o.model}>{o.model} - {o.description}</option>)}
+                      {filteredStayTuff.map(o => <option key={o.id} value={o.id}>{o.partNo} — {o.spec} ({o.description})</option>)}
                     </select>
-                    <p className="text-[10px] text-amber-400/70 mt-1">Wire height: {selectedStayTuff.height}" &rarr; fence height: {fenceHeight} | T-Post: {tPostRec.label}</p>
+                    <p className="text-[10px] text-amber-400/70 mt-1">
+                      Wire height: {selectedStayTuff.height}&quot; &rarr; fence height: {fenceHeight} | {selectedStayTuff.rollLength}&apos; rolls | T-Post: {tPostRec.label}
+                      {selectedStayTuff.madeToOrder && <span className="text-orange-400 ml-1">(Made to Order)</span>}
+                    </p>
+                    <p className="text-[9px] text-steel-500 mt-0.5">{selectedStayTuff.whereUsed}</p>
                   </div>
                 )}
               </div>
@@ -674,7 +781,7 @@ export default function FencingPage() {
                   <div className="grid grid-cols-1 gap-1.5">
                     {([
                       { value: 'smooth' as TopWireType, label: 'Smooth HT Wire', desc: '12.5 ga smooth, 4,000\' rolls' },
-                      { value: 'barbed' as TopWireType, label: 'Barbed Wire (single)', desc: '4-prong barbed, 1,320\' rolls — top & bottom' },
+                      { value: 'barbed' as TopWireType, label: 'Barbed Wire (single)', desc: 'Barbed, 1,320\' rolls — top & bottom' },
                       { value: 'barbed_double' as TopWireType, label: 'Double Barbed Top', desc: '2 barbed strands on top + 1 on bottom' },
                     ]).map(opt => (
                       <button key={opt.value} onClick={() => setTopWireType(opt.value)}
@@ -684,9 +791,85 @@ export default function FencingPage() {
                       </button>
                     ))}
                   </div>
+                  {(topWireType === 'barbed' || topWireType === 'barbed_double') && (
+                    <div className="mt-2">
+                      <label className="block text-xs font-medium text-steel-400 mb-1">Barbed Wire Points</label>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {([
+                          { value: '2_point' as BarbedWireType, label: '2-Point Barbed' },
+                          { value: '4_point' as BarbedWireType, label: '4-Point Barbed' },
+                        ]).map(opt => (
+                          <button key={opt.value} onClick={() => setBarbedWireType(opt.value)}
+                            className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition ${barbedWireType === opt.value ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30' : 'bg-surface-200 text-steel-400 hover:bg-surface-50'}`}>
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </Card>
             )}
+
+            {/* Barbed Wire only fences — 2pt or 4pt and strand count */}
+            {fenceType === 'barbed_wire' && (
+              <Card title="Barbed Wire Options" icon="&#x26a0;&#xfe0f;">
+                <div className="space-y-2">
+                  <label className="block text-xs font-medium text-steel-400 mb-1">Point Type</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {([
+                      { value: '2_point' as BarbedWireType, label: '2-Point' },
+                      { value: '4_point' as BarbedWireType, label: '4-Point' },
+                    ]).map(opt => (
+                      <button key={opt.value} onClick={() => setBarbedWireType(opt.value)}
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition ${barbedWireType === opt.value ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30' : 'bg-surface-200 text-steel-400 hover:bg-surface-50'}`}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* Wire Tie Pattern */}
+            <Card title="Wire Tie Pattern" icon="&#x1f9f5;">
+              <div className="grid grid-cols-1 gap-1.5">
+                {([
+                  { value: 'every_strand' as TiePattern, label: 'Every Strand', desc: 'Tie wire at every horizontal strand per post' },
+                  { value: 'every_other' as TiePattern, label: 'Every Other Strand', desc: 'Tie wire at alternating strands' },
+                  { value: 'four_per_post' as TiePattern, label: '4 Per Post', desc: '4 ties per post, evenly spaced' },
+                ]).map(opt => (
+                  <button key={opt.value} onClick={() => setTiePattern(opt.value)}
+                    className={`py-2 px-3 rounded-lg text-left transition ${tiePattern === opt.value ? 'bg-amber-600/20 text-amber-300 border border-amber-500/50' : 'bg-surface-200 text-steel-400 border border-steel-700/20 hover:bg-surface-50'}`}>
+                    <span className="text-[11px] font-medium block">{opt.label}</span>
+                    <span className="text-[9px] opacity-60">{opt.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </Card>
+
+            {/* Accessories & Upsells */}
+            <Card title="Accessories" icon="&#x2699;&#xfe0f;">
+              <div className="space-y-2.5">
+                {([
+                  { get: includePostCaps, set: setIncludePostCaps, label: 'Post Caps', desc: 'Prevents rain intrusion on square tube posts' },
+                  { get: includeTensioners, set: setIncludeTensioners, label: 'Inline Tensioners', desc: 'Tensioners at H-braces and every 660\' on long runs' },
+                  { get: includeSpringIndicators, set: setIncludeSpringIndicators, label: 'Spring Tension Indicators', desc: 'Visual indicators showing wire tension at each H-brace' },
+                  { get: concreteFillPosts, set: setConcreteFillPosts, label: 'Concrete-Filled Posts', desc: 'Fill square tube posts with concrete for maximum rigidity' },
+                ]).map(opt => (
+                  <label key={opt.label} className="flex items-center gap-3 cursor-pointer group">
+                    <div className={`w-10 h-5 rounded-full transition relative ${opt.get ? 'bg-amber-600' : 'bg-surface-200'}`}
+                      onClick={() => opt.set(!opt.get)}>
+                      <div className={`absolute w-4 h-4 bg-white rounded-full top-0.5 transition-all ${opt.get ? 'left-5' : 'left-0.5'}`} />
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-steel-300 font-medium block group-hover:text-steel-200">{opt.label}</span>
+                      <span className="text-[9px] text-steel-500">{opt.desc}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </Card>
 
             <Card title="Bracing" icon="&#x1f527;">
               <div className="space-y-3">
@@ -728,7 +911,7 @@ export default function FencingPage() {
                     { label: `Wire (${fenceType.startsWith('stay_tuff') ? selectedStayTuff.height + '"' : FENCE_TYPES[fenceType]?.split(' ').slice(-2).join(' ') || fenceType})`, value: materialCostPerFoot.wire },
                     { label: 'Top Wire (HT smooth)', value: materialCostPerFoot.topWire },
                     { label: `T-Posts (${tPostRec.label} @ ${tPostSpacing}' spacing)`, value: materialCostPerFoot.tPosts },
-                    { label: `Line Posts (${postMaterial === 'drill_stem' ? 'Drill Stem 31\'' : `Sq Tube ${squareTubeGauge} 20'`} @ ${linePostSpacing}')`, value: materialCostPerFoot.linePosts },
+                    { label: `Line Posts (${POST_MATERIALS.find(p => p.id === postMaterial)?.label ?? postMaterial} @ ${linePostSpacing}')`, value: materialCostPerFoot.linePosts },
                     { label: `Concrete${soilMultiplier > 1 ? ` (${soilMultiplier}x soil adj.)` : ''}`, value: materialCostPerFoot.concrete },
                     { label: 'Hardware (clips, tensioners, etc.)', value: materialCostPerFoot.hardware },
                   ].map(row => (
@@ -835,78 +1018,12 @@ export default function FencingPage() {
 
             <div className="flex gap-2">
               {(['config', 'preview', 'pricing'] as const).map(t => (
-                <TabBtn key={t} label={t === 'config' ? 'Sections & Map' : t === 'preview' ? 'Bid Preview' : 'Material Pricing'} active={activeTab === t} onClick={() => setActiveTab(t)} />
+                <TabBtn key={t} label={t === 'config' ? 'Sections & Gates' : t === 'preview' ? 'Bid Preview' : 'Material Pricing'} active={activeTab === t} onClick={() => setActiveTab(t)} />
               ))}
             </div>
 
             {activeTab === 'config' && (
               <div className="space-y-5 animate-fade-in">
-                <FenceMap
-                  onFenceLinesChange={handleFenceLinesChange}
-                  onTerrainAnalyzed={handleTerrainAnalyzed}
-                  onMapCapture={(dataUrl) => { setMapImages(prev => [...prev, dataUrl]); }}
-                />
-
-                {/* Soil type banner */}
-                {terrainSuggestion?.soilType && (
-                  <div className="bg-gradient-to-r from-amber-900/30 to-orange-900/30 rounded-xl p-4 border border-amber-700/30 flex items-center gap-3">
-                    <span className="text-2xl">&#x1f30d;</span>
-                    <div className="flex-1">
-                      <p className="text-sm font-bold text-amber-300">Soil: {terrainSuggestion.soilType}</p>
-                      <p className="text-[11px] text-amber-400/70 mt-0.5">
-                        Elevation change: {Math.round(terrainSuggestion.elevationChange)} ft &bull;
-                        Avg elevation: {Math.round(terrainSuggestion.avgElevation)} ft &bull;
-                        Suggested difficulty: {TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label}
-                      </p>
-                      {terrainSuggestion.drainage && (
-                        <p className="text-[11px] text-amber-400/60 mt-0.5">
-                          Drainage: {terrainSuggestion.drainage}
-                          {terrainSuggestion.hydric ? ` \u2022 Hydric: ${terrainSuggestion.hydric}` : ''}
-                        </p>
-                      )}
-                      {terrainSuggestion.components && terrainSuggestion.components.length > 1 && (
-                        <p className="text-[10px] text-amber-400/50 mt-0.5">
-                          Components: {terrainSuggestion.components.slice(0, 3).map((c: { name: string; percent: number }) => `${c.name} (${c.percent}%)`).join(', ')}
-                        </p>
-                      )}
-                      <p className="text-[10px] text-amber-400/50 mt-0.5">
-                        Soil affects concrete requirements ({soilMultiplier}x) and labor difficulty.
-                        Source: {terrainSuggestion.source === 'UC_Davis_SoilWeb' ? 'UC Davis SoilWeb' : 'USDA NRCS Web Soil Survey'}
-                      </p>
-                    </div>
-                  </div>
-                )}
-                {terrainSuggestion && !terrainSuggestion.soilType && (
-                  <div className="bg-surface-200/50 rounded-xl p-3 border border-steel-700/30 flex items-center gap-3">
-                    <span className="text-xl">&#x26a0;&#xfe0f;</span>
-                    <div>
-                      <p className="text-xs text-steel-400">Soil data unavailable for this location</p>
-                      <p className="text-[10px] text-steel-500">
-                        Elevation: {Math.round(terrainSuggestion.avgElevation)} ft &bull;
-                        Change: {Math.round(terrainSuggestion.elevationChange)} ft &bull;
-                        Using terrain-based difficulty estimate
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* AI site analysis status */}
-                {generatingNarrative && (
-                  <div className="bg-purple-900/20 rounded-lg p-3 border border-purple-700/30 flex items-center gap-2">
-                    <span className="animate-pulse text-purple-400">&#x1f916;</span>
-                    <p className="text-xs text-purple-300">Generating AI site analysis for this property&hellip;</p>
-                  </div>
-                )}
-                {aiNarrative && !generatingNarrative && (
-                  <div className="bg-emerald-900/20 rounded-lg p-3 border border-emerald-700/30">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-emerald-400 text-sm">&#x2713;</span>
-                      <p className="text-xs font-semibold text-emerald-300">AI Site Analysis Ready</p>
-                      <button onClick={() => setAiNarrative(null)} className="ml-auto text-[10px] text-red-400 hover:text-red-300 underline">clear</button>
-                    </div>
-                    <p className="text-[11px] text-steel-300 leading-relaxed line-clamp-4">{aiNarrative}</p>
-                  </div>
-                )}
 
                 <div className="card-dark overflow-hidden">
                   <div className="px-5 py-3 border-b border-steel-700/20 flex items-center justify-between">
@@ -1024,12 +1141,12 @@ export default function FencingPage() {
                   <div className="bg-surface-200/50 rounded-lg p-4">
                     <h4 className="text-sm font-bold text-steel-300 mb-2">Material Summary</h4>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-                      <div><span className="text-steel-500">Post Material:</span> <span className="text-steel-200">{postMaterial === 'drill_stem' ? 'Drill Stem (31\' joints)' : `2" Square Tube ${squareTubeGauge} (20' joints)`}</span></div>
+                      <div><span className="text-steel-500">Post Material:</span> <span className="text-steel-200">{POST_MATERIALS.find(p => p.id === postMaterial)?.label ?? postMaterial}{currentGaugeOptions.length > 0 ? ` ${squareTubeGauge}` : ''} ({POST_MATERIALS.find(p => p.id === postMaterial)?.jointLengthFeet ?? 20}&apos; joints)</span></div>
                       <div><span className="text-steel-500">Line Posts:</span> <span className="text-steel-200">{materialCalc.linePostCount} @ {linePostSpacing}' spacing</span></div>
                       <div><span className="text-steel-500">T-Posts:</span> <span className="text-steel-200">{materialCalc.tPostCount} ({tPostRec.label}) @ {tPostSpacing}' spacing</span></div>
                       <div><span className="text-steel-500">H-Braces:</span> <span className="text-steel-200">{materialCalc.hBraces}</span></div>
                       <div><span className="text-steel-500">Corner Braces:</span> <span className="text-steel-200">{materialCalc.cornerBraces}</span></div>
-                      <div><span className="text-steel-500">Wire Rolls:</span> <span className="text-steel-200">{materialCalc.wireRolls} (330' ea)</span></div>
+                      <div><span className="text-steel-500">Wire Rolls:</span> <span className="text-steel-200">{materialCalc.wireRolls} ({fenceType.startsWith('stay_tuff') ? selectedStayTuff.rollLength : 330}&apos; ea)</span></div>
                       <div><span className="text-steel-500">Concrete:</span> <span className="text-steel-200">{materialCalc.concreteBags} bags (80lb)</span></div>
                       <div><span className="text-steel-500">Gates:</span> <span className="text-steel-200">{gates.length}</span></div>
                       {includePainting && <div><span className="text-steel-500">Paint:</span> <span className="text-steel-200">{paintEst?.gallonsNeeded || 0} gallons ({paintColor})</span></div>}

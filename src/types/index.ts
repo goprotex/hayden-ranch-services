@@ -229,13 +229,16 @@ export type FenceType =
 
 export type FenceHeight = '4ft' | '5ft' | '6ft' | '7ft' | '8ft';
 
-export interface StayTuffOption {
-  model: string;              // e.g. "12.5/49/6"
+export interface StayTuffProduct {
+  model: string;              // e.g. "2096-6-330"
   height: number;
   horizontalWires: number;
   verticalSpacing: number;
   description: string;
 }
+
+/** Fence vertex / point types for map interaction */
+export type FencePointType = 'line_post' | 'h_brace' | 'n_brace' | 'corner_brace' | 'double_h' | 'kicker' | 'gate' | 'water_gap';
 
 export interface GeoPoint {
   lat: number;
@@ -271,7 +274,7 @@ export interface FenceBid {
   fenceLines: FenceLine[];
   fenceType: FenceType;
   fenceHeight: FenceHeight;
-  stayTuffOption?: StayTuffOption;
+  stayTuffOption?: StayTuffProduct;
   materials: FenceMaterialList;
   laborEstimate: LaborEstimate;
   totalCost: number;

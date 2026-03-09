@@ -2,10 +2,12 @@
 // Comprehensive Fencing Material Catalog & Default Pricing
 // ============================================================
 
-export type PostMaterial = 'drill_stem' | 'square_tube';
-export type SquareTubeGauge = '14ga' | '12ga' | '11ga';
+export type PostMaterial = 'drill_stem_238' | 'drill_stem_278' | 'round_pipe_250' | 'square_2' | 'square_3' | 'square_4';
+export type SquareTubeGauge = '16ga' | '14ga' | '11ga';
 export type BraceType = 'h_brace' | 'corner_brace' | 'n_brace' | 'double_h';
 export type GateSize = '4ft' | '6ft' | '8ft' | '10ft' | '12ft' | '16ft';
+export type BarbedWireType = '2_point' | '4_point';
+export type TiePattern = 'every_strand' | 'every_other' | 'four_per_post';
 
 // -- Post Material Specifications --
 export interface PostSpec {
@@ -15,29 +17,56 @@ export interface PostSpec {
   weightPerFoot: number;
   defaultPricePerFoot: number;
   jointLengthFeet: number;
+  shape: 'round' | 'square';
+  gaugeOptions?: SquareTubeGauge[];
 }
 
 export const POST_MATERIALS: PostSpec[] = [
-  { id: 'drill_stem', label: 'Drill Stem (2-3/8" OD)', diameter: '2-3/8" OD',
-    weightPerFoot: 4.7, defaultPricePerFoot: 3.50, jointLengthFeet: 31 },
-  { id: 'square_tube', label: '2" Square Tube', diameter: '2" x 2"',
-    weightPerFoot: 3.2, defaultPricePerFoot: 2.85, jointLengthFeet: 20 },
+  { id: 'drill_stem_238', label: '2-3/8" Drill Stem', diameter: '2-3/8" OD',
+    weightPerFoot: 4.7, defaultPricePerFoot: 3.50, jointLengthFeet: 31, shape: 'round' },
+  { id: 'drill_stem_278', label: '2-7/8" Drill Stem', diameter: '2-7/8" OD',
+    weightPerFoot: 6.5, defaultPricePerFoot: 4.75, jointLengthFeet: 31, shape: 'round' },
+  { id: 'round_pipe_250', label: '2.5" New Round Pipe', diameter: '2.5" OD',
+    weightPerFoot: 3.65, defaultPricePerFoot: 3.25, jointLengthFeet: 21, shape: 'round' },
+  { id: 'square_2', label: '2" Square Tube', diameter: '2" x 2"',
+    weightPerFoot: 3.2, defaultPricePerFoot: 2.85, jointLengthFeet: 20, shape: 'square',
+    gaugeOptions: ['16ga', '14ga', '11ga'] },
+  { id: 'square_3', label: '3" Square Tube', diameter: '3" x 3"',
+    weightPerFoot: 5.4, defaultPricePerFoot: 4.50, jointLengthFeet: 24, shape: 'square',
+    gaugeOptions: ['14ga', '11ga'] },
+  { id: 'square_4', label: '4" Square Tube', diameter: '4" x 4"',
+    weightPerFoot: 7.1, defaultPricePerFoot: 6.25, jointLengthFeet: 24, shape: 'square',
+    gaugeOptions: ['14ga', '11ga'] },
 ];
 
-// -- Square tube gauge pricing (per 20 ft joint) --
+// -- Square tube gauge pricing (per joint) --
 export interface GaugeOption {
   gauge: SquareTubeGauge;
   label: string;
   pricePerFoot: number;
-  pricePerJoint: number;
   wallThickness: string;
 }
 
-export const SQUARE_TUBE_GAUGES: GaugeOption[] = [
-  { gauge: '14ga', label: '14 Gauge (0.075")', pricePerFoot: 2.85, pricePerJoint: 57, wallThickness: '0.075"' },
-  { gauge: '12ga', label: '12 Gauge (0.105")', pricePerFoot: 3.50, pricePerJoint: 70, wallThickness: '0.105"' },
-  { gauge: '11ga', label: '11 Gauge (0.120")', pricePerFoot: 4.25, pricePerJoint: 85, wallThickness: '0.120"' },
-];
+export const SQUARE_TUBE_GAUGES: Record<string, GaugeOption[]> = {
+  square_2: [
+    { gauge: '16ga', label: '16 Gauge (0.065")', pricePerFoot: 2.40, wallThickness: '0.065"' },
+    { gauge: '14ga', label: '14 Gauge (0.075")', pricePerFoot: 2.85, wallThickness: '0.075"' },
+    { gauge: '11ga', label: '11 Gauge (0.120")', pricePerFoot: 4.25, wallThickness: '0.120"' },
+  ],
+  square_3: [
+    { gauge: '14ga', label: '14 Gauge (0.075")', pricePerFoot: 4.50, wallThickness: '0.075"' },
+    { gauge: '11ga', label: '11 Gauge (0.120")', pricePerFoot: 6.00, wallThickness: '0.120"' },
+  ],
+  square_4: [
+    { gauge: '14ga', label: '14 Gauge (0.075")', pricePerFoot: 6.25, wallThickness: '0.075"' },
+    { gauge: '11ga', label: '11 Gauge (0.120")', pricePerFoot: 8.50, wallThickness: '0.120"' },
+  ],
+};
+
+/** Get available gauge options for a post material */
+export function getGaugeOptions(material: PostMaterial): GaugeOption[] {
+  return SQUARE_TUBE_GAUGES[material] ?? [];
+}
 
 // -- Post length calculator based on wire / fence height --
 export interface PostLengthCalc {
@@ -45,8 +74,7 @@ export interface PostLengthCalc {
   aboveGroundFeet: number;
   belowGroundFeet: number;
   totalLengthFeet: number;
-  postsPerDrillStemJoint: number;
-  postsPerSquareTubeJoint: number;
+  postsPerJoint: (material: PostMaterial) => number;
 }
 
 export function calculatePostLength(wireHeightInches: number): PostLengthCalc {
@@ -58,8 +86,11 @@ export function calculatePostLength(wireHeightInches: number): PostLengthCalc {
     aboveGroundFeet: Math.round(aboveGround * 10) / 10,
     belowGroundFeet: belowGround,
     totalLengthFeet: total,
-    postsPerDrillStemJoint: Math.floor(31 / total),
-    postsPerSquareTubeJoint: Math.floor(20 / total),
+    postsPerJoint: (material: PostMaterial) => {
+      const spec = POST_MATERIALS.find(p => p.id === material);
+      const jointLen = spec?.jointLengthFeet ?? 20;
+      return Math.floor(jointLen / total);
+    },
   };
 }
 
@@ -199,31 +230,96 @@ export interface MaterialPrice {
 }
 
 export const DEFAULT_MATERIAL_PRICES: MaterialPrice[] = [
-  // Posts - drill stem (31ft joints)
-  { id: 'drill_stem_31', category: 'Posts', name: "Drill Stem (2-3/8\" OD) \u2014 31' joint", unit: 'joint', price: 110, defaultPrice: 110 },
-  // Posts - square tube (20ft joints) by gauge
-  { id: 'square_tube_20_14ga', category: 'Posts', name: "2\" Square Tube 14ga \u2014 20' joint", unit: 'joint', price: 57, defaultPrice: 57 },
-  { id: 'square_tube_20_12ga', category: 'Posts', name: "2\" Square Tube 12ga \u2014 20' joint", unit: 'joint', price: 70, defaultPrice: 70 },
-  { id: 'square_tube_20_11ga', category: 'Posts', name: "2\" Square Tube 11ga \u2014 20' joint", unit: 'joint', price: 85, defaultPrice: 85 },
+  // Posts — Drill Stem (31ft joints)
+  { id: 'drill_stem_238_31', category: 'Posts', name: "Drill Stem 2-3/8\" OD — 31' joint", unit: 'joint', price: 110, defaultPrice: 110 },
+  { id: 'drill_stem_278_31', category: 'Posts', name: "Drill Stem 2-7/8\" OD — 31' joint", unit: 'joint', price: 155, defaultPrice: 155 },
+  // Posts — Round pipe
+  { id: 'round_pipe_250_21', category: 'Posts', name: "2.5\" New Round Pipe — 21' joint", unit: 'joint', price: 72, defaultPrice: 72 },
+  // Posts — 2" Square Tube (20ft joints) by gauge
+  { id: 'square_2_20_16ga', category: 'Posts', name: "2\" Square Tube 16ga — 20' joint", unit: 'joint', price: 48, defaultPrice: 48 },
+  { id: 'square_2_20_14ga', category: 'Posts', name: "2\" Square Tube 14ga — 20' joint", unit: 'joint', price: 57, defaultPrice: 57 },
+  { id: 'square_2_20_11ga', category: 'Posts', name: "2\" Square Tube 11ga — 20' joint", unit: 'joint', price: 85, defaultPrice: 85 },
+  // Posts — 3" Square Tube (24ft joints)
+  { id: 'square_3_24_14ga', category: 'Posts', name: "3\" Square Tube 14ga — 24' joint", unit: 'joint', price: 108, defaultPrice: 108 },
+  { id: 'square_3_24_11ga', category: 'Posts', name: "3\" Square Tube 11ga — 24' joint", unit: 'joint', price: 144, defaultPrice: 144 },
+  // Posts — 4" Square Tube (24ft joints)
+  { id: 'square_4_24_14ga', category: 'Posts', name: "4\" Square Tube 14ga — 24' joint", unit: 'joint', price: 150, defaultPrice: 150 },
+  { id: 'square_4_24_11ga', category: 'Posts', name: "4\" Square Tube 11ga — 24' joint", unit: 'joint', price: 204, defaultPrice: 204 },
+  // Concrete-filled post/brace upgrade
+  { id: 'concrete_fill_post', category: 'Posts', name: 'Concrete Fill — Line Post', unit: 'per post', price: 8, defaultPrice: 8 },
+  { id: 'concrete_fill_brace', category: 'Posts', name: 'Concrete Fill — Brace Post', unit: 'per post', price: 12, defaultPrice: 12 },
   // T-Posts
   { id: 't_post_6', category: 'Posts', name: "T-Post 6' (1.33 lb/ft)", unit: 'each', price: 9.50, defaultPrice: 9.50 },
   { id: 't_post_7', category: 'Posts', name: "T-Post 7' (1.33 lb/ft)", unit: 'each', price: 11.00, defaultPrice: 11.00 },
   { id: 't_post_8', category: 'Posts', name: "T-Post 8' (1.33 lb/ft)", unit: 'each', price: 13.00, defaultPrice: 13.00 },
   { id: 't_post_10', category: 'Posts', name: "T-Post 10' (1.33 lb/ft)", unit: 'each', price: 17.00, defaultPrice: 17.00 },
-  // Wire - Stay-Tuff by product height
-  { id: 'stay_tuff_49', category: 'Wire', name: "Stay-Tuff 49\" (330' roll)", unit: 'roll', price: 385, defaultPrice: 385 },
-  { id: 'stay_tuff_60', category: 'Wire', name: "Stay-Tuff 60\" (330' roll)", unit: 'roll', price: 450, defaultPrice: 450 },
-  { id: 'stay_tuff_72', category: 'Wire', name: "Stay-Tuff 72\" (330' roll)", unit: 'roll', price: 525, defaultPrice: 525 },
-  { id: 'stay_tuff_96', category: 'Wire', name: "Stay-Tuff 96\" (330' roll)", unit: 'roll', price: 685, defaultPrice: 685 },
-  // Wire - Other
-  { id: 'field_fence_roll', category: 'Wire', name: "Field Fence (330' roll)", unit: 'roll', price: 180, defaultPrice: 180 },
-  { id: 'barbed_wire', category: 'Wire', name: "Barbed Wire (1320' roll)", unit: 'roll', price: 95, defaultPrice: 95 },
-  { id: 'no_climb_roll', category: 'Wire', name: "No-Climb Horse Fence (200' roll)", unit: 'roll', price: 320, defaultPrice: 320 },
-  { id: 'ht_smooth', category: 'Wire', name: "High Tensile Smooth (4000' roll)", unit: 'roll', price: 110, defaultPrice: 110 },
-  // Brace & Hardware
+
+  // ── Stay-Tuff Fixed Knot Wire ──
+  // Deer fence
+  { id: 'st_2096_3_200', category: 'Wire — Deer', name: 'ST 2096-3-200 (96\", 3\" stay, 200\' roll)', unit: 'roll', price: 620, defaultPrice: 620 },
+  { id: 'st_2096_6_330', category: 'Wire — Deer', name: 'ST 2096-6-330 (96\", 6\" stay, 330\' roll)', unit: 'roll', price: 685, defaultPrice: 685 },
+  { id: 'st_2096_12_330', category: 'Wire — Deer', name: 'ST 2096-12-330 (96\", 12\" stay, 330\' roll)', unit: 'roll', price: 510, defaultPrice: 510 },
+  { id: 'st_2096_6_500', category: 'Wire — Deer', name: 'ST 2096-6-500 (96\", 6\" stay, 500\' MTO)', unit: 'roll', price: 1020, defaultPrice: 1020 },
+  { id: 'st_2096_12_660', category: 'Wire — Deer', name: 'ST 2096-12-660 (96\", 12\" stay, 660\' MTO)', unit: 'roll', price: 950, defaultPrice: 950 },
+  // Horse fence
+  { id: 'st_1661_3_200', category: 'Wire — Horse', name: 'ST 1661-3-200 (61\", 3\" stay, 200\' roll)', unit: 'roll', price: 450, defaultPrice: 450 },
+  { id: 'st_1661_6_330', category: 'Wire — Horse', name: 'ST 1661-6-330 (61\", 6\" stay, 330\' roll)', unit: 'roll', price: 480, defaultPrice: 480 },
+  { id: 'st_1661_12_330', category: 'Wire — Horse', name: 'ST 1661-12-330 (61\", 12\" stay, 330\' MTO)', unit: 'roll', price: 380, defaultPrice: 380 },
+  { id: 'st_1661_12_660', category: 'Wire — Horse', name: 'ST 1661-12-660 (61\", 12\" stay, 660\' MTO)', unit: 'roll', price: 720, defaultPrice: 720 },
+  { id: 'st_1748_3_200', category: 'Wire — Horse', name: 'ST 1748-3-200 (48\", 3\" stay, 200\' MTO)', unit: 'roll', price: 430, defaultPrice: 430 },
+  // Goat fence
+  { id: 'st_1348_3_200', category: 'Wire — Goat', name: 'ST 1348-3-200 (48\", 3\" stay, 200\' roll)', unit: 'roll', price: 370, defaultPrice: 370 },
+  { id: 'st_1348_6_330', category: 'Wire — Goat/Field', name: 'ST 1348-6-330 (48\", 6\" stay, 330\' roll)', unit: 'roll', price: 395, defaultPrice: 395 },
+  { id: 'st_1348_12_330', category: 'Wire — Goat', name: 'ST 1348-12-330 (48\", 12\" stay, 330\' roll)', unit: 'roll', price: 295, defaultPrice: 295 },
+  { id: 'st_1348_12_660', category: 'Wire — Goat', name: 'ST 1348-12-660 (48\", 12\" stay, 660\' MTO)', unit: 'roll', price: 560, defaultPrice: 560 },
+  // Cattle fence
+  { id: 'st_949_3_200', category: 'Wire — Cattle', name: 'ST 949-3-200 (49\", 3\" stay, 200\' MTO)', unit: 'roll', price: 320, defaultPrice: 320 },
+  { id: 'st_949_6_330', category: 'Wire — Cattle', name: 'ST 949-6-330 (49\", 6\" stay, 330\' roll)', unit: 'roll', price: 310, defaultPrice: 310 },
+  { id: 'st_949_12_330', category: 'Wire — Cattle', name: 'ST 949-12-330 (49\", 12\" stay, 330\' roll)', unit: 'roll', price: 225, defaultPrice: 225 },
+  { id: 'st_949_12_660', category: 'Wire — Cattle', name: 'ST 949-12-660 (49\", 12\" stay, 660\' MTO)', unit: 'roll', price: 425, defaultPrice: 425 },
+  // General field fence
+  { id: 'st_735_6_330', category: 'Wire — Field', name: 'ST 735-6-330 (35\", 6\" stay, 330\' roll)', unit: 'roll', price: 230, defaultPrice: 230 },
+  { id: 'st_735_3_200', category: 'Wire — Field', name: 'ST 735-3-200 (35\", 3\" stay, 200\' MTO)', unit: 'roll', price: 215, defaultPrice: 215 },
+  { id: 'st_842_6_330', category: 'Wire — Field', name: 'ST 842-6-330 (42\", 6\" stay, 330\' roll)', unit: 'roll', price: 270, defaultPrice: 270 },
+  { id: 'st_842_12_330', category: 'Wire — Field', name: 'ST 842-12-330 (42\", 12\" stay, 330\' roll)', unit: 'roll', price: 195, defaultPrice: 195 },
+  { id: 'st_842_3_200', category: 'Wire — Field', name: 'ST 842-3-200 (42\", 3\" stay, 200\' MTO)', unit: 'roll', price: 255, defaultPrice: 255 },
+  { id: 'st_842_12_660', category: 'Wire — Field', name: 'ST 842-12-660 (42\", 12\" stay, 660\' MTO)', unit: 'roll', price: 370, defaultPrice: 370 },
+  // Fixed Knot Xtreme
+  { id: 'sza_735_6_330', category: 'Wire — Xtreme', name: 'Xtreme 735-6-330 (35\", 6\", 330\')', unit: 'roll', price: 265, defaultPrice: 265 },
+  { id: 'sza_1348_6_330', category: 'Wire — Xtreme', name: 'Xtreme 1348-6-330 (48\", 6\", 330\')', unit: 'roll', price: 445, defaultPrice: 445 },
+  { id: 'sza_1348_12_330', category: 'Wire — Xtreme', name: 'Xtreme 1348-12-330 (48\", 12\", 330\')', unit: 'roll', price: 335, defaultPrice: 335 },
+  { id: 'sza_1348_12_660', category: 'Wire — Xtreme', name: 'Xtreme 1348-12-660 (48\", 12\", 660\')', unit: 'roll', price: 635, defaultPrice: 635 },
+  { id: 'sza_949_6_330', category: 'Wire — Xtreme', name: 'Xtreme 949-6-330 (49\", 6\", 330\')', unit: 'roll', price: 350, defaultPrice: 350 },
+  { id: 'sza_949_12_330', category: 'Wire — Xtreme', name: 'Xtreme 949-12-330 (49\", 12\", 330\')', unit: 'roll', price: 260, defaultPrice: 260 },
+  { id: 'sza_949_12_660', category: 'Wire — Xtreme', name: 'Xtreme 949-12-660 (49\", 12\", 660\')', unit: 'roll', price: 490, defaultPrice: 490 },
+  { id: 'sza_2096_6_330', category: 'Wire — Xtreme', name: 'Xtreme 2096-6-330 (96\", 6\", 330\')', unit: 'roll', price: 780, defaultPrice: 780 },
+  // Fixed Knot Xtreme Black
+  { id: 'szab_1348_6_330', category: 'Wire — Xtreme Black', name: 'Xtreme Black 1348-6-330 (48\", 6\", 330\')', unit: 'roll', price: 520, defaultPrice: 520 },
+  { id: 'szab_1775_6_330', category: 'Wire — Xtreme Black', name: 'Xtreme Black 1775-6-330 (75\", 6\", 330\')', unit: 'roll', price: 620, defaultPrice: 620 },
+  { id: 'szab_2096_6_330', category: 'Wire — Xtreme Black', name: 'Xtreme Black 2096-6-330 (96\", 6\", 330\')', unit: 'roll', price: 820, defaultPrice: 820 },
+
+  // ── Barbed Wire ──
+  { id: 'barbed_wire_2pt', category: 'Wire — Barbed', name: '2-Point Barbed Wire (1320\' roll)', unit: 'roll', price: 85, defaultPrice: 85 },
+  { id: 'barbed_wire_4pt', category: 'Wire — Barbed', name: '4-Point Barbed Wire (1320\' roll)', unit: 'roll', price: 95, defaultPrice: 95 },
+  // Other wire
+  { id: 'field_fence_roll', category: 'Wire — Other', name: "Field Fence (330' roll)", unit: 'roll', price: 180, defaultPrice: 180 },
+  { id: 'no_climb_roll', category: 'Wire — Other', name: "No-Climb Horse Fence (200' roll)", unit: 'roll', price: 320, defaultPrice: 320 },
+  { id: 'ht_smooth', category: 'Wire — Other', name: "High Tensile Smooth (4000' roll)", unit: 'roll', price: 110, defaultPrice: 110 },
+
+  // ── Hardware & Accessories ──
   { id: 'clips', category: 'Hardware', name: 'Fence Clips/Staples (box of 500)', unit: 'box', price: 45, defaultPrice: 45 },
   { id: 'concrete_bag', category: 'Hardware', name: 'Concrete Mix (80 lb bag)', unit: 'bag', price: 7, defaultPrice: 7 },
   { id: 'tensioner', category: 'Hardware', name: 'Inline Wire Tensioner', unit: 'each', price: 12, defaultPrice: 12 },
+  { id: 'spring_tension_indicator', category: 'Hardware', name: 'Spring Tension Indicator', unit: 'each', price: 18, defaultPrice: 18 },
+  { id: 'post_cap', category: 'Hardware', name: 'Post Cap (prevents rain/rot)', unit: 'each', price: 3.50, defaultPrice: 3.50 },
+  { id: 'wire_tie', category: 'Hardware', name: 'Wire Tie (pre-formed)', unit: 'each', price: 0.35, defaultPrice: 0.35 },
+  { id: 'crimp_sleeve', category: 'Hardware', name: 'Crimp Sleeves (bag of 100)', unit: 'bag', price: 28, defaultPrice: 28 },
+  { id: 'brace_pin', category: 'Hardware', name: 'H-Brace Pin (galvanized)', unit: 'each', price: 8, defaultPrice: 8 },
+  { id: 'brace_wire_9ga', category: 'Hardware', name: '9ga Brace Wire (50\' coil)', unit: 'coil', price: 12, defaultPrice: 12 },
+  { id: 'corner_insulator', category: 'Hardware', name: 'Corner / End Insulator (HT)', unit: 'each', price: 4.50, defaultPrice: 4.50 },
+  { id: 'line_insulator', category: 'Hardware', name: 'Line Post Insulator', unit: 'each', price: 1.25, defaultPrice: 1.25 },
+  { id: 'water_gap_cable', category: 'Hardware', name: 'Water Gap Cable Kit', unit: 'each', price: 85, defaultPrice: 85 },
+  { id: 'kicker_brace', category: 'Hardware', name: 'Kicker Brace Pipe (cut & welded)', unit: 'each', price: 35, defaultPrice: 35 },
   // Paint & Coatings
   { id: 'paint_posts', category: 'Paint', name: 'Post Paint (covers ~20 posts)', unit: 'gallon', price: 45, defaultPrice: 45 },
   { id: 'paint_gates', category: 'Paint', name: 'Gate Paint / Primer', unit: 'quart', price: 22, defaultPrice: 22 },
@@ -237,18 +333,35 @@ export function getMaterialPrice(id: string, prices?: MaterialPrice[]): number {
   return item?.price ?? item?.defaultPrice ?? 0;
 }
 
-/** Get the wire price id for a Stay-Tuff product by its height in inches */
-export function wireRollPriceId(heightInches: number): string {
-  if (heightInches <= 49) return 'stay_tuff_49';
-  if (heightInches <= 60) return 'stay_tuff_60';
-  if (heightInches <= 72) return 'stay_tuff_72';
-  return 'stay_tuff_96';
+/** Get the wire price id for a Stay-Tuff product by its product ID */
+export function wireRollPriceId(productId: string): string {
+  // Direct match if caller passes a material price id (e.g. 'st_2096_6_330')
+  const direct = DEFAULT_MATERIAL_PRICES.find(p => p.id === productId);
+  if (direct) return productId;
+  // Legacy fallback: match by height
+  const h = parseInt(productId, 10);
+  if (!isNaN(h)) {
+    if (h <= 49) return 'st_949_6_330';
+    if (h <= 61) return 'st_1661_6_330';
+    if (h <= 75) return 'szab_1775_6_330';
+    return 'st_2096_6_330';
+  }
+  return 'st_949_6_330';
 }
 
 /** Get the post price id based on material and optional gauge */
 export function postJointPriceId(material: PostMaterial, gauge?: SquareTubeGauge): string {
-  if (material === 'drill_stem') return 'drill_stem_31';
-  return `square_tube_20_${gauge ?? '14ga'}`;
+  const spec = POST_MATERIALS.find(p => p.id === material);
+  if (!spec) return 'drill_stem_238_31';
+  if (spec.shape === 'round') {
+    if (material === 'drill_stem_238') return 'drill_stem_238_31';
+    if (material === 'drill_stem_278') return 'drill_stem_278_31';
+    return 'round_pipe_250_21';
+  }
+  // Square tube — include gauge
+  const g = gauge ?? '14ga';
+  const jointLen = spec.jointLengthFeet;
+  return `${material}_${jointLen}_${g}`;
 }
 // -- Utility Functions --
 

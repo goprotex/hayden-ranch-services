@@ -4,12 +4,25 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 import { calculateVertexAngle, determineBraceType } from '@/lib/fencing/fence-materials';
+import type { FencePointType } from '@/types';
+
+const POINT_TYPE_OPTIONS: { value: FencePointType; label: string; color: string }[] = [
+  { value: 'line_post', label: 'Line Post', color: '#9ca3af' },
+  { value: 'h_brace', label: 'H-Brace', color: '#16a34a' },
+  { value: 'n_brace', label: 'N-Brace', color: '#0d9488' },
+  { value: 'corner_brace', label: 'Corner Brace', color: '#2563eb' },
+  { value: 'double_h', label: 'Double H-Brace', color: '#dc2626' },
+  { value: 'kicker', label: 'Line Post w/ Kicker', color: '#7c3aed' },
+  { value: 'gate', label: 'Gate', color: '#f59e0b' },
+  { value: 'water_gap', label: 'Water Gap', color: '#06b6d4' },
+];
 
 interface FenceMapProps {
   onFenceLinesChange?: (lines: DrawnLine[]) => void;
   onTerrainAnalyzed?: (analysis: TerrainSuggestion) => void;
   onMapCapture?: (dataUrl: string) => void;
   onGatesPlaced?: (gates: MapGate[]) => void;
+  onPointTypeChange?: (coordinate: [number, number], type: FencePointType) => void;
   center?: [number, number];
   zoom?: number;
 }
@@ -83,6 +96,7 @@ export default function FenceMap({
   onTerrainAnalyzed,
   onMapCapture,
   onGatesPlaced,
+  onPointTypeChange,
   center = [-98.23, 30.75],
   zoom = 14,
 }: FenceMapProps) {
@@ -101,6 +115,8 @@ export default function FenceMap({
   const [gatePlaceMode, setGatePlaceMode] = useState(false);
   const [placedGates, setPlacedGates] = useState<MapGate[]>([]);
   const [braceMarkers, setBraceMarkers] = useState<BraceMarker[]>([]);
+  const [pointOverrides, setPointOverrides] = useState<Map<string, FencePointType>>(new Map());
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
   const drawnLinesRef = useRef<DrawnLine[]>([]);
 
   type MapboxDraw = {
@@ -224,48 +240,85 @@ export default function FenceMap({
     }
   }, [calcLineLengthFeet, calcVertexAngles, onFenceLinesChange, analyzeTerrainForLines]);
 
-  // Render brace markers on the map
+  // Render brace markers on the map with click-to-change-type popups
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
-    const mapboxgl = (window as unknown as { mapboxgl?: typeof import('mapbox-gl').default }).mapboxgl;
-    // Clear old markers
+    // Clear old markers & popup
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
+    if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
 
-    for (const brace of braceMarkers) {
+    const coordKey = (c: [number, number]) => `${c[0].toFixed(8)},${c[1].toFixed(8)}`;
+
+    const createMarker = (mapboxgl: typeof import('mapbox-gl').default, brace: BraceMarker) => {
+      if (!mapRef.current) return;
+      const key = coordKey(brace.coordinate);
+      const overrideType = pointOverrides.get(key);
+      const activeType = overrideType ?? brace.type;
+      const opt = POINT_TYPE_OPTIONS.find(o => o.value === activeType);
+
       const el = document.createElement('div');
-      el.style.width = '18px';
-      el.style.height = '18px';
-      el.style.borderRadius = '50%';
+      el.style.width = '20px';
+      el.style.height = '20px';
+      el.style.borderRadius = activeType === 'gate' ? '4px' : '50%';
       el.style.border = '2px solid #fff';
       el.style.cursor = 'pointer';
-      el.title = `${brace.label}${brace.angleDegrees > 0 ? ` (${Math.round(brace.angleDegrees)}°)` : ''}`;
+      el.style.backgroundColor = opt?.color ?? '#16a34a';
+      el.title = `${opt?.label ?? brace.label}${brace.angleDegrees > 0 ? ` (${Math.round(brace.angleDegrees)}°)` : ''} — click to change`;
 
-      if (brace.type === 'double_h') {
-        el.style.backgroundColor = '#dc2626'; // red for end posts
-      } else if (brace.type === 'corner_brace') {
-        el.style.backgroundColor = '#2563eb'; // blue for corners
-      } else {
-        el.style.backgroundColor = '#16a34a'; // green for H-braces
-      }
+      // Click handler: show type-selection popup
+      el.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (!mapRef.current) return;
+        if (popupRef.current) popupRef.current.remove();
 
-      if (mapboxgl) {
-        const marker = new mapboxgl.Marker({ element: el })
+        const popupHtml = `<div style="display:flex;flex-direction:column;gap:4px;padding:4px;min-width:140px">
+          <div style="font-size:11px;font-weight:600;color:#ccc;margin-bottom:2px">Point Type</div>
+          ${POINT_TYPE_OPTIONS.map(o => `<button data-pt="${o.value}" style="display:flex;align-items:center;gap:6px;padding:4px 8px;border:none;border-radius:4px;cursor:pointer;background:${activeType === o.value ? '#374151' : 'transparent'};color:#e5e7eb;font-size:12px;text-align:left" onmouseover="this.style.background='#374151'" onmouseout="this.style.background='${activeType === o.value ? '#374151' : 'transparent'}'"><span style="width:10px;height:10px;border-radius:${o.value === 'gate' ? '2px' : '50%'};background:${o.color};display:inline-block"></span>${o.label}</button>`).join('')}
+        </div>`;
+
+        const popup = new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: 'fence-point-popup', maxWidth: '200px', offset: 15 })
           .setLngLat(brace.coordinate)
+          .setHTML(popupHtml)
           .addTo(mapRef.current!);
-        markersRef.current.push(marker);
-      } else {
-        // Fallback: dynamic import already loaded, use from map instance
-        import('mapbox-gl').then(mod => {
-          if (!mapRef.current) return;
-          const marker = new mod.default.Marker({ element: el })
-            .setLngLat(brace.coordinate)
-            .addTo(mapRef.current);
-          markersRef.current.push(marker);
-        });
-      }
+
+        // Wire up button clicks inside popup
+        setTimeout(() => {
+          const container = popup.getElement();
+          if (!container) return;
+          container.querySelectorAll('button[data-pt]').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const newType = btn.getAttribute('data-pt') as FencePointType;
+              setPointOverrides(prev => {
+                const next = new Map(prev);
+                next.set(key, newType);
+                return next;
+              });
+              onPointTypeChange?.(brace.coordinate, newType);
+              popup.remove();
+            });
+          });
+        }, 0);
+
+        popupRef.current = popup;
+      });
+
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat(brace.coordinate)
+        .addTo(mapRef.current);
+      markersRef.current.push(marker);
+    };
+
+    // Use globally cached mapboxgl, or dynamic import
+    const cachedGl = (window as unknown as { mapboxgl?: typeof import('mapbox-gl').default }).mapboxgl;
+    if (cachedGl) {
+      for (const brace of braceMarkers) createMarker(cachedGl, brace);
+    } else {
+      import('mapbox-gl').then(mod => {
+        for (const brace of braceMarkers) createMarker(mod.default, brace);
+      });
     }
-  }, [braceMarkers, mapLoaded]);
+  }, [braceMarkers, mapLoaded, pointOverrides, onPointTypeChange]);
 
   // Gate placement: snap click to nearest point on a fence line
   const handleMapClick = useCallback((e: { lngLat: { lng: number; lat: number } }) => {
@@ -518,7 +571,20 @@ export default function FenceMap({
         });
 
         map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+        map.addControl(new mapboxgl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: false, showUserLocation: true }), 'top-right');
         map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
+
+        // Auto-zoom to user location on first load
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              if (!cancelled && map) {
+                map.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 16, duration: 2500 });
+              }
+            },
+            () => { /* user denied or unavailable — stay on default center */ }
+          );
+        }
 
         const draw = new MapboxDrawModule({
           displayControlsDefault: false,
@@ -540,6 +606,14 @@ export default function FenceMap({
 
         mapRef.current = map;
         drawRef.current = draw;
+
+        // Inject dark-theme popup styles for point-type selector
+        if (!document.getElementById('fence-point-popup-css')) {
+          const style = document.createElement('style');
+          style.id = 'fence-point-popup-css';
+          style.textContent = `.fence-point-popup .mapboxgl-popup-content{background:#1f2937;border:1px solid #374151;border-radius:8px;padding:6px;box-shadow:0 4px 12px rgba(0,0,0,.5)}.fence-point-popup .mapboxgl-popup-tip{border-top-color:#1f2937}.fence-point-popup .mapboxgl-popup-close-button{color:#9ca3af;font-size:16px;padding:2px 6px}`;
+          document.head.appendChild(style);
+        }
       } catch (err) {
         if (!cancelled) {
           console.error('Map init error:', err);
@@ -619,12 +693,15 @@ export default function FenceMap({
             </button>
           )}
           {/* Legend */}
-          <div className="flex gap-3 ml-auto text-[10px] text-steel-400">
+          <div className="flex gap-3 ml-auto text-[10px] text-steel-400 flex-wrap items-center">
             {braceMarkers.length > 0 && (
               <>
                 <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-red-600 border border-white/50"></span> End Post</span>
-                <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-600 border border-white/50"></span> Corner Brace</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-600 border border-white/50"></span> Corner</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-green-600 border border-white/50"></span> H-Brace</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-violet-600 border border-white/50"></span> Kicker</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-cyan-500 border border-white/50"></span> Water Gap</span>
+                <span className="text-steel-500 italic">Click markers to change type</span>
               </>
             )}
             {placedGates.length > 0 && (

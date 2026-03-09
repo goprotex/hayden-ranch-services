@@ -3,7 +3,7 @@ import {
   recommendedTPostLength,
   calculatePostLength,
   POST_MATERIALS,
-  SQUARE_TUBE_GAUGES,
+  getGaugeOptions,
   type PostMaterial,
   type SquareTubeGauge,
 } from './fence-materials';
@@ -67,8 +67,8 @@ export interface FenceBidData {
   wireHeightInches?: number; // actual wire height for proper material sizing
 
   // Material selections (from UI)
-  postMaterial: PostMaterial;         // 'drill_stem' | 'square_tube'
-  squareTubeGauge?: SquareTubeGauge; // '14ga' | '12ga' | '11ga' (only when square_tube)
+  postMaterial: PostMaterial;
+  squareTubeGauge?: SquareTubeGauge;
   tPostSpacing: number;              // user-configured, e.g. 10
   linePostSpacing: number;           // user-configured, e.g. 66
   topWireType: TopWireType;          // 'smooth' | 'barbed' | 'barbed_double'
@@ -171,7 +171,7 @@ export function buildSiteAdjustments(
         label: 'Shallow Bedrock — Rock Drilling Required',
         reason: `USDA data shows ${site.restrictionType || 'bedrock'} at ${depthStr} below grade`,
         dataPoint: `Bedrock depth: ${depthStr}`,
-        impact: 'Hydraulic rock drill required for every post hole. Standard auger cannot penetrate this depth. Each post must be anchored directly into the rock shelf.',
+        impact: '80-horse tractor with Beltech rock drill required for every post hole. Standard auger cannot penetrate this depth. Each post must be anchored directly into the rock shelf.',
         costNote: 'Core drilling included in project pricing — no surprise charges',
       });
     } else if (site.bedrockDepthIn <= 30) {
@@ -179,7 +179,7 @@ export function buildSiteAdjustments(
         label: 'Moderate Bedrock — Partial Rock Drilling',
         reason: `${site.restrictionType || 'Bedrock'} at ${depthStr} — standard post depth is 30-36"`,
         dataPoint: `Bedrock depth: ${depthStr}`,
-        impact: 'Many post holes will bottom out on rock. Crew will carry rock drilling equipment and set posts at maximum achievable depth with epoxy anchoring where needed.',
+        impact: 'Many post holes will bottom out on rock. Crew will arrive with 80-horse tractor with Beltech and skid steer mounted auger, setting posts at maximum achievable depth with epoxy anchoring where needed.',
         costNote: 'Rock drilling equipment mobilization included in pricing',
       });
     } else {
@@ -187,7 +187,7 @@ export function buildSiteAdjustments(
         label: 'Subsurface Rock Possible',
         reason: `${site.restrictionType || 'Bedrock'} detected at ${depthStr} depth`,
         dataPoint: `Bedrock depth: ${depthStr}`,
-        impact: 'Some deeper posts may encounter rock. Drilling equipment will be on-site as a precaution.',
+        impact: 'Some deeper posts may encounter rock. Skid steer mounted auger and Beltech drill will be on-site as a precaution.',
       });
     }
   }
@@ -199,7 +199,7 @@ export function buildSiteAdjustments(
         label: 'Heavy Rock Fragment Soil',
         reason: `Soil matrix is ${site.rockFragmentPct}% coarse rock fragments`,
         dataPoint: `Rock fragments: ${site.rockFragmentPct}%`,
-        impact: 'Post holes will encounter heavy cobbles and stones throughout. Auger bits wear rapidly; backup bits and hand-finishing of holes required.',
+        impact: 'Post holes will encounter heavy cobbles and stones throughout. Skid steer mounted auger bits wear rapidly; backup bits and hand-finishing of holes required.',
         costNote: 'Auger wear and extended dig time factored into pricing',
       });
     } else {
@@ -207,7 +207,7 @@ export function buildSiteAdjustments(
         label: 'Rocky Soil Conditions',
         reason: `${site.rockFragmentPct}% rock fragments in the soil profile`,
         dataPoint: `Rock fragments: ${site.rockFragmentPct}%`,
-        impact: 'Post hole digging will be slower than normal. We carry carbide-tipped auger bits rated for this soil type.',
+        impact: 'Post hole digging will be slower than normal. We carry carbide-tipped skid steer auger bits rated for this soil type.',
       });
     }
   }
@@ -260,9 +260,9 @@ export function buildSiteAdjustments(
 
   // 7 — Acidic soil (metal corrosion risk)
   if (site.pH != null && site.pH <= 5.5) {
-    const postNote = materials?.postMaterial === 'drill_stem'
+    const postNote = materials?.postMaterial?.startsWith('drill_stem')
       ? 'Your drill stem posts (0.190" wall thickness) provide excellent corrosion resistance — far superior to standard pipe.'
-      : materials?.postMaterial === 'square_tube'
+      : materials?.postMaterial?.startsWith('square')
         ? 'We recommend galvanized square tube or periodic inspection of post bases in acidic soil.'
         : 'We recommend heavy-wall drill stem or galvanized posts for maximum longevity in these conditions.';
     adj.push({
@@ -297,7 +297,7 @@ const DEFAULT_TERMS: string[] = [
   `Cancellation Policy: Customer may cancel within 3 business days of signing with full deposit refund. After 3 business days, deposit is non-refundable and earned.`,
   `Site Access and Conditions: Customer warrants they have legal right to authorize work on the property. Customer is responsible for marking all underground utilities by calling 811 at least 3 business days before work begins. Customer grants contractor access to property and right to cross property as needed to complete work. Customer is responsible for securing all animals during work. Contractor is not liable for livestock escape due to temporary fence access during installation.`,
   `Material Pricing: Material costs subject to change if proposal not accepted within 30 days. If material costs increase more than 10% before work begins, contractor reserves right to adjust pricing or cancel contract with deposit refunded. All materials ordered are non-returnable. Customer is responsible for deposit even if customer cancels after materials are ordered.`,
-  `Rock and Subsurface Conditions: Pricing assumes standard rock conditions manageable with hydraulic breaker. If solid limestone, caliche, or bedrock requiring core drilling is encountered on more than 10% of posts, additional drilling will be billed at $15 per post not to exceed $750 without written customer approval. If subsurface conditions prevent post installation at specified locations, contractor may relocate posts up to 10 feet to achieve proper installation. Customer will be notified of significant subsurface issues before additional charges are incurred.`,
+  `Rock and Subsurface Conditions: Pricing assumes standard rock conditions manageable with our skid steer mounted auger and 80-horse tractor with Beltech drill. If solid limestone, caliche, or bedrock requiring core drilling is encountered on more than 10% of posts, additional drilling will be billed at $15 per post not to exceed $750 without written customer approval. If subsurface conditions prevent post installation at specified locations, contractor may relocate posts up to 10 feet to achieve proper installation. Customer will be notified of significant subsurface issues before additional charges are incurred.`,
   `Timeline and Delays: Work begins within 2 weeks of deposit receipt and material delivery, weather permitting. Estimated completion is ${'{workingDays}'} working days. Timeline is an estimate only and not guaranteed. Delays due to weather, material availability, equipment failure, labor shortage, or subsurface conditions do not constitute breach of contract. Contractor will provide reasonable notice of delays. Customer may not withhold payment due to timeline delays.`,
   `Weather and Seasonal Conditions: Concrete work cannot proceed in freezing temperatures (below 32°F), during rain, or when ground is frozen. High tensile fence installation requires dry conditions for proper tensioning. Weather delays do not constitute contractor default. Work may be suspended without penalty during unsuitable conditions. Customer remains responsible for full payment regardless of weather delays.`,
   `Warranty and Limitations: Contractor provides one year warranty on workmanship defects only. Warranty covers structural failure of fence due to installation error. Warranty does not cover damage from livestock, vehicle impact, falling trees, fire, flood, vandalism, or Acts of God. Warranty does not cover fence movement due to soil settling, frost heave, or erosion. Customer must notify contractor in writing within 60 days of discovering defect. Contractor's sole obligation is repair or replacement of defective work. Contractor is not liable for consequential damages including livestock loss, property damage, or lost use.`,
@@ -765,22 +765,24 @@ export function generateFenceBidPDF(data: FenceBidData): void {
     // ─── Confidence Closer — ties soil findings to actual material selections ───
     if (site) {
       // Build a material-aware closer referencing user's selections
-      const matPostLabel = data.postMaterial === 'drill_stem'
-        ? 'heavy-wall drill stem (2-3/8" OD, 4.7 lb/ft)'
-        : `2" square tube${data.squareTubeGauge ? ' (' + data.squareTubeGauge + ')' : ''}`;
+      const postSpec = POST_MATERIALS.find(p => p.id === data.postMaterial);
+      const matPostLabel = postSpec
+        ? `${postSpec.label} (${postSpec.diameter}, ${postSpec.weightPerFoot} lb/ft)`
+        : data.postMaterial;
+      const isDrillStem = data.postMaterial.startsWith('drill_stem');
       const matReasons: string[] = [];
       if (site.bedrockDepthIn != null && site.bedrockDepthIn <= 30) {
-        matReasons.push(data.postMaterial === 'drill_stem'
+        matReasons.push(isDrillStem
           ? 'drill stem\'s superior strength is ideal for rock-anchored installations'
-          : 'square tube posts will be welded to base plates for rock anchoring');
+          : 'posts will be welded to base plates for rock anchoring');
       }
       if (site.pH != null && site.pH <= 5.5) {
-        matReasons.push(data.postMaterial === 'drill_stem'
+        matReasons.push(isDrillStem
           ? 'drill stem\'s heavy wall thickness (0.190") provides decades of corrosion resistance in your acidic soil'
           : 'we recommend monitoring galvanized coatings in your acidic soil conditions');
       }
       if (site.clayPct != null && site.clayPct >= 35) {
-        matReasons.push(`posts set ${data.postMaterial === 'drill_stem' ? '3\' deep' : 'to full depth'} with extra concrete to combat clay heave`);
+        matReasons.push(`posts set ${isDrillStem ? '3\' deep' : 'to full depth'} with extra concrete to combat clay heave`);
       }
 
       const closerParts: string[] = [
@@ -826,12 +828,13 @@ export function generateFenceBidPDF(data: FenceBidData): void {
 
     const tSpec = recommendedTPostLength(data.wireHeightInches);
     const pCalc = calculatePostLength(data.wireHeightInches);
+    const matSpec = POST_MATERIALS.find(p => p.id === data.postMaterial) || POST_MATERIALS[0];
 
     const specLines = [
       `Wire Height: ${data.wireHeightInches}" (${(data.wireHeightInches / 12).toFixed(1)} ft)${data.stayTuffModel ? ` — Stay-Tuff model ${data.stayTuffModel}` : ''}`,
       `T-Post Size: ${tSpec.label} — required to support ${data.wireHeightInches}" wire height with proper above-ground clearance`,
-      `Corner/End Post: ${pCalc.totalLengthFeet}' drill stem (2-3/8" OD) — ${pCalc.aboveGroundFeet.toFixed(1)}' above ground, ${pCalc.belowGroundFeet}' below ground for stability`,
-      `Post Material: Drill stem posts cut from 31' joints (${pCalc.postsPerDrillStemJoint} posts per joint) — superior strength vs. standard pipe`,
+      `Corner/End Post: ${pCalc.totalLengthFeet}' ${matSpec.label} (${matSpec.diameter}) — ${pCalc.aboveGroundFeet.toFixed(1)}' above ground, ${pCalc.belowGroundFeet}' below ground for stability`,
+      `Post Material: ${matSpec.label} cut from ${matSpec.jointLengthFeet}' joints (${pCalc.postsPerJoint(data.postMaterial)} posts per joint)${matSpec.shape === 'round' ? ' — superior strength vs. standard pipe' : ''}`,
       `Concrete Setting: ${data.wireHeightInches >= 72 ? '3' : '2'} bags (80 lb) per corner/end post — ${pCalc.belowGroundFeet}' depth setting ensures wind and livestock resistance`,
     ];
 
@@ -1115,9 +1118,10 @@ export function generateFenceBidPDF(data: FenceBidData): void {
   const terms = data.customTerms && data.customTerms.length > 0 ? data.customTerms : DEFAULT_TERMS;
 
   // Replace template variables in terms
-  const postMatLabel = data.postMaterial === 'square_tube'
-    ? `2" square tube${data.squareTubeGauge ? ` (${data.squareTubeGauge})` : ''}`
-    : 'drill stem (2-3/8" OD)';
+  const postSpec = POST_MATERIALS.find(p => p.id === data.postMaterial);
+  const postMatLabel = postSpec
+    ? `${postSpec.label}${data.squareTubeGauge ? ` (${data.squareTubeGauge})` : ''}`
+    : data.postMaterial;
   const processedTerms = terms.map((term) =>
     term
       .replace(/\{fenceType\}/g, data.fenceType)
@@ -1246,7 +1250,7 @@ export function calculateSectionMaterials(
   fenceHeight: string,
   stayTuffModel?: string,
   terrain: string = 'moderate',
-  postMaterial: PostMaterial = 'drill_stem',
+  postMaterial: PostMaterial = 'drill_stem_238',
   squareTubeGauge: SquareTubeGauge = '14ga',
   tPostSpacing: number = 10,
   linePostSpacing: number = 66,
@@ -1270,14 +1274,13 @@ export function calculateSectionMaterials(
 
   // Post material info
   const postSpec = POST_MATERIALS.find(p => p.id === postMaterial) || POST_MATERIALS[0];
-  const gaugeSpec = postMaterial === 'square_tube'
-    ? (SQUARE_TUBE_GAUGES.find(g => g.gauge === squareTubeGauge) || SQUARE_TUBE_GAUGES[0])
+  const gaugeOpts = getGaugeOptions(postMaterial);
+  const gaugeSpec = gaugeOpts.length > 0
+    ? (gaugeOpts.find(g => g.gauge === squareTubeGauge) || gaugeOpts[0])
     : null;
 
   const jointLen = postSpec.jointLengthFeet;
-  const postsPerJoint = postMaterial === 'drill_stem'
-    ? postCalc.postsPerDrillStemJoint
-    : postCalc.postsPerSquareTubeJoint;
+  const postsPerJoint = postCalc.postsPerJoint(postMaterial);
   // ── Bracing ──
   // H-braces go at each end of the section + mid-run braces for very long straight runs (1 per 660').
   // Gate braces and bend/corner braces are calculated separately in the overall bid.
@@ -1298,9 +1301,10 @@ export function calculateSectionMaterials(
   const jointsNeeded = postJointsNeeded + braceJointsNeeded;
 
   // Post description
-  const postLabel = postMaterial === 'drill_stem'
-    ? `Drill Stem (2-3/8" OD, 4.7 lb/ft)`
-    : `2" Square Tube (${gaugeSpec ? gaugeSpec.label : '14 Gauge'}, ${gaugeSpec ? gaugeSpec.wallThickness : '0.075"'} wall)`;
+  const postSpecInfo = POST_MATERIALS.find(p => p.id === postMaterial);
+  const postLabel = postSpecInfo
+    ? `${postSpecInfo.label}${gaugeSpec ? ` (${gaugeSpec.label}, ${gaugeSpec.wallThickness} wall)` : ''}`
+    : postMaterial;
 
   const concreteBagsPerPost = wireHeightIn >= 72 ? 3 : 2;
   const concreteBags = (linePostCount * concreteBagsPerPost) + (hBraceCount * concreteBagsPerPost);
@@ -1407,7 +1411,7 @@ export function calculateSectionMaterials(
   // LINE POSTS (user's selected material)
   // ==============================================================
   materials.push({
-    name: `${postLabel} Line Posts — Set ${postCalc.belowGroundFeet}' deep in concrete, ${postCalc.aboveGroundFeet.toFixed(1)}' above ground (${postCalc.totalLengthFeet}' total cut length). Spaced every ${linePostSpacing}' on center. ${postMaterial === 'drill_stem' ? 'Heavy-wall oilfield pipe recycled for agricultural use — excellent strength-to-cost ratio, highly resistant to livestock impact and weather.' : `Square tube with ${gaugeSpec ? gaugeSpec.wallThickness : '0.075"'} wall thickness — clean profile with excellent rigidity for straight fence lines.`} Cut from ${jointLen}' joints (${postsPerJoint} posts per joint). Total joints: ${postJointsNeeded} for ${totalPostsFromPipe} posts (${linePostCount} line + ${bracePostCount} brace) + ${braceJointsNeeded} for ${bracePipePieces} brace rails/diagonals.`,
+    name: `${postLabel} Line Posts — Set ${postCalc.belowGroundFeet}' deep in concrete, ${postCalc.aboveGroundFeet.toFixed(1)}' above ground (${postCalc.totalLengthFeet}' total cut length). Spaced every ${linePostSpacing}' on center. ${postMaterial.startsWith('drill_stem') ? 'Heavy-wall oilfield pipe recycled for agricultural use — excellent strength-to-cost ratio, highly resistant to livestock impact and weather.' : `Square tube with ${gaugeSpec ? gaugeSpec.wallThickness : '0.075"'} wall thickness — clean profile with excellent rigidity for straight fence lines.`} Cut from ${jointLen}' joints (${postsPerJoint} posts per joint). Total joints: ${postJointsNeeded} for ${totalPostsFromPipe} posts (${linePostCount} line + ${bracePostCount} brace) + ${braceJointsNeeded} for ${bracePipePieces} brace rails/diagonals.`,
     quantity: `${totalPostsFromPipe} posts + ${bracePipePieces} brace pipes (${jointsNeeded} joints × ${jointLen}')`,
   });
 
@@ -1418,7 +1422,7 @@ export function calculateSectionMaterials(
     ? `${endBraces} at section ends + ${midRunBraces} mid-run (1 per 660' of run)`
     : `${endBraces} at section ends`;
   materials.push({
-    name: `H-Brace Assemblies — Each assembly: 2 vertical ${postMaterial === 'drill_stem' ? '2-3/8" OD' : '2" square tube'} posts + 1 horizontal brace rail (10') + 1 welded pipe diagonal (~10'). The diagonal is welded between the top of one post and the base of the other for maximum rigidity — no brace wire used. Braces anchor the fence line at ends and along long runs to resist wire tension pull (up to 250 lbs per wire strand). Gate braces are calculated separately with each gate.`,
+    name: `H-Brace Assemblies — Each assembly: 2 vertical ${postSpecInfo?.label ?? postMaterial} posts + 1 horizontal brace rail (10') + 1 welded pipe diagonal (~10'). The diagonal is welded between the top of one post and the base of the other for maximum rigidity — no brace wire used. Braces anchor the fence line at ends and along long runs to resist wire tension pull (up to 250 lbs per wire strand). Gate braces are calculated separately with each gate.`,
     quantity: `${hBraceCount} assemblies (${braceBreakdown})`,
   });
 
