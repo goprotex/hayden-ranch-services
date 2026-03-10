@@ -15,6 +15,7 @@ import {
   type BarbedWireType, type TiePattern,
 } from '@/lib/fencing/fence-materials';
 import { generateFenceBidPDF, calculateSectionMaterials, calculateLaborEstimate, buildSiteAdjustments, type FenceBidSection, type BidGate, type FenceBidData, type TopWireType } from '@/lib/fencing/fence-bid-pdf';
+import { loadProductPhotos } from '@/lib/fencing/product-photos';
 import type { DrawnLine, VertexAngle, TerrainSuggestion, ElevationSegment } from '@/components/fencing/FenceMap';
 import type { FenceType, FenceHeight } from '@/types';
 
@@ -560,11 +561,17 @@ export default function FencingPage() {
     return parts.length > 0 ? parts.join('\n\n') : undefined;
   }, [terrainSuggestion]);
 
-  const handleDownloadPDF = useCallback(() => {
+  const handleDownloadPDF = useCallback(async () => {
     const now = new Date();
     const valid = new Date(now); valid.setDate(valid.getDate() + 30);
     const ftLabel = FENCE_TYPES[fenceType] || fenceType;
     const stModel = fenceType.startsWith('stay_tuff') ? selectedStayTuff.spec : undefined;
+
+    // Load product photos for the selected wire category
+    const productImages = fenceType.startsWith('stay_tuff')
+      ? await loadProductPhotos(wireCategory)
+      : [];
+
     const secs = computed.map(sec => ({
       ...sec, materials: calculateSectionMaterials(
         sec.linearFeet, ftLabel, fenceHeight, stModel,
@@ -653,9 +660,11 @@ export default function FencingPage() {
       },
       steepFootage: steepFootage > 0 ? steepFootage : undefined,
       steepSurchargePerFoot: steepFootage > 0 ? 2 : undefined,
+      wireCategory: fenceType.startsWith('stay_tuff') ? wireCategory : undefined,
+      productImages: productImages.length > 0 ? productImages : undefined,
     };
     generateFenceBidPDF(data);
-  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc]);
+  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory]);
 
   const handleSaveBid = useCallback(() => {
     addFenceBid({

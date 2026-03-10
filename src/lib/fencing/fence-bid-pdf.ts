@@ -148,6 +148,12 @@ export interface FenceBidData {
 
   // Terms (use default if empty)
   customTerms?: string[];
+
+  // Wire category for product photos
+  wireCategory?: string;
+
+  // Pre-loaded product images as base64 data URLs
+  productImages?: { label: string; dataUrl: string }[];
 }
 
 // ============================================================
@@ -1158,6 +1164,78 @@ export function generateFenceBidPDF(data: FenceBidData): void {
     }
 
     y += 4;
+  }
+
+  // ── Product Photos Page ──
+  if (data.productImages && data.productImages.length > 0) {
+    doc.addPage();
+    y = 20;
+
+    // Section header with accent bar
+    doc.setFillColor(27, 38, 54);
+    doc.rect(mx, y - 3, cw, 9, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('YOUR FENCE MATERIALS', mx + 4, y + 3);
+    y += 14;
+
+    doc.setTextColor(60, 60, 60);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'italic');
+    const introText = `Below are the actual Stay-Tuff products specified for your ${data.fenceType} installation. All wire is Made in USA with a 20 Year Limited Warranty.`;
+    const introLines = doc.splitTextToSize(introText, cw);
+    doc.text(introLines, mx, y);
+    y += introLines.length * 3.5 + 6;
+
+    // Layout photos in a grid — 2 columns
+    const colW = (cw - 6) / 2;
+    const photos = data.productImages;
+
+    for (let i = 0; i < photos.length; i++) {
+      const col = i % 2;
+      const isNewRow = col === 0;
+
+      if (isNewRow && i > 0) {
+        y += 4; // gap between rows
+      }
+
+      // Check if we need a new page (estimate ~80mm per image row)
+      if (isNewRow) {
+        y = ensureSpace(doc, y, 85);
+      }
+
+      const imgX = mx + col * (colW + 6);
+      const imgH = colW * 0.75; // 4:3 aspect
+
+      try {
+        // Photo border
+        doc.setDrawColor(220, 220, 220);
+        doc.setLineWidth(0.3);
+        doc.rect(imgX, y, colW, imgH);
+
+        // Image
+        const fmt = photos[i].dataUrl.includes('image/png') ? 'PNG' : 'JPEG';
+        doc.addImage(photos[i].dataUrl, fmt, imgX + 0.5, y + 0.5, colW - 1, imgH - 1);
+
+        // Label below photo
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(27, 38, 54);
+        const labelLines = doc.splitTextToSize(photos[i].label, colW);
+        doc.text(labelLines, imgX + colW / 2, y + imgH + 3, { align: 'center' });
+
+        // Only advance y after the second column (or last image)
+        if (col === 1 || i === photos.length - 1) {
+          y += imgH + labelLines.length * 3 + 4;
+        }
+      } catch {
+        // Skip failed images
+        if (col === 1 || i === photos.length - 1) {
+          y += 10;
+        }
+      }
+    }
   }
 
   // ── Terms and Conditions ──

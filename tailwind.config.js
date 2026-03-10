@@ -24,8 +24,8 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ['"Crimson Text"', 'Georgia', 'serif'],
-        serif: ['"Crimson Text"', 'Georgia', 'serif'],
+        sans: ['"Michroma"', 'system-ui', 'sans-serif'],
+        serif: ['"Michroma"', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
         display: ['"Michroma"', 'sans-serif'],
         cursive: ['"Carattere"', 'cursive'],

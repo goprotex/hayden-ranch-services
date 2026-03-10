@@ -45,6 +45,9 @@ public/images/*.MP4
 public/images/Generated*
 public/images/Untitled*
 
+# original product photo source folder (copies live in public/images/products/)
+public/images/photos for PDF/
+
 # shared pricing data
 /data/*.json
 
