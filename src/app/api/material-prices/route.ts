@@ -11,7 +11,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { DEFAULT_MATERIAL_PRICES, MaterialPrice } from '@/lib/fencing/fence-materials';
 
 const BLOB_NAME = 'shared-prices.json';
-const IS_VERCEL = !!process.env.BLOB_READ_WRITE_TOKEN;
+const BLOB_TOKEN = process.env.Price_update_READ_WRITE_TOKEN || '';
+const IS_VERCEL = !!BLOB_TOKEN;
 
 // ── Local filesystem fallback (dev only) ──────────────────
 async function readLocal(): Promise<MaterialPrice[]> {
@@ -46,9 +47,9 @@ async function readBlob(): Promise<MaterialPrice[]> {
   const { list, head } = await import('@vercel/blob');
   try {
     // Find the blob by listing with prefix
-    const { blobs } = await list({ prefix: BLOB_NAME, limit: 1 });
+    const { blobs } = await list({ prefix: BLOB_NAME, limit: 1, token: BLOB_TOKEN });
     if (blobs.length === 0) return [...DEFAULT_MATERIAL_PRICES];
-    const blobMeta = await head(blobs[0].url);
+    const blobMeta = await head(blobs[0].url, { token: BLOB_TOKEN });
     const res = await fetch(blobMeta.url);
     if (!res.ok) return [...DEFAULT_MATERIAL_PRICES];
     const data = await res.json() as { prices: MaterialPrice[] };
@@ -66,7 +67,7 @@ async function readBlob(): Promise<MaterialPrice[]> {
 async function writeBlob(prices: MaterialPrice[]): Promise<void> {
   const { put } = await import('@vercel/blob');
   const payload = JSON.stringify({ prices, updatedAt: new Date().toISOString(), version: 1 });
-  await put(BLOB_NAME, payload, { access: 'public', contentType: 'application/json', addRandomSuffix: false });
+  await put(BLOB_NAME, payload, { access: 'public', contentType: 'application/json', addRandomSuffix: false, token: BLOB_TOKEN });
 }
 
 // ── Route handlers ────────────────────────────────────────
