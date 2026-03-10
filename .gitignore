@@ -31,6 +31,20 @@ yarn-error.log*
 # vercel
 .vercel
 
+# raw original photos (keep friendly-named copies only)
+public/images/IMG_*
+public/images/DJI_*
+public/images/dji_fly_*
+public/images/CGMF_*
+public/images/20260304_*
+public/images/1-*.jpg
+public/images/1a*.jpg
+public/images/tom-ryan-*
+public/images/HaydenLogo.png
+public/images/*.MP4
+public/images/Generated*
+public/images/Untitled*
+
 # shared pricing data
 /data/*.json
 

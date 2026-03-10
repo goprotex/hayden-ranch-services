@@ -78,7 +78,7 @@ export default function Home() {
           </Reveal>
 
           <Reveal>
-            <h1 className="text-5xl md:text-7xl lg:text-[5.5rem] font-bold text-white mb-5 tracking-tightest leading-[0.92]">
+            <h1 className="text-5xl md:text-7xl lg:text-[5.5rem] font-display text-white mb-5 tracking-tightest leading-[0.92]">
               <RevealText as="div" delay={0}>WE BUILD FENCES</RevealText>
               <RevealText as="div" delay={1}>&amp; METAL ROOFS</RevealText>
             </h1>
@@ -154,7 +154,7 @@ export default function Home() {
             <div className="h-px w-8 bg-tan-400/40" />
             <span className="text-tan-500 text-xs uppercase tracking-[0.25em] font-semibold">Our Tools</span>
           </div>
-          <h2 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-12">
+          <h2 className="text-3xl md:text-4xl font-display text-white tracking-tight mb-12">
             Everything you need to bid,<br />estimate, and build.
           </h2>
         </Reveal>

@@ -24,9 +24,10 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
+        sans: ['"Crimson Text"', 'Georgia', 'serif'],
+        serif: ['"Crimson Text"', 'Georgia', 'serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
-        display: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
+        display: ['"Splash"', 'cursive'],
         cursive: ['"Carattere"', 'cursive'],
       },
       letterSpacing: {
