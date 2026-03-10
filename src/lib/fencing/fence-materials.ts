@@ -309,7 +309,7 @@ export const DEFAULT_MATERIAL_PRICES: MaterialPrice[] = [
   // ── Hardware & Accessories ──
   { id: 'clips', category: 'Hardware', name: 'Fence Clips/Staples (box of 500)', unit: 'box', price: 45, defaultPrice: 45 },
   { id: 'concrete_bag', category: 'Hardware', name: 'Concrete Mix (80 lb bag)', unit: 'bag', price: 7, defaultPrice: 7 },
-  { id: 'tensioner', category: 'Hardware', name: 'Inline Wire Tensioner', unit: 'each', price: 12, defaultPrice: 12 },
+  { id: 'tensioner', category: 'Hardware', name: 'Inline Wire Tensioner', unit: 'each', price: 6, defaultPrice: 6 },
   { id: 'spring_tension_indicator', category: 'Hardware', name: 'Spring Tension Indicator', unit: 'each', price: 18, defaultPrice: 18 },
   { id: 'post_cap', category: 'Hardware', name: 'Post Cap (prevents rain/rot)', unit: 'each', price: 3.50, defaultPrice: 3.50 },
   { id: 'wire_tie', category: 'Hardware', name: 'Wire Tie (pre-formed)', unit: 'each', price: 0.35, defaultPrice: 0.35 },

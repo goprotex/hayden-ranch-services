@@ -309,14 +309,17 @@ export default function FencingPage() {
     const clipsCostPerFt = (findPrice('clips') / 500) * (4 / tPostSpacing);
     // Horizontal strands for tensioner/spring indicator calcs
     const horizStrands = fenceType.startsWith('stay_tuff') ? selectedStayTuff.horizontalWires : 9;
-    // Tensioners: 1 per strand per H-brace assembly, plus 1 per strand per 660' of run
-    const estBraceCount = Math.max(2, Math.ceil(1000 / linePostSpacing)); // rough estimate for per-foot
+    // Estimated total footage for per-foot normalization
+    const estTotalFeet = sections.reduce((s, c) => s + c.linearFeet, 0) || 1000;
+    // Brace/termination points: 2 ends + mid-run splices every 660'
+    const estBraceCount = 2 + Math.max(0, Math.floor(estTotalFeet / 660) - 1);
+    // Tensioners: 1 per horizontal strand per brace/termination point
     const tensionersPerFt = includeTensioners
-      ? (findPrice('tensioner') * horizStrands * (estBraceCount + 1)) / 1000
+      ? (findPrice('tensioner') * horizStrands * estBraceCount) / estTotalFeet
       : 0;
-    // Spring indicators: 1 per strand per H-brace
+    // Spring indicators: 1 per strand per brace point
     const springIndicatorsPerFt = includeSpringIndicators
-      ? (findPrice('spring_tension_indicator') * horizStrands * estBraceCount) / 1000
+      ? (findPrice('spring_tension_indicator') * horizStrands * estBraceCount) / estTotalFeet
       : 0;
     // Post caps: 1 per line post
     const postCapsCostPerFt = includePostCaps
@@ -335,7 +338,6 @@ export default function FencingPage() {
     const accessoryCostPerFt = postCapsCostPerFt + springIndicatorsPerFt + concreteFillCostPerFt;
 
     // Steep terrain surcharge: additional $2/ft for sections with >15% grade
-    const estTotalFeet = sections.reduce((s, c) => s + c.linearFeet, 0) || 1000;
     const steepSurchargePerFt = steepFootage > 0 ? (steepFootage * 2) / estTotalFeet : 0;
 
     const total = wireCostPerFt + topWireCostPerFt + tPostCostPerFt + linePostCostPerFt
@@ -386,12 +388,15 @@ export default function FencingPage() {
     // Post caps: 1 per line post + 2 per brace assembly (2 brace posts each)
     const postCapsQty = includePostCaps ? linePostCount + (totalBraces * 2) : 0;
 
-    // Tensioners: 1 per horizontal strand per H-brace assembly, + 1 set per 660' of continuous run
-    const runsOf660 = Math.max(1, Math.ceil(totalFeet / 660));
-    const tensionersQty = includeTensioners ? horizStrands * (hBraces + runsOf660) : 0;
+    // Brace/termination points where tensioners & indicators are installed
+    const midRunSplices = Math.max(0, Math.floor(totalFeet / 660) - 1);
+    const tensionerLocations = totalBraces + midRunSplices;
 
-    // Spring tension indicators: 1 per horizontal strand per H-brace
-    const springIndicatorsQty = includeSpringIndicators ? horizStrands * hBraces : 0;
+    // Tensioners: 1 per horizontal strand per brace/termination point
+    const tensionersQty = includeTensioners ? horizStrands * tensionerLocations : 0;
+
+    // Spring tension indicators: 1 per horizontal strand per brace point
+    const springIndicatorsQty = includeSpringIndicators ? horizStrands * tensionerLocations : 0;
 
     // Concrete fill (inside tube posts): only for square tube posts
     const postSpec = POST_MATERIALS.find(p => p.id === postMaterial);
