@@ -110,10 +110,9 @@ export default function FencingPage() {
   const [preferredCornerBrace, setPreferredCornerBrace] = useState<BraceType>('corner_brace');
 
   // Pricing
-  const [laborRate, setLaborRate] = useState(6); // $/ft labor only
+  const laborRate = 6; // fixed $/ft labor — not shown to customer
   const [terrain, setTerrain] = useState('moderate');
-  const [depositPercent, setDepositPercent] = useState(50);
-  const [timelineDays, setTimelineDays] = useState(12);
+  const depositPercent = 65; // fixed 65% deposit
 
   // Painting
   const [includePainting, setIncludePainting] = useState(false);
@@ -311,6 +310,11 @@ export default function FencingPage() {
     const clipsCostPerFt = (findPrice('clips') / 500) * (4 / tPostSpacing);
     // Horizontal strands for tensioner/spring indicator calcs
     const horizStrands = fenceType.startsWith('stay_tuff') ? selectedStayTuff.horizontalWires : 9;
+    // Wire tie cost per foot based on tie pattern
+    const tiesPerPost = tiePattern === 'every_strand' ? horizStrands
+      : tiePattern === 'every_other' ? Math.ceil(horizStrands / 2)
+      : 4; // four_per_post
+    const wireTieCostPerFt = (findPrice('wire_tie') * tiesPerPost) / tPostSpacing;
     // Estimated total footage for per-foot normalization
     const estTotalFeet = sections.reduce((s, c) => s + c.linearFeet, 0) || 1000;
     // Brace/termination points: 2 ends + mid-run splices every 660'
@@ -336,7 +340,7 @@ export default function FencingPage() {
     const bracePipeCostPerFt = bracePiecesPerJoint > 0
       ? (2 * jointPrice / bracePiecesPerJoint) / linePostSpacing
       : 0;
-    const hardwareCostPerFt = clipsCostPerFt + tensionersPerFt + bracePipeCostPerFt;
+    const hardwareCostPerFt = clipsCostPerFt + wireTieCostPerFt + tensionersPerFt + bracePipeCostPerFt;
     const accessoryCostPerFt = postCapsCostPerFt + springIndicatorsPerFt + concreteFillCostPerFt;
 
     // Steep terrain surcharge: additional $2/ft for sections with >15% grade
@@ -358,7 +362,7 @@ export default function FencingPage() {
       _bagsPerLinePost: bagsPerLinePost,
       _bagsPerBracePost: bagsPerBracePost,
     };
-  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType, barbedWireType, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, steepFootage, sections]);
+  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType, barbedWireType, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, steepFootage, sections, tiePattern]);
 
   const baseRate = materialCostPerFoot.total + laborRate;
   const effectiveRate = useMemo(() => Math.round((materialCostPerFoot.total + laborRate * terrainMult) * 100) / 100, [materialCostPerFoot.total, laborRate, terrainMult]);
@@ -415,6 +419,17 @@ export default function FencingPage() {
       horizStrands,
     };
   }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations, fenceType, selectedStayTuff, materialCostPerFoot, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, postMaterial]);
+
+  // Auto-calculate timeline from labor estimate
+  const laborEstimate = useMemo(() => calculateLaborEstimate({
+    totalLinearFeet: totalFeet,
+    linePostCount: materialCalc.linePostCount,
+    tPostCount: materialCalc.tPostCount,
+    hBraceCount: materialCalc.hBraces,
+    cornerBraceCount: materialCalc.cornerBraces,
+    gateCount: gates.length,
+  }), [totalFeet, materialCalc, gates.length]);
+  const timelineDays = laborEstimate.workDays;
 
   const paintEst = useMemo(() => {
     if (!includePainting) return null;
@@ -578,15 +593,6 @@ export default function FencingPage() {
         sec.terrain || terrain, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType,
       ),
     }));
-    // Calculate labor estimate
-    const laborEst = calculateLaborEstimate({
-      totalLinearFeet: totalFeet,
-      linePostCount: materialCalc.linePostCount,
-      tPostCount: materialCalc.tPostCount,
-      hBraceCount: materialCalc.hBraces,
-      cornerBraceCount: materialCalc.cornerBraces,
-      gateCount: gates.length,
-    });
     const data: FenceBidData = {
       projectName: projectName || 'Fence Installation', clientName: clientName || 'Customer',
       propertyAddress: address, date: fmtDate(now), validUntil: fmtDate(valid),
@@ -596,7 +602,7 @@ export default function FencingPage() {
       postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType,
       sections: secs, gates, projectTotal: projTotal, depositPercent, depositAmount: deposit,
       balanceAmount: balance, timelineWeeks: Math.ceil(timelineDays / 5), workingDays: timelineDays,
-      laborEstimate: laborEst,
+      laborEstimate: laborEstimate,
       projectOverview: projectOverview + (address ? ` Site located at ${address}.` : ''),
       terrainDescription: TERRAIN_MAP[terrain]?.label || terrain,
       soilNarrative: aiNarrative || buildSoilNarrative(),
@@ -664,7 +670,7 @@ export default function FencingPage() {
       productImages: productImages.length > 0 ? productImages : undefined,
     };
     generateFenceBidPDF(data);
-  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory]);
+  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, laborEstimate, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory]);
 
   const handleSaveBid = useCallback(() => {
     addFenceBid({
@@ -1049,9 +1055,7 @@ export default function FencingPage() {
                   </div>
                 </div>
 
-                {/* Labor rate slider */}
-                <DSlider label="Labor Rate per Foot" value={laborRate} min={2} max={20} step={0.5}
-                  display={`$${laborRate.toFixed(2)}/ft`} onChange={setLaborRate} minLabel="$2" maxLabel="$20" />
+
 
                 <div>
                   <div className="flex justify-between items-center mb-1.5">
@@ -1097,15 +1101,11 @@ export default function FencingPage() {
                   </div>
                   <div className="text-[10px] text-steel-500 space-y-0.5">
                     <div className="flex justify-between"><span>Material:</span><span>${materialCostPerFoot.total.toFixed(2)}/ft</span></div>
-                    <div className="flex justify-between"><span>Labor ({terrainMult}x):</span><span>${(laborRate * terrainMult).toFixed(2)}/ft</span></div>
-                    <div className="flex justify-between border-t border-white/[0.08] pt-0.5"><span className="font-semibold">Combined:</span><span className="font-semibold">${effectiveRate.toFixed(2)}/ft</span></div>
+                    <div className="flex justify-between border-t border-white/[0.08] pt-0.5"><span className="font-semibold">All-In Rate:</span><span className="font-semibold">${effectiveRate.toFixed(2)}/ft</span></div>
                   </div>
                 </div>
 
-                <DSlider label="Deposit %" value={depositPercent} min={25} max={75} step={5}
-                  display={`${depositPercent}%`} onChange={setDepositPercent} minLabel="25%" maxLabel="75%" />
-                <DSlider label="Timeline (working days)" value={timelineDays} min={3} max={60} step={1}
-                  display={`${timelineDays} days`} onChange={setTimelineDays} minLabel="3" maxLabel="60" />
+
               </div>
             </Card>
 

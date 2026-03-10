@@ -405,10 +405,16 @@ export function generateFenceBidPDF(data: FenceBidData): void {
   // ── Site Map (if captured) ──
   if (data.mapImages && data.mapImages.length > 0) {
     const imgWidth = cw;
-    const imgHeight = imgWidth * 0.55; // ~16:9 aspect ratio
 
     for (let mi = 0; mi < data.mapImages.length; mi++) {
       try {
+        // Compute actual aspect ratio from the base64 image
+        let imgHeight = imgWidth * 0.55; // fallback ~16:9
+        try {
+          const imgProps = doc.getImageProperties(data.mapImages[mi]);
+          imgHeight = imgWidth * (imgProps.height / imgProps.width);
+        } catch { /* use fallback */ }
+
         y = ensureSpace(doc, y, imgHeight + 18);
 
         doc.setTextColor(27, 38, 54);
@@ -1019,64 +1025,147 @@ export function generateFenceBidPDF(data: FenceBidData): void {
   doc.text(`$${data.projectTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y, { align: 'right' });
   y += 14;
 
-  // ── Labor Estimate Section ──
+  // ── Project Timeline ──
   if (data.laborEstimate) {
     const le = data.laborEstimate;
-    y = ensureSpace(doc, y, 60);
-    doc.setTextColor(27, 38, 54);
+    y = ensureSpace(doc, y, 90);
+
+    // Section header bar
+    doc.setFillColor(27, 38, 54);
+    doc.rect(mx, y - 3, cw, 9, 'F');
+    doc.setTextColor(255, 255, 255);
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text('ESTIMATED LABOR TIMELINE', mx, y);
-    y += 3;
+    doc.text('PROJECT TIMELINE', mx + 4, y + 3);
+    y += 14;
 
-    // Subtitle
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'italic');
-    doc.setTextColor(100, 100, 100);
-    doc.text(`Based on production rates: 4 post holes/hr drilling, 2 posts/hr setting, 12 T-posts/hr — ${le.workDayHours}-hour work days`, mx, y + 3);
+    // Summary line
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(60, 60, 60);
+    const rangeHigh = le.workDays + Math.ceil(le.workDays * 0.25);
+    doc.text(`Estimated Duration: ${le.workDays} to ${rangeHigh} working days  •  ${le.workDayHours}-hour work days  •  ${le.totalHours} total crew-hours`, mx, y);
     y += 8;
 
-    // Labor table header
-    doc.setFillColor(27, 38, 54);
-    doc.rect(mx, y - 4, cw, 7, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Task', mx + 3, y);
-    doc.text('Hours', mx + cw * 0.65, y);
-    doc.text('Detail', mx + cw * 0.75, y);
-    y += 6;
+    // Group breakdown into project phases
+    const phases: { name: string; icon: string; hours: number; items: string[] }[] = [];
 
-    // Labor rows
-    for (let i = 0; i < le.breakdown.length; i++) {
-      const row = le.breakdown[i];
-      y = ensureSpace(doc, y, 7);
-      if (i % 2 === 0) {
-        doc.setFillColor(245, 247, 250);
-        doc.rect(mx, y - 4, cw, 7, 'F');
-      }
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(50, 50, 50);
-      doc.text(row.task, mx + 3, y);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`${row.hours} hrs`, mx + cw * 0.65, y);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(100, 100, 100);
-      const detailLines = doc.splitTextToSize(row.detail, cw * 0.23);
-      doc.text(detailLines[0] || '', mx + cw * 0.75, y);
-      y += 7;
+    // Phase 1: Site Preparation (drilling + post setting)
+    const drillItems = le.breakdown.filter(b => b.task.toLowerCase().includes('drill'));
+    const setItems = le.breakdown.filter(b => b.task.toLowerCase().includes('set') && !b.task.toLowerCase().includes('assembly'));
+    const prepHrs = drillItems.reduce((s, b) => s + b.hours, 0) + setItems.reduce((s, b) => s + b.hours, 0);
+    if (prepHrs > 0) {
+      phases.push({
+        name: 'Site Preparation & Post Setting',
+        icon: '1',
+        hours: prepHrs,
+        items: [...drillItems.map(b => b.detail), ...setItems.map(b => b.detail)],
+      });
     }
 
-    // Total row
-    doc.setFillColor(27, 38, 54);
-    doc.rect(mx, y - 4, cw, 8, 'F');
-    doc.setTextColor(255, 255, 255);
+    // Phase 2: Structural (braces, assemblies)
+    const braceItems = le.breakdown.filter(b => b.task.toLowerCase().includes('brace') || b.task.toLowerCase().includes('assembly'));
+    const braceHrs = braceItems.reduce((s, b) => s + b.hours, 0);
+    if (braceHrs > 0) {
+      phases.push({
+        name: 'Bracing & Structural Assembly',
+        icon: '2',
+        hours: braceHrs,
+        items: braceItems.map(b => b.detail),
+      });
+    }
+
+    // Phase 3: T-Posts
+    const tPostItems = le.breakdown.filter(b => b.task.toLowerCase().includes('t-post'));
+    const tPostHrs = tPostItems.reduce((s, b) => s + b.hours, 0);
+    if (tPostHrs > 0) {
+      phases.push({
+        name: 'T-Post Installation',
+        icon: String(phases.length + 1),
+        hours: tPostHrs,
+        items: tPostItems.map(b => b.detail),
+      });
+    }
+
+    // Phase 4: Wire stringing
+    const wireItems = le.breakdown.filter(b => b.task.toLowerCase().includes('wire') || b.task.toLowerCase().includes('string'));
+    const wireHrs = wireItems.reduce((s, b) => s + b.hours, 0);
+    if (wireHrs > 0) {
+      phases.push({
+        name: 'Wire Stringing & Tensioning',
+        icon: String(phases.length + 1),
+        hours: wireHrs,
+        items: wireItems.map(b => b.detail),
+      });
+    }
+
+    // Phase 5: Gates & Finishing
+    const gateItems = le.breakdown.filter(b => b.task.toLowerCase().includes('gate'));
+    const gateHrs = gateItems.reduce((s, b) => s + b.hours, 0);
+    if (gateHrs > 0) {
+      phases.push({
+        name: 'Gate Installation & Finishing',
+        icon: String(phases.length + 1),
+        hours: gateHrs,
+        items: gateItems.map(b => b.detail),
+      });
+    }
+
+    // Render each phase as a visual block
+    for (const phase of phases) {
+      y = ensureSpace(doc, y, 22);
+      const pct = le.totalHours > 0 ? phase.hours / le.totalHours : 0;
+      const barW = Math.max(8, cw * pct);
+      const phaseDays = Math.max(0.5, Math.round(phase.hours / le.workDayHours * 10) / 10);
+
+      // Phase number circle
+      doc.setFillColor(27, 38, 54);
+      doc.circle(mx + 4, y + 1.5, 3.5, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.text(phase.icon, mx + 4, y + 2.5, { align: 'center' });
+
+      // Phase name & duration
+      doc.setTextColor(27, 38, 54);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text(phase.name, mx + 12, y + 2);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`${phase.hours} hrs (~${phaseDays} day${phaseDays !== 1 ? 's' : ''})`, mx + cw - 3, y + 2, { align: 'right' });
+      y += 6;
+
+      // Progress bar
+      doc.setFillColor(235, 238, 243);
+      doc.roundedRect(mx + 12, y, cw - 12, 3, 1.5, 1.5, 'F');
+      doc.setFillColor(27, 38, 54);
+      doc.roundedRect(mx + 12, y, Math.min(barW, cw - 12), 3, 1.5, 1.5, 'F');
+      y += 5;
+
+      // Phase detail items
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(120, 120, 120);
+      for (const item of phase.items.slice(0, 2)) {
+        const trimmed = item.length > 80 ? item.slice(0, 77) + '...' : item;
+        doc.text(`  •  ${trimmed}`, mx + 12, y);
+        y += 3.5;
+      }
+      y += 3;
+    }
+
+    // Bottom summary bar
+    y = ensureSpace(doc, y, 10);
+    doc.setFillColor(245, 247, 250);
+    doc.rect(mx, y - 3, cw, 8, 'F');
+    doc.setTextColor(27, 38, 54);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
-    doc.text('TOTAL LABOR', mx + 3, y);
-    doc.text(`${le.totalHours} hours ≈ ${le.workDays} work day${le.workDays !== 1 ? 's' : ''} (${le.workDayHours} hrs/day)`, mx + cw - 3, y, { align: 'right' });
+    doc.text('ESTIMATED COMPLETION', mx + 3, y + 1);
+    doc.text(`${le.workDays} – ${rangeHigh} working days`, mx + cw - 3, y + 1, { align: 'right' });
     y += 14;
   }
 
@@ -1206,7 +1295,13 @@ export function generateFenceBidPDF(data: FenceBidData): void {
       }
 
       const imgX = mx + col * (colW + 6);
-      const imgH = colW * 0.75; // 4:3 aspect
+
+      // Compute actual aspect ratio for correct rendering
+      let imgH = colW * 0.75; // fallback 4:3
+      try {
+        const imgProps = doc.getImageProperties(photos[i].dataUrl);
+        imgH = (colW - 1) * (imgProps.height / imgProps.width);
+      } catch { /* use fallback */ }
 
       try {
         // Photo border
