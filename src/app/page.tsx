@@ -18,7 +18,7 @@ const SERVICES = [
     href: '/roofing',
     desc: 'Import EagleView or QuickMeasure reports. Generate precise panel cut lists for 6V Crimp, R-Panel, and Standing Seam with trim & fasteners.',
     stats: ['6V Crimp', 'R-Panel', 'Standing Seam', 'Trim Lists'],
-    bg: '/images/roof-hillcountry.jpg',
+    bg: '/images/roof-ridge.jpg',
   },
   {
     tag: 'Pricing',

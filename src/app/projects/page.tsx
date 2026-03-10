@@ -2,10 +2,31 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useAppStore } from '@/lib/store';
+import { Reveal, StaggerReveal } from '@/components/animations';
 
 type Tab = 'all' | 'roofing' | 'fencing';
 type SortKey = 'date' | 'name' | 'cost';
+type GalleryTab = 'all' | 'roofing' | 'equipment' | 'ranch';
+
+const GALLERY = [
+  { src: '/images/roof-ridge.jpg', alt: 'Metal roof ridge and hip intersection', cat: 'roofing' as const, span: true },
+  { src: '/images/roof-closeup.jpg', alt: 'Standing seam metal panels with rain', cat: 'roofing' as const },
+  { src: '/images/roof-edge-oaks.jpg', alt: 'Metal roof edge with Hill Country oaks', cat: 'roofing' as const },
+  { src: '/images/roof-branded.jpg', alt: 'Metal roof — Hayden Ranch Services', cat: 'roofing' as const, span: true },
+  { src: '/images/roof-gable-trim.jpg', alt: 'Gable trim detail with dramatic sky', cat: 'roofing' as const },
+  { src: '/images/roof-edge-deer.jpg', alt: 'Metal roof with hillside and deer', cat: 'roofing' as const },
+  { src: '/images/skidsteer.jpg', alt: 'Kubota SVL 65-2 track loader', cat: 'equipment' as const, span: true },
+  { src: '/images/ranch-rainbow.jpg', alt: 'Rainbow over the ranch', cat: 'ranch' as const },
+  { src: '/images/deer.jpg', alt: 'Axis deer', cat: 'ranch' as const },
+  { src: '/images/truck-sunset.jpg', alt: 'F-350 at sunset', cat: 'ranch' as const },
+  { src: '/images/windmill-stars.jpg', alt: 'Windmill under the stars', cat: 'ranch' as const },
+  { src: '/images/dog-field.jpg', alt: 'Aussie in the grass', cat: 'ranch' as const },
+  { src: '/images/hillcountry-landscape.jpg', alt: 'Texas Hill Country', cat: 'ranch' as const, span: true },
+  { src: '/images/land-clearing.jpg', alt: 'Land clearing work', cat: 'equipment' as const },
+  { src: '/images/river.jpg', alt: 'Hill Country river', cat: 'ranch' as const },
+];
 
 function fmt(n: number) {
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -30,6 +51,12 @@ export default function ProjectsPage() {
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [search, setSearch] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [galleryTab, setGalleryTab] = useState<GalleryTab>('all');
+
+  const galleryFiltered = useMemo(() => {
+    if (galleryTab === 'all') return GALLERY;
+    return GALLERY.filter(g => g.cat === galleryTab);
+  }, [galleryTab]);
 
   // Combine all data into unified project list
   const allItems = useMemo(() => {
@@ -145,7 +172,60 @@ export default function ProjectsPage() {
           <StatCard label="Fencing" value={stats.fencing.toString()} icon="\u26a1" accent="amber" />
           <StatCard label="Total Value" value={`$${fmt(stats.totalValue)}`} icon="\ud83d\udcb0" accent="green" />
         </div>
+        {/* ─── PHOTO GALLERY: Our Work ─── */}
+        <section className="pt-4">
+          <Reveal>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="h-px w-8 bg-tan-400/40" />
+              <span className="text-tan-500 text-xs uppercase tracking-[0.25em] font-semibold">Portfolio</span>
+            </div>
+            <h2 className="text-2xl font-bold text-white tracking-tight mb-6">Our Work</h2>
+          </Reveal>
 
+          <div className="flex gap-1.5 mb-6">
+            {([['all', 'All'], ['roofing', 'Metal Roofing'], ['equipment', 'Equipment'], ['ranch', 'Ranch Life']] as [GalleryTab, string][]).map(([key, label]) => (
+              <button key={key} onClick={() => setGalleryTab(key)}
+                className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider transition ${
+                  galleryTab === key ? 'bg-tan-400 text-black' : 'bg-white/[0.04] text-steel-400 hover:text-steel-200 border border-white/[0.06]'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <StaggerReveal className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {galleryFiltered.map((img) => (
+              <div
+                key={img.src}
+                className={`relative overflow-hidden group cursor-pointer border border-white/[0.04] hover:border-tan-400/30 transition-colors ${
+                  img.span ? 'md:col-span-2 aspect-[21/9]' : 'aspect-[4/3]'
+                }`}
+              >
+                <Image
+                  src={img.src}
+                  alt={img.alt}
+                  fill
+                  sizes={img.span ? '(max-width: 768px) 100vw, 66vw' : '(max-width: 768px) 50vw, 33vw'}
+                  className="object-cover transition-transform duration-700 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="absolute bottom-0 left-0 right-0 p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                  <p className="text-white text-xs font-medium">{img.alt}</p>
+                  <p className="text-tan-400 text-[10px] uppercase tracking-wider mt-0.5">{img.cat}</p>
+                </div>
+              </div>
+            ))}
+          </StaggerReveal>
+        </section>
+
+        {/* ─── SAVED BIDS ─── */}
+        <Reveal>
+          <div className="flex items-center gap-3 mb-2 pt-8">
+            <div className="h-px w-8 bg-tan-400/40" />
+            <span className="text-tan-500 text-xs uppercase tracking-[0.25em] font-semibold">Bid Management</span>
+          </div>
+          <h2 className="text-2xl font-bold text-white tracking-tight mb-6">Saved Bids</h2>
+        </Reveal>
         {/* Filters */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 animate-fade-in">
           <div className="flex gap-1.5">

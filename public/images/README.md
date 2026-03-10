@@ -15,5 +15,16 @@ Drop your photos here with these filenames:
 - `land-clearing.jpg` — Brush clearing with truck
 - `river.jpg` — River/creek panorama
 
+## Completed Metal Roof Photos
+- `roof-closeup.jpg` — Standing seam/corrugated metal panels with rain droplets, trees in background
+- `roof-branded.jpg` — Metal roof angle with Hayden Ranch Services logo overlay
+- `roof-edge-oaks.jpg` — Corrugated panel edge detail with Hill Country live oaks
+- `roof-edge-deer.jpg` — Metal roof edge with hillside, axis deer visible in corner
+- `roof-ridge.jpg` — Ridge/hip intersection detail, ranch setting with live oaks
+- `roof-gable-trim.jpg` — Building gable with metal ridge cap, brown siding, dramatic clouds
+
 ## Roof Drone Shots
 - `roof-01.jpg` through `roof-08.jpg` — Aerial roof photos
+
+## Equipment
+- `skidsteer.jpg` — Kubota SVL 65-2 track loader ("Hayden Ranch Services 830 777 8111" on cab)
