@@ -60,10 +60,9 @@ export default function AnimatedTexas() {
       <div
         className="relative w-[55vw] max-w-[640px]"
         style={{
-          aspectRatio: '976 / 1081',
-          opacity: visible ? 0.18 : 0,
+          aspectRatio: '1 / 1',
+          opacity: visible ? 0.15 : 0,
           transition: 'opacity 2s cubic-bezier(0.16, 1, 0.3, 1)',
-          filter: 'sepia(1) saturate(2) hue-rotate(350deg) brightness(0.7)',
         }}
       >
         <Image
