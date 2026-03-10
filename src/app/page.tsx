@@ -79,8 +79,8 @@ export default function Home() {
 
           <Reveal>
             <h1 className="text-5xl md:text-7xl lg:text-[5.5rem] font-display text-white mb-5 tracking-tightest leading-[0.92]">
-              <RevealText as="div" delay={0}>WE BUILD FENCES</RevealText>
-              <RevealText as="div" delay={1}>&amp; METAL ROOFS</RevealText>
+              <RevealText as="div" delay={0}>We Build Fences</RevealText>
+              <RevealText as="div" delay={1}>&amp; Metal Roofs</RevealText>
             </h1>
           </Reveal>
 
