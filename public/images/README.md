@@ -9,11 +9,14 @@ Drop your photos here with these filenames:
 - `truck-sunset.jpg` — Pricing service card (the F-350 at sunset with oak tree)
 
 ## Gallery / Projects
-- `deer.jpg` — Axis deer
+- `deer.jpg` — Two axis deer bucks with spotted coats in dry brush
 - `dog-field.jpg` — Dog in the grass
 - `windmill-stars.jpg` — Windmill at night
 - `land-clearing.jpg` — Brush clearing with truck
 - `river.jpg` — River/creek panorama
+- `stock-tank.jpg` — Ranch stock tank panorama with cedar and mesquite
+- `cypress-creek.jpg` — Cypress trees with fall foliage along creek with waterfalls
+- `western-art.jpg` — B&W western art — cowboys roping cattle over fence (pencil/charcoal style)
 
 ## Completed Metal Roof Photos
 - `roof-closeup.jpg` — Standing seam/corrugated metal panels with rain droplets, trees in background

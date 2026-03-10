@@ -19,13 +19,16 @@ const GALLERY = [
   { src: '/images/roof-edge-deer.jpg', alt: 'Metal roof with hillside and deer', cat: 'roofing' as const },
   { src: '/images/skidsteer.jpg', alt: 'Kubota SVL 65-2 track loader', cat: 'equipment' as const, span: true },
   { src: '/images/ranch-rainbow.jpg', alt: 'Rainbow over the ranch', cat: 'ranch' as const },
-  { src: '/images/deer.jpg', alt: 'Axis deer', cat: 'ranch' as const },
+  { src: '/images/deer.jpg', alt: 'Axis deer bucks in the brush', cat: 'ranch' as const },
   { src: '/images/truck-sunset.jpg', alt: 'F-350 at sunset', cat: 'ranch' as const },
   { src: '/images/windmill-stars.jpg', alt: 'Windmill under the stars', cat: 'ranch' as const },
   { src: '/images/dog-field.jpg', alt: 'Aussie in the grass', cat: 'ranch' as const },
   { src: '/images/hillcountry-landscape.jpg', alt: 'Texas Hill Country', cat: 'ranch' as const, span: true },
   { src: '/images/land-clearing.jpg', alt: 'Land clearing work', cat: 'equipment' as const },
   { src: '/images/river.jpg', alt: 'Hill Country river', cat: 'ranch' as const },
+  { src: '/images/stock-tank.jpg', alt: 'Ranch stock tank with cedar and mesquite', cat: 'ranch' as const, span: true },
+  { src: '/images/cypress-creek.jpg', alt: 'Cypress creek with fall foliage and waterfalls', cat: 'ranch' as const, span: true },
+  { src: '/images/western-art.jpg', alt: 'Cowboys roping cattle — western art', cat: 'ranch' as const, span: true },
 ];
 
 function fmt(n: number) {
