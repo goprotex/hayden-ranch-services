@@ -98,7 +98,7 @@ export default function FenceMap({
   onGatesPlaced,
   onPointTypeChange,
   center = [-98.23, 30.75],
-  zoom = 14,
+  zoom = 16,
 }: FenceMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -566,6 +566,7 @@ export default function FenceMap({
           container: mapContainer.current,
           style: 'mapbox://styles/mapbox/satellite-streets-v12',
           center, zoom,
+          maxZoom: 22,
           attributionControl: false,
           preserveDrawingBuffer: true, // required for canvas.toDataURL() map capture
         });
