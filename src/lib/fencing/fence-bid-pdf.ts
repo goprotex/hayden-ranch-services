@@ -359,35 +359,85 @@ export function generateFenceBidPDF(data: FenceBidData): void {
   let y = 18;
 
   // ── Page 1: Header ──
-  doc.setFillColor(27, 38, 54); // dark navy
-  doc.rect(0, 0, pw, 42, 'F');
+  // Dark navy banner
+  doc.setFillColor(27, 38, 54);
+  doc.rect(0, 0, pw, 44, 'F');
 
+  // Company name & contact (left)
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(20);
+  doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
-  doc.text(COMPANY.name, mx, y + 2);
+  doc.text(COMPANY.name, mx, y + 3);
 
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  doc.text(COMPANY.address, mx, y + 10);
-  doc.text(`${COMPANY.phone} | ${COMPANY.email}`, mx, y + 16);
+  doc.setTextColor(200, 210, 220);
+  doc.text(COMPANY.address, mx, y + 11);
+  doc.text(`${COMPANY.phone}  •  ${COMPANY.email}`, mx, y + 16);
 
-  // Date & valid until (right aligned)
-  doc.setFontSize(9);
-  doc.text(`Date: ${data.date}`, pw - mx, y + 2, { align: 'right' });
-  doc.text(`Valid Until: ${data.validUntil}`, pw - mx, y + 8, { align: 'right' });
+  // Proposal number & dates (right)
+  doc.setFontSize(8);
+  doc.setTextColor(200, 210, 220);
+  doc.text(`Proposal Date: ${data.date}`, pw - mx, y + 3, { align: 'right' });
+  doc.text(`Valid Through: ${data.validUntil}`, pw - mx, y + 9, { align: 'right' });
+
+  // Thin accent line at bottom of header
+  doc.setFillColor(196, 164, 105); // coyote tan accent
+  doc.rect(0, 44, pw, 1.2, 'F');
 
   y = 52;
 
   // ── Title ──
   doc.setTextColor(27, 38, 54);
-  doc.setFontSize(16);
+  doc.setFontSize(15);
   doc.setFont('helvetica', 'bold');
-
-  // Dynamic title based on fence type
   const title = data.fenceType.toUpperCase() + ' INSTALLATION PROPOSAL';
   doc.text(title, pw / 2, y, { align: 'center' });
-  y += 12;
+  y += 10;
+
+  // ── Prepared For block ──
+  doc.setFillColor(245, 247, 250);
+  doc.roundedRect(mx, y, cw, 22, 2, 2, 'F');
+  doc.setDrawColor(220, 225, 230);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(mx, y, cw, 22, 2, 2, 'S');
+
+  // Left column: Prepared For
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(150, 150, 150);
+  doc.text('PREPARED FOR', mx + 5, y + 5);
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(27, 38, 54);
+  doc.text(data.clientName || 'Customer', mx + 5, y + 12);
+
+  if (data.propertyAddress) {
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(80, 80, 80);
+    doc.text(data.propertyAddress, mx + 5, y + 17);
+  }
+
+  // Right column: Project Name
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(150, 150, 150);
+  doc.text('PROJECT', mx + cw / 2 + 5, y + 5);
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(27, 38, 54);
+  doc.text(data.projectName || 'Fence Installation', mx + cw / 2 + 5, y + 12);
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(80, 80, 80);
+  const specLine = [data.fenceHeight, data.stayTuffModel].filter(Boolean).join(' — ');
+  if (specLine) doc.text(specLine, mx + cw / 2 + 5, y + 17);
+
+  y += 30;
 
   // ── Project Overview ──
   doc.setFontSize(12);
