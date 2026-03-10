@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { Reveal, StaggerReveal } from '@/components/animations';
 import { useAppStore } from '@/lib/store';
 import { STAY_TUFF_CATALOG, WIRE_CATEGORY_LABELS, toStayTuffProduct, type StayTuffOption, type WireCategory } from '@/lib/fencing/fence-calculator';
 import {
@@ -785,10 +786,10 @@ export default function FencingPage() {
           </div>
         )}
 
-        <div className="grid lg:grid-cols-12 gap-6">
+        <div className="space-y-8">
 
-          {/* LEFT CONFIG SIDEBAR */}
-          <div className="lg:col-span-4 xl:col-span-3 space-y-4 animate-slide-in-left">
+          {/* CONFIG CARDS — centered 2-column grid with scroll animation */}
+          <StaggerReveal className="grid md:grid-cols-2 gap-4">
 
             <Card title="Project Info" icon="&#x1f4dd;">
               <div className="space-y-2.5">
@@ -1128,9 +1129,10 @@ export default function FencingPage() {
               <textarea value={projectOverview} onChange={e => setProjectOverview(e.target.value)} rows={3}
                 className="w-full bg-black border border-steel-800 rounded-lg px-3 py-2 text-xs text-steel-300 focus:ring-2 focus:ring-tan-400/40" placeholder="Describe the project scope..." />
             </Card>
-          </div>
-          {/* RIGHT MAIN AREA */}
-          <div className="lg:col-span-8 xl:col-span-9 space-y-5 animate-fade-in">
+          </StaggerReveal>
+
+          {/* SECTIONS, PREVIEW & PRICING */}
+          <div className="space-y-5">
 
             <div className="flex gap-2">
               {(['config', 'preview', 'pricing'] as const).map(t => (

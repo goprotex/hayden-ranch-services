@@ -10,7 +10,7 @@ const SERVICES = [
     href: '/fencing',
     desc: 'Draw fence lines on satellite maps. Auto-calculate posts, wire, bracing, and hardware with terrain analysis. Generate complete bids.',
     stats: ['Stay Tuff Wire', 'Barbed Wire', 'Pipe & T-Post', 'H-Braces & Gates'],
-    bg: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800&q=60',
+    bg: '/images/ranch-rainbow.jpg',
   },
   {
     tag: 'Metal Roofing',
@@ -18,7 +18,7 @@ const SERVICES = [
     href: '/roofing',
     desc: 'Import EagleView or QuickMeasure reports. Generate precise panel cut lists for 6V Crimp, R-Panel, and Standing Seam with trim & fasteners.',
     stats: ['6V Crimp', 'R-Panel', 'Standing Seam', 'Trim Lists'],
-    bg: 'https://images.unsplash.com/photo-1632759145351-1d592919f522?w=800&q=60',
+    bg: '/images/roof-hillcountry.jpg',
   },
   {
     tag: 'Pricing',
@@ -26,7 +26,7 @@ const SERVICES = [
     href: '/pricing',
     desc: 'Upload supplier receipts to build a live price database. Auto-price your cut lists and track material costs over time.',
     stats: ['AI Receipt Parsing', 'Price History', 'Auto-Cost Estimates', 'Multi-Supplier'],
-    bg: '',
+    bg: '/images/truck-sunset.jpg',
   },
 ];
 
@@ -39,7 +39,7 @@ export default function Home() {
         {/* Background image — fence in Texas Hill Country */}
         <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-          style={{ backgroundImage: 'url(https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1600&q=70)' }}
+          style={{ backgroundImage: 'url(/images/hillcountry-landscape.jpg)' }}
         />
         {/* Dark overlay — keeps text readable, maintains dark bold feel */}
         <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/70 to-black" />

@@ -179,6 +179,10 @@ select {
 .stagger-children > *:nth-child(6) { animation-delay: 350ms; }
 .stagger-children > *:nth-child(7) { animation-delay: 420ms; }
 .stagger-children > *:nth-child(8) { animation-delay: 490ms; }
+.stagger-children > *:nth-child(9) { animation-delay: 560ms; }
+.stagger-children > *:nth-child(10) { animation-delay: 630ms; }
+.stagger-children > *:nth-child(11) { animation-delay: 700ms; }
+.stagger-children > *:nth-child(12) { animation-delay: 770ms; }
 
 @keyframes staggerFadeUp {
   0% { opacity: 0; transform: translateY(16px); }

@@ -8,18 +8,18 @@ export default function HaydenLogo({ className = '', dark = false }: { className
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      {/* Texas silhouette */}
+      {/* Texas silhouette — geographically accurate */}
       <g fill={fillColor}>
-        <path d="M8 35 L14 28 L18 30 L22 26 L25 28 L30 22 L35 24 L38 20 L42 22 L48 16 L52 18 L56 14 L60 16 L62 12 L66 18 L70 22 L68 30 L72 36 L76 42 L78 50 L74 56 L70 62 L72 68 L68 74 L64 78 L60 82 L56 88 L50 92 L44 90 L40 86 L36 88 L32 84 L28 86 L24 82 L20 78 L16 74 L12 68 L8 60 L6 50 L8 42 Z" />
+        <path d="M 25 8 L 41 8 L 41 26 L 48 27 L 56 25 L 63 28 L 70 30 L 74 33 L 74 42 L 75 52 L 74 62 L 70 66 L 64 72 L 58 78 L 54 84 L 53 90 L 50 93 L 44 88 L 38 82 L 32 74 L 26 66 L 20 60 L 14 55 L 8 50 L 6 46 L 5 44 L 25 44 Z" />
       </g>
 
       {/* HAYDEN text */}
-      <text x="85" y="72" fontFamily="Arial Black, Impact, sans-serif" fontWeight="900" fontSize="80" fill={fillColor} letterSpacing="-2">
+      <text x="85" y="72" fontFamily="'Space Grotesk', Arial Black, Impact, sans-serif" fontWeight="900" fontSize="76" fill={fillColor} letterSpacing="-1">
         HAYDEN
       </text>
 
       {/* RANCH SERVICES text */}
-      <text x="335" y="130" fontFamily="Arial Black, Impact, sans-serif" fontWeight="900" fontSize="48" fill={fillColor} letterSpacing="2">
+      <text x="85" y="118" fontFamily="'Space Grotesk', Arial Black, Impact, sans-serif" fontWeight="700" fontSize="36" fill={fillColor} letterSpacing="6" opacity="0.65">
         RANCH SERVICES
       </text>
     </svg>

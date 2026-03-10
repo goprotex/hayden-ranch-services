@@ -10,31 +10,21 @@ import { useEffect, useRef, useState } from 'react';
  * 4. Star cutout in the center (Lone Star)
  */
 
-// Detailed Texas outline path (320x320 viewBox)
+// Geographically accurate Texas outline (500x520 viewBox)
+// Panhandle at top-left, Red River north border, Sabine east, Gulf coast,
+// Rio Grande with Big Bend curve, L-shaped NM border on west
 const TEXAS_PATH =
-  'M 92 2 L 97 2 L 97 58 L 100 58 L 100 62 L 104 62 L 104 66 L 180 66 ' +
-  'L 180 70 L 206 70 L 208 74 L 220 74 L 222 78 L 228 78 L 232 82 ' +
-  'L 240 82 L 244 86 L 250 86 L 256 90 L 266 90 L 270 94 L 278 98 ' +
-  'L 282 104 L 286 108 L 290 110 L 294 116 L 296 122 L 298 128 ' +
-  'L 296 134 L 290 140 L 286 146 L 282 148 L 276 152 L 272 158 ' +
-  'L 268 162 L 262 166 L 258 172 L 254 178 L 248 184 L 244 190 ' +
-  'L 238 194 L 232 200 L 228 206 L 222 210 L 218 216 L 214 222 ' +
-  'L 210 226 L 204 230 L 198 236 L 192 240 L 188 244 L 182 246 ' +
-  'L 176 250 L 170 252 L 164 256 L 158 258 L 152 262 L 146 264 ' +
-  'L 140 264 L 134 260 L 130 256 L 128 250 L 124 246 L 120 242 ' +
-  'L 116 240 L 110 236 L 106 232 L 102 228 L 96 226 L 92 222 ' +
-  'L 86 220 L 82 218 L 76 216 L 72 212 L 68 210 L 62 208 ' +
-  'L 58 204 L 54 198 L 50 194 L 46 188 L 42 184 L 38 178 ' +
-  'L 38 172 L 42 168 L 44 162 L 48 158 L 50 152 L 48 146 ' +
-  'L 44 140 L 40 134 L 36 128 L 34 122 L 30 116 L 28 110 ' +
-  'L 26 104 L 22 98 L 18 92 L 14 86 L 10 80 L 6 74 ' +
-  'L 6 68 L 10 62 L 16 58 L 22 54 L 26 48 L 30 42 ' +
-  'L 36 38 L 42 34 L 48 28 L 54 24 L 60 20 L 66 16 ' +
-  'L 72 12 L 78 8 L 84 4 L 92 2 Z';
+  'M 137 2 H 253 V 108 ' +
+  'L 268 112 L 292 105 L 318 112 L 345 107 L 370 114 L 395 109 L 420 116 L 445 112 L 465 120 L 480 138 ' +
+  'L 481 168 L 479 198 L 482 228 L 485 258 L 483 288 L 485 312 L 481 332 ' +
+  'L 465 340 L 448 350 L 434 360 L 416 372 L 398 386 L 382 400 L 366 416 L 354 434 L 350 456 L 353 478 L 348 498 L 340 518 ' +
+  'L 320 506 L 300 490 L 282 472 L 264 454 L 248 438 L 234 420 L 222 400 L 212 380 L 205 362 L 198 352 ' +
+  'L 182 356 L 164 360 L 146 352 L 128 342 L 114 330 L 98 312 L 84 292 L 68 270 L 52 254 L 34 242 L 18 234 L 6 228 ' +
+  'L 2 220 L 137 220 Z';
 
-// Five-pointed star centered at (160, 150), radius 28
+// Five-pointed Lone Star centered in the body of Texas
 const STAR_PATH = (() => {
-  const cx = 160, cy = 155, outer = 30, inner = 12;
+  const cx = 270, cy = 270, outer = 30, inner = 12;
   const pts: string[] = [];
   for (let i = 0; i < 5; i++) {
     const aOuter = (Math.PI / 2) + (i * 2 * Math.PI / 5);
@@ -86,7 +76,7 @@ export default function AnimatedTexas() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const pathLength = 2200;
+  const pathLength = 2800;
 
   return (
     <div
@@ -98,7 +88,7 @@ export default function AnimatedTexas() {
       }}
     >
       <svg
-        viewBox="0 0 320 280"
+        viewBox="0 0 500 520"
         className="w-[60vw] max-w-[700px] h-auto"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
@@ -194,10 +184,10 @@ export default function AnimatedTexas() {
           }}
         >
           {Array.from({ length: 12 }).map((_, i) => (
-            <line key={`h${i}`} x1="0" y1={i * 24} x2="320" y2={i * 24} stroke="#c19a6b" strokeWidth="0.5" />
+            <line key={`h${i}`} x1="0" y1={i * 40} x2="500" y2={i * 40} stroke="#c19a6b" strokeWidth="0.5" />
           ))}
           {Array.from({ length: 14 }).map((_, i) => (
-            <line key={`v${i}`} x1={i * 24} y1="0" x2={i * 24} y2="280" stroke="#c19a6b" strokeWidth="0.5" />
+            <line key={`v${i}`} x1={i * 40} y1="0" x2={i * 40} y2="520" stroke="#c19a6b" strokeWidth="0.5" />
           ))}
         </g>
         <defs>
