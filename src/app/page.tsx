@@ -73,7 +73,7 @@ export default function Home() {
           <Reveal>
             <div className="flex items-center gap-3 mb-6">
               <div className="h-px w-12 bg-tan-400" />
-              <span className="text-tan-400 text-xs uppercase tracking-[0.3em] font-semibold">Texas Hill Country</span>
+              <span className="font-cursive text-tan-400 text-2xl">Texas Hill Country</span>
             </div>
           </Reveal>
 

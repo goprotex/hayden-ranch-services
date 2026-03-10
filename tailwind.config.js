@@ -27,6 +27,7 @@ module.exports = {
         sans: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
         display: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
+        cursive: ['"Carattere"', 'cursive'],
       },
       letterSpacing: {
         tightest: '-0.04em',
