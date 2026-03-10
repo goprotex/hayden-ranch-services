@@ -23,6 +23,8 @@ interface FenceMapProps {
   onMapCapture?: (dataUrl: string) => void;
   onGatesPlaced?: (gates: MapGate[]) => void;
   onPointTypeChange?: (coordinate: [number, number], type: FencePointType) => void;
+  /** Called when a new point is added along a fence line (for gates, braces, etc.) */
+  onAddPointOnLine?: (coordinate: [number, number], type: FencePointType, nearestLineId: string) => void;
   center?: [number, number];
   zoom?: number;
 }
@@ -55,6 +57,16 @@ export interface BraceMarker {
   angleDegrees: number;
 }
 
+/** Elevation data for a segment between two sampled points */
+export interface ElevationSegment {
+  from: [number, number];
+  to: [number, number];
+  slopePct: number;       // rise/run * 100
+  elevationChange: number; // feet
+  distanceFeet: number;
+  steep: boolean;          // true if slopePct > 15%
+}
+
 export interface TerrainSuggestion {
   suggestedDifficulty: 'easy' | 'moderate' | 'difficult' | 'very_difficult';
   avgElevation: number;
@@ -80,6 +92,9 @@ export interface TerrainSuggestion {
   rockFragmentPct: number | null;
   pH: number | null;
   organicMatter: number | null;
+  // Per-segment elevation data for steep section highlighting & surcharge
+  elevationSegments?: ElevationSegment[];
+  steepFootage?: number;  // total feet of steep terrain (>15% slope)
 }
 
 /** Snap a point to the nearest position on a line segment */
@@ -97,6 +112,7 @@ export default function FenceMap({
   onMapCapture,
   onGatesPlaced,
   onPointTypeChange,
+  onAddPointOnLine,
   center = [-98.23, 30.75],
   zoom = 16,
 }: FenceMapProps) {
@@ -118,6 +134,11 @@ export default function FenceMap({
   const [pointOverrides, setPointOverrides] = useState<Map<string, FencePointType>>(new Map());
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const drawnLinesRef = useRef<DrawnLine[]>([]);
+  // Add-point-on-line mode: click fence line to place a new brace/gate/etc.
+  const [addPointMode, setAddPointMode] = useState(false);
+  const [addPointType, setAddPointType] = useState<FencePointType>('h_brace');
+  const [addedPoints, setAddedPoints] = useState<{ coordinate: [number, number]; type: FencePointType; lineId: string }[]>([]);
+  const addedPointMarkersRef = useRef<mapboxgl.Marker[]>([]);
 
   type MapboxDraw = {
     getAll: () => GeoJSON.FeatureCollection;
@@ -160,6 +181,54 @@ export default function FenceMap({
     try {
       const { analyzeTerrain } = await import('@/lib/fencing/terrain-analysis');
       const analysis = await analyzeTerrain(allCoords, token);
+
+      // Build elevation segments for steep-section highlighting
+      const elevSegs: ElevationSegment[] = [];
+      let steepFt = 0;
+      const profile = analysis.elevationProfile;
+      for (let i = 1; i < profile.length; i++) {
+        const from: [number, number] = [profile[i - 1].lng, profile[i - 1].lat];
+        const to: [number, number] = [profile[i].lng, profile[i].lat];
+        const dist = calcLineLengthFeet([from, to]);
+        const elevChg = Math.abs(profile[i].elevation - profile[i - 1].elevation);
+        const slopePct = dist > 0 ? (elevChg / dist) * 100 : 0;
+        const steep = slopePct > 15;
+        if (steep) steepFt += dist;
+        elevSegs.push({ from, to, slopePct, elevationChange: elevChg, distanceFeet: dist, steep });
+      }
+
+      // Draw steep segments as red overlay lines on the map
+      const map = mapRef.current;
+      if (map && map.loaded()) {
+        // Remove old steep layers
+        if (map.getLayer('steep-segments')) map.removeLayer('steep-segments');
+        if (map.getSource('steep-segments')) map.removeSource('steep-segments');
+
+        const steepFeatures = elevSegs.filter(s => s.steep).map(s => ({
+          type: 'Feature' as const,
+          properties: { slope: Math.round(s.slopePct) },
+          geometry: { type: 'LineString' as const, coordinates: [s.from, s.to] },
+        }));
+
+        if (steepFeatures.length > 0) {
+          map.addSource('steep-segments', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: steepFeatures },
+          });
+          map.addLayer({
+            id: 'steep-segments',
+            type: 'line',
+            source: 'steep-segments',
+            paint: {
+              'line-color': '#ef4444',
+              'line-width': 6,
+              'line-opacity': 0.75,
+              'line-dasharray': [2, 1],
+            },
+          });
+        }
+      }
+
       onTerrainAnalyzed?.({
         suggestedDifficulty: analysis.suggestedDifficulty,
         avgElevation: analysis.avgElevation,
@@ -185,13 +254,16 @@ export default function FenceMap({
         rockFragmentPct: analysis.soilInfo?.rockFragmentPct ?? null,
         pH: analysis.soilInfo?.pH ?? null,
         organicMatter: analysis.soilInfo?.organicMatter ?? null,
+        // Elevation segments & steep footage
+        elevationSegments: elevSegs,
+        steepFootage: Math.round(steepFt),
       });
     } catch (err) {
       console.error('Terrain analysis error:', err);
     } finally {
       setAnalyzing(false);
     }
-  }, [token, onTerrainAnalyzed]);
+  }, [token, onTerrainAnalyzed, calcLineLengthFeet]);
 
   const syncDrawnLines = useCallback(() => {
     if (!drawRef.current) return;
@@ -320,9 +392,9 @@ export default function FenceMap({
     }
   }, [braceMarkers, mapLoaded, pointOverrides, onPointTypeChange]);
 
-  // Gate placement: snap click to nearest point on a fence line
+  // Gate placement or add-point: snap click to nearest point on a fence line
   const handleMapClick = useCallback((e: { lngLat: { lng: number; lat: number } }) => {
-    if (!gatePlaceMode || drawnLinesRef.current.length === 0) return;
+    if ((!gatePlaceMode && !addPointMode) || drawnLinesRef.current.length === 0) return;
 
     const click: [number, number] = [e.lngLat.lng, e.lngLat.lat];
     let bestDist = Infinity;
@@ -347,18 +419,24 @@ export default function FenceMap({
     // Only accept if close enough (~100m in lng/lat units)
     if (bestDist > 0.002) return;
 
-    const gate: MapGate = {
-      id: `mg_${Date.now()}`,
-      coordinate: bestPoint,
-      type: 'Gate',
-      nearestLineId: bestLineId,
-    };
-    setPlacedGates(prev => {
-      const next = [...prev, gate];
-      onGatesPlaced?.(next);
-      return next;
-    });
-  }, [gatePlaceMode, onGatesPlaced]);
+    if (gatePlaceMode) {
+      const gate: MapGate = {
+        id: `mg_${Date.now()}`,
+        coordinate: bestPoint,
+        type: 'Gate',
+        nearestLineId: bestLineId,
+      };
+      setPlacedGates(prev => {
+        const next = [...prev, gate];
+        onGatesPlaced?.(next);
+        return next;
+      });
+    } else if (addPointMode) {
+      const newPt = { coordinate: bestPoint, type: addPointType, lineId: bestLineId };
+      setAddedPoints(prev => [...prev, newPt]);
+      onAddPointOnLine?.(bestPoint, addPointType, bestLineId);
+    }
+  }, [gatePlaceMode, addPointMode, addPointType, onGatesPlaced, onAddPointOnLine]);
 
   // Render gate markers
   useEffect(() => {
@@ -392,6 +470,34 @@ export default function FenceMap({
       });
     }
   }, [placedGates, mapLoaded]);
+
+  // Render added-point markers (points placed along fence lines)
+  useEffect(() => {
+    if (!mapRef.current || !mapLoaded) return;
+    addedPointMarkersRef.current.forEach(m => m.remove());
+    addedPointMarkersRef.current = [];
+
+    for (const pt of addedPoints) {
+      const opt = POINT_TYPE_OPTIONS.find(o => o.value === pt.type);
+      const el = document.createElement('div');
+      el.style.width = '18px';
+      el.style.height = '18px';
+      el.style.borderRadius = pt.type === 'gate' ? '4px' : '50%';
+      el.style.border = '2px solid #fff';
+      el.style.backgroundColor = opt?.color ?? '#16a34a';
+      el.style.cursor = 'pointer';
+      el.style.boxShadow = '0 0 6px rgba(0,0,0,0.5)';
+      el.title = opt?.label ?? pt.type;
+
+      import('mapbox-gl').then(mod => {
+        if (!mapRef.current) return;
+        const marker = new mod.default.Marker({ element: el })
+          .setLngLat(pt.coordinate)
+          .addTo(mapRef.current);
+        addedPointMarkersRef.current.push(marker);
+      });
+    }
+  }, [addedPoints, mapLoaded]);
 
   // Wire up map click for gate placement
   useEffect(() => {
@@ -474,6 +580,25 @@ export default function FenceMap({
         ctx.fillText('G', x, y);
       }
 
+      // Draw added-point markers (colored circles)
+      for (const pt of addedPoints) {
+        const projected = map.project(pt.coordinate);
+        const x = projected.x * dpr;
+        const y = projected.y * dpr;
+        const r = 9 * dpr;
+        const opt = POINT_TYPE_OPTIONS.find(o => o.value === pt.type);
+
+        ctx.beginPath();
+        ctx.arc(x, y, r + 2 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = opt?.color ?? '#16a34a';
+        ctx.fill();
+      }
+
       // Draw legend bar at bottom
       const legendH = 28 * dpr;
       const legendY = h - legendH;
@@ -485,13 +610,14 @@ export default function FenceMap({
       const cy = legendY + legendH / 2;
       let lx = 10 * dpr;
 
-      // Legend items: Orange=fence, Red=end post, Blue=corner, Green=H-brace, Yellow=gate
+      // Legend items: Orange=fence, Red=end post, Blue=corner, Green=H-brace, Yellow=gate, Dashed red=steep
       const legendItems: [string, string][] = [
         ['#f59e0b', 'Fence Line'],
         ['#dc2626', 'End Post'],
         ['#2563eb', 'Corner Brace'],
         ['#16a34a', 'H-Brace'],
         ['#f59e0b', 'Gate'],
+        ['#ef4444', 'Steep Grade'],
       ];
       for (const [color, label] of legendItems) {
         // Swatch
@@ -504,10 +630,10 @@ export default function FenceMap({
           ctx.fillText('G', lx + 5 * dpr, cy);
           ctx.font = `${10 * dpr}px Arial, sans-serif`;
           ctx.textAlign = 'left';
-        } else if (label === 'Fence Line') {
+        } else if (label === 'Fence Line' || label === 'Steep Grade') {
           ctx.strokeStyle = color;
           ctx.lineWidth = 2 * dpr;
-          ctx.setLineDash([4 * dpr, 3 * dpr]);
+          ctx.setLineDash(label === 'Steep Grade' ? [4 * dpr, 3 * dpr] : [4 * dpr, 3 * dpr]);
           ctx.beginPath();
           ctx.moveTo(lx, cy);
           ctx.lineTo(lx + 14 * dpr, cy);
@@ -531,7 +657,7 @@ export default function FenceMap({
     } catch (err) {
       console.error('Map capture error:', err);
     }
-  }, [onMapCapture, braceMarkers, placedGates]);
+  }, [onMapCapture, braceMarkers, placedGates, addedPoints]);
 
   const handleGeocode = useCallback(async () => {
     if (!address.trim() || !token || !mapRef.current) return;
@@ -603,7 +729,30 @@ export default function FenceMap({
         map.on('draw.create', () => syncDrawnLines());
         map.on('draw.update', () => syncDrawnLines());
         map.on('draw.delete', () => syncDrawnLines());
-        map.on('load', () => { if (!cancelled) setMapLoaded(true); });
+        map.on('load', () => {
+          if (!cancelled) setMapLoaded(true);
+
+          // Add Bing Maps aerial tile layer for higher resolution imagery
+          map.addSource('bing-aerial', {
+            type: 'raster',
+            tiles: [
+              'https://ecn.t0.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587&n=z',
+              'https://ecn.t1.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587&n=z',
+              'https://ecn.t2.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587&n=z',
+              'https://ecn.t3.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587&n=z',
+            ],
+            tileSize: 256,
+            maxzoom: 20,
+          });
+          // Insert below labels but above default satellite base
+          const firstSymbolLayer = map.getStyle().layers?.find(l => l.type === 'symbol');
+          map.addLayer({
+            id: 'bing-aerial-layer',
+            type: 'raster',
+            source: 'bing-aerial',
+            paint: { 'raster-opacity': 0.85 },
+          }, firstSymbolLayer?.id);
+        });
 
         mapRef.current = map;
         drawRef.current = draw;
@@ -670,31 +819,68 @@ export default function FenceMap({
           {mapLoaded && !analyzing && <span>&#x2713; Draw fence lines on satellite view</span>}
         </div>
       </div>
-      {/* Gate placement & capture bar */}
+      {/* Gate placement, add-point & capture bar */}
       {lineCount > 0 && (
-        <div className="flex items-center gap-3 px-4 py-2 bg-surface-200 border-t border-steel-700/20 text-xs">
-          <button
-            onClick={() => setGatePlaceMode(p => !p)}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition ${
-              gatePlaceMode
-                ? 'bg-amber-500 text-surface-400 shadow-md'
-                : 'bg-surface-50 text-steel-300 hover:bg-surface-100'
-            }`}
-          >
-            {gatePlaceMode ? '&#x1f6aa; Click Fence Line to Place Gate' : '&#x1f6aa; Place Gate'}
-          </button>
-          {placedGates.length > 0 && (
-            <button onClick={removeLastGate} className="px-3 py-1.5 rounded-lg bg-red-900/40 text-red-300 hover:bg-red-900/60 transition font-medium">
-              Undo Gate ({placedGates.length})
+        <div className="flex flex-col gap-2 px-4 py-2 bg-surface-200 border-t border-steel-700/20 text-xs">
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={() => { setGatePlaceMode(p => !p); if (!gatePlaceMode) setAddPointMode(false); }}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition ${
+                gatePlaceMode
+                  ? 'bg-amber-500 text-surface-400 shadow-md'
+                  : 'bg-surface-50 text-steel-300 hover:bg-surface-100'
+              }`}
+            >
+              {gatePlaceMode ? '&#x1f6aa; Click Fence Line to Place Gate' : '&#x1f6aa; Place Gate'}
             </button>
-          )}
-          {onMapCapture && (
-            <button onClick={captureMap} className="px-3 py-1.5 rounded-lg bg-surface-50 text-steel-300 hover:bg-surface-100 transition font-medium ml-auto">
-              &#x1f4f8; Capture for PDF
-            </button>
-          )}
+            {placedGates.length > 0 && (
+              <button onClick={removeLastGate} className="px-3 py-1.5 rounded-lg bg-red-900/40 text-red-300 hover:bg-red-900/60 transition font-medium">
+                Undo Gate ({placedGates.length})
+              </button>
+            )}
+
+            {/* Add Point Along Line */}
+            <div className="flex items-center gap-1.5 ml-2">
+              <button
+                onClick={() => { setAddPointMode(p => !p); if (!addPointMode) setGatePlaceMode(false); }}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition ${
+                  addPointMode
+                    ? 'bg-emerald-500 text-white shadow-md'
+                    : 'bg-surface-50 text-steel-300 hover:bg-surface-100'
+                }`}
+              >
+                {addPointMode ? '&#x2795; Click Line to Add Point' : '&#x2795; Add Point'}
+              </button>
+              {addPointMode && (
+                <select
+                  title="Point type to add"
+                  value={addPointType}
+                  onChange={e => setAddPointType(e.target.value as FencePointType)}
+                  className="bg-surface-50 border border-steel-700/30 rounded-lg px-2 py-1.5 text-[11px] text-steel-200"
+                >
+                  {POINT_TYPE_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            {addedPoints.length > 0 && (
+              <button
+                onClick={() => setAddedPoints(prev => prev.slice(0, -1))}
+                className="px-3 py-1.5 rounded-lg bg-red-900/40 text-red-300 hover:bg-red-900/60 transition font-medium"
+              >
+                Undo Point ({addedPoints.length})
+              </button>
+            )}
+
+            {onMapCapture && (
+              <button onClick={captureMap} className="px-3 py-1.5 rounded-lg bg-surface-50 text-steel-300 hover:bg-surface-100 transition font-medium ml-auto">
+                &#x1f4f8; Capture for PDF
+              </button>
+            )}
+          </div>
           {/* Legend */}
-          <div className="flex gap-3 ml-auto text-[10px] text-steel-400 flex-wrap items-center">
+          <div className="flex gap-3 text-[10px] text-steel-400 flex-wrap items-center">
             {braceMarkers.length > 0 && (
               <>
                 <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-red-600 border border-white/50"></span> End Post</span>
@@ -702,11 +888,15 @@ export default function FenceMap({
                 <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-green-600 border border-white/50"></span> H-Brace</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-violet-600 border border-white/50"></span> Kicker</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-cyan-500 border border-white/50"></span> Water Gap</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-0.5 bg-red-500"></span><span className="inline-block w-2.5 h-0.5 bg-red-500 ml-0.5"></span> Steep (&gt;15% grade)</span>
                 <span className="text-steel-500 italic">Click markers to change type</span>
               </>
             )}
             {placedGates.length > 0 && (
               <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded bg-amber-500 border border-amber-300"></span> Gate ({placedGates.length})</span>
+            )}
+            {addedPoints.length > 0 && (
+              <span className="flex items-center gap-1 text-emerald-400">&#x2795; {addedPoints.length} added point{addedPoints.length > 1 ? 's' : ''}</span>
             )}
           </div>
         </div>

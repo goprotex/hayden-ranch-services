@@ -14,7 +14,7 @@ import {
   type BarbedWireType, type TiePattern,
 } from '@/lib/fencing/fence-materials';
 import { generateFenceBidPDF, calculateSectionMaterials, calculateLaborEstimate, buildSiteAdjustments, type FenceBidSection, type BidGate, type FenceBidData, type TopWireType } from '@/lib/fencing/fence-bid-pdf';
-import type { DrawnLine, VertexAngle, TerrainSuggestion } from '@/components/fencing/FenceMap';
+import type { DrawnLine, VertexAngle, TerrainSuggestion, ElevationSegment } from '@/components/fencing/FenceMap';
 import type { FenceType, FenceHeight } from '@/types';
 
 const FenceMap = dynamic(() => import('@/components/fencing/FenceMap'), {
@@ -100,7 +100,7 @@ export default function FencingPage() {
   const currentGaugeOptions = useMemo(() => getGaugeOptions(postMaterial), [postMaterial]);
 
   // Spacing
-  const [linePostSpacing, setLinePostSpacing] = useState(66); // ft
+  const [linePostSpacing, setLinePostSpacing] = useState(50); // ft
   const [tPostSpacing, setTPostSpacing] = useState(10); // ft
 
   // Bracing preferences
@@ -128,6 +128,8 @@ export default function FencingPage() {
 
   // Terrain analysis
   const [terrainSuggestion, setTerrainSuggestion] = useState<TerrainSuggestion | null>(null);
+  // Elevation segment data for steep terrain surcharge
+  const [steepFootage, setSteepFootage] = useState(0);
 
   // AI-generated site analysis narrative (Claude/GPT)
   const [aiNarrative, setAiNarrative] = useState<string | null>(null);
@@ -161,6 +163,7 @@ export default function FencingPage() {
   const handleTerrainAnalyzed = useCallback((analysis: TerrainSuggestion) => {
     setTerrainSuggestion(analysis);
     if (analysis.confidence > 0.4) setTerrain(analysis.suggestedDifficulty);
+    if (analysis.steepFootage != null) setSteepFootage(analysis.steepFootage);
   }, []);
 
   // Load shared material prices from server on mount
@@ -280,20 +283,63 @@ export default function FencingPage() {
     const pricePerPost = postsPerJoint > 0 ? jointPrice / postsPerJoint : jointPrice;
     const linePostCostPerFt = pricePerPost / linePostSpacing;
 
-    // Concrete per foot (2 bags per line post, adjusted for soil difficulty)
-    const concreteCostPerFt = (findPrice('concrete_bag') * 2 * soilMultiplier) / linePostSpacing;
+    // Concrete bags per post based on post diameter and burial depth
+    // Hole is typically 3× post OD diameter, filled around post
+    const buryFt = postCalc.belowGroundFeet;
+    const diamStr = postSpec?.diameter ?? '2-3/8" OD';
+    let postOdInches = 2.375; // default
+    if (diamStr.includes('2-3/8')) postOdInches = 2.375;
+    else if (diamStr.includes('2-7/8')) postOdInches = 2.875;
+    else if (diamStr.includes('2.5')) postOdInches = 2.5;
+    else if (diamStr.includes('2" x 2"')) postOdInches = 2;
+    else if (diamStr.includes('3" x 3"')) postOdInches = 3;
+    else if (diamStr.includes('4" x 4"')) postOdInches = 4;
+    const holeDiamIn = Math.max(postOdInches * 3, 8); // min 8" hole
+    const holeRadFt = (holeDiamIn / 2) / 12;
+    const postRadFt = (postOdInches / 2) / 12;
+    const postArea = postSpec?.shape === 'square' ? (postOdInches / 12) ** 2 : Math.PI * postRadFt ** 2;
+    const holeArea = Math.PI * holeRadFt ** 2;
+    const concreteCuFtPerPost = (holeArea - postArea) * buryFt;
+    // 80-lb bag covers ~0.6 cu ft
+    const bagsPerLinePost = Math.ceil(concreteCuFtPerPost / 0.6 * soilMultiplier);
+    const bagsPerBracePost = Math.ceil(concreteCuFtPerPost * 1.5 / 0.6 * soilMultiplier); // brace posts get 50% more concrete
+    const concreteCostPerFt = (findPrice('concrete_bag') * bagsPerLinePost) / linePostSpacing;
 
     // Hardware per foot
     const clipsCostPerFt = (findPrice('clips') / 500) * (4 / tPostSpacing);
-    const tensionerCostPerFt = findPrice('tensioner') / 330;
+    // Horizontal strands for tensioner/spring indicator calcs
+    const horizStrands = fenceType.startsWith('stay_tuff') ? selectedStayTuff.horizontalWires : 9;
+    // Tensioners: 1 per strand per H-brace assembly, plus 1 per strand per 660' of run
+    const estBraceCount = Math.max(2, Math.ceil(1000 / linePostSpacing)); // rough estimate for per-foot
+    const tensionersPerFt = includeTensioners
+      ? (findPrice('tensioner') * horizStrands * (estBraceCount + 1)) / 1000
+      : 0;
+    // Spring indicators: 1 per strand per H-brace
+    const springIndicatorsPerFt = includeSpringIndicators
+      ? (findPrice('spring_tension_indicator') * horizStrands * estBraceCount) / 1000
+      : 0;
+    // Post caps: 1 per line post
+    const postCapsCostPerFt = includePostCaps
+      ? findPrice('post_cap') / linePostSpacing
+      : 0;
+    // Concrete fill (inside tube): only for square tube posts
+    const concreteFillCostPerFt = (concreteFillPosts && postSpec?.shape === 'square')
+      ? findPrice('concrete_fill_post') / linePostSpacing
+      : 0;
     // Brace diagonal pipe cost: each brace uses 1 rail + 1 welded diagonal (10' each), cut from same pipe joints
     const bracePiecesPerJoint = Math.floor(jointLen / 10);
     const bracePipeCostPerFt = bracePiecesPerJoint > 0
       ? (2 * jointPrice / bracePiecesPerJoint) / linePostSpacing
       : 0;
-    const hardwareCostPerFt = clipsCostPerFt + tensionerCostPerFt + bracePipeCostPerFt;
+    const hardwareCostPerFt = clipsCostPerFt + tensionersPerFt + bracePipeCostPerFt;
+    const accessoryCostPerFt = postCapsCostPerFt + springIndicatorsPerFt + concreteFillCostPerFt;
 
-    const total = wireCostPerFt + topWireCostPerFt + tPostCostPerFt + linePostCostPerFt + concreteCostPerFt + hardwareCostPerFt;
+    // Steep terrain surcharge: additional $2/ft for sections with >15% grade
+    const estTotalFeet = sections.reduce((s, c) => s + c.linearFeet, 0) || 1000;
+    const steepSurchargePerFt = steepFootage > 0 ? (steepFootage * 2) / estTotalFeet : 0;
+
+    const total = wireCostPerFt + topWireCostPerFt + tPostCostPerFt + linePostCostPerFt
+      + concreteCostPerFt + hardwareCostPerFt + accessoryCostPerFt + steepSurchargePerFt;
     return {
       wire: Math.round(wireCostPerFt * 100) / 100,
       topWire: Math.round(topWireCostPerFt * 100) / 100,
@@ -301,9 +347,14 @@ export default function FencingPage() {
       linePosts: Math.round(linePostCostPerFt * 100) / 100,
       concrete: Math.round(concreteCostPerFt * 100) / 100,
       hardware: Math.round(hardwareCostPerFt * 100) / 100,
+      accessories: Math.round(accessoryCostPerFt * 100) / 100,
+      steepSurcharge: Math.round(steepSurchargePerFt * 100) / 100,
       total: Math.round(total * 100) / 100,
+      // Expose per-post concrete bags for materialCalc
+      _bagsPerLinePost: bagsPerLinePost,
+      _bagsPerBracePost: bagsPerBracePost,
     };
-  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType, barbedWireType]);
+  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType, barbedWireType, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, steepFootage, sections]);
 
   const baseRate = materialCostPerFoot.total + laborRate;
   const effectiveRate = useMemo(() => Math.round((materialCostPerFoot.total + laborRate * terrainMult) * 100) / 100, [materialCostPerFoot.total, laborRate, terrainMult]);
@@ -324,9 +375,39 @@ export default function FencingPage() {
     const cornerBraces = braceRecommendations.filter(b => b.type === 'corner_brace').length;
     const totalBraces = hBraces + cornerBraces;
     const wireRolls = Math.ceil((totalFeet * 1.1) / (fenceType.startsWith('stay_tuff') ? selectedStayTuff.rollLength : 330));
-    const concreteBags = (linePostCount * 2) + (totalBraces * 4);
-    return { linePostCount, tPostCount: Math.max(0, tPostCount), hBraces, cornerBraces, totalBraces, wireRolls, concreteBags };
-  }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations, fenceType, selectedStayTuff]);
+
+    // Concrete bags: diameter-based calculation from materialCostPerFoot
+    const concreteBags = (linePostCount * materialCostPerFoot._bagsPerLinePost)
+      + (totalBraces * 2 * materialCostPerFoot._bagsPerBracePost); // 2 posts per brace assembly
+
+    // Horizontal wire strands for accessory calcs
+    const horizStrands = fenceType.startsWith('stay_tuff') ? selectedStayTuff.horizontalWires : 9;
+
+    // Post caps: 1 per line post + 2 per brace assembly (2 brace posts each)
+    const postCapsQty = includePostCaps ? linePostCount + (totalBraces * 2) : 0;
+
+    // Tensioners: 1 per horizontal strand per H-brace assembly, + 1 set per 660' of continuous run
+    const runsOf660 = Math.max(1, Math.ceil(totalFeet / 660));
+    const tensionersQty = includeTensioners ? horizStrands * (hBraces + runsOf660) : 0;
+
+    // Spring tension indicators: 1 per horizontal strand per H-brace
+    const springIndicatorsQty = includeSpringIndicators ? horizStrands * hBraces : 0;
+
+    // Concrete fill (inside tube posts): only for square tube posts
+    const postSpec = POST_MATERIALS.find(p => p.id === postMaterial);
+    const concreteFillPostsQty = (concreteFillPosts && postSpec?.shape === 'square') ? linePostCount : 0;
+    const concreteFillBracesQty = (concreteFillPosts && postSpec?.shape === 'square') ? totalBraces * 2 : 0;
+
+    return {
+      linePostCount,
+      tPostCount: Math.max(0, tPostCount),
+      hBraces, cornerBraces, totalBraces,
+      wireRolls, concreteBags,
+      postCapsQty, tensionersQty, springIndicatorsQty,
+      concreteFillPostsQty, concreteFillBracesQty,
+      horizStrands,
+    };
+  }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations, fenceType, selectedStayTuff, materialCostPerFoot, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, postMaterial]);
 
   const paintEst = useMemo(() => {
     if (!includePainting) return null;
@@ -557,6 +638,15 @@ export default function FencingPage() {
         fenceType: ftLabel,
       }) : undefined,
       mapImages: mapImages.length > 0 ? mapImages : undefined,
+      accessories: {
+        postCaps: materialCalc.postCapsQty,
+        tensioners: materialCalc.tensionersQty,
+        springIndicators: materialCalc.springIndicatorsQty,
+        concreteFillPosts: materialCalc.concreteFillPostsQty,
+        concreteFillBraces: materialCalc.concreteFillBracesQty,
+      },
+      steepFootage: steepFootage > 0 ? steepFootage : undefined,
+      steepSurchargePerFoot: steepFootage > 0 ? 2 : undefined,
     };
     generateFenceBidPDF(data);
   }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc]);
@@ -566,7 +656,12 @@ export default function FencingPage() {
       id: `fb_${Date.now()}`, projectName: projectName || 'Fence Project', clientName, address,
       fenceLines: [], fenceType, fenceHeight,
       stayTuffOption: fenceType.startsWith('stay_tuff') ? toStayTuffProduct(selectedStayTuff) : undefined,
-      materials: { cornerPosts: { quantity: 0, lengthFeet: 0, type: '' }, linePosts: { quantity: materialCalc.linePostCount, lengthFeet: 0, spacingFeet: linePostSpacing, type: POST_MATERIALS.find(p => p.id === postMaterial)?.label ?? postMaterial }, tPosts: { quantity: materialCalc.tPostCount, lengthFeet: 0, spacingFeet: tPostSpacing }, bracingAssemblies: { quantity: materialCalc.totalBraces, type: '' }, gateAssemblies: [], wire: { rolls: materialCalc.wireRolls, feetPerRoll: fenceType.startsWith('stay_tuff') ? selectedStayTuff.rollLength : 330, totalFeet: totalFeet, type: '' }, barbedWire: { rolls: 0, strands: 0, totalFeet: 0 }, clips: { quantity: 0, type: '' }, staples: { pounds: 0 }, concrete: { bags: materialCalc.concreteBags, poundsPerBag: 80 }, tensioners: { quantity: 0 }, extras: [] },
+      materials: { cornerPosts: { quantity: 0, lengthFeet: 0, type: '' }, linePosts: { quantity: materialCalc.linePostCount, lengthFeet: 0, spacingFeet: linePostSpacing, type: POST_MATERIALS.find(p => p.id === postMaterial)?.label ?? postMaterial }, tPosts: { quantity: materialCalc.tPostCount, lengthFeet: 0, spacingFeet: tPostSpacing }, bracingAssemblies: { quantity: materialCalc.totalBraces, type: '' }, gateAssemblies: [], wire: { rolls: materialCalc.wireRolls, feetPerRoll: fenceType.startsWith('stay_tuff') ? selectedStayTuff.rollLength : 330, totalFeet: totalFeet, type: '' }, barbedWire: { rolls: 0, strands: 0, totalFeet: 0 }, clips: { quantity: 0, type: '' }, staples: { pounds: 0 }, concrete: { bags: materialCalc.concreteBags, poundsPerBag: 80 }, tensioners: { quantity: materialCalc.tensionersQty }, extras: [
+        ...(materialCalc.postCapsQty > 0 ? [{ name: 'Post Caps', quantity: materialCalc.postCapsQty, unit: 'ea' }] : []),
+        ...(materialCalc.springIndicatorsQty > 0 ? [{ name: 'Spring Indicators', quantity: materialCalc.springIndicatorsQty, unit: 'ea' }] : []),
+        ...(materialCalc.concreteFillPostsQty > 0 ? [{ name: 'Concrete Fill (posts)', quantity: materialCalc.concreteFillPostsQty, unit: 'ea' }] : []),
+        ...(materialCalc.concreteFillBracesQty > 0 ? [{ name: 'Concrete Fill (braces)', quantity: materialCalc.concreteFillBracesQty, unit: 'ea' }] : []),
+      ] },
       laborEstimate: { totalHours: timelineDays * 24, crewSize: 3, days: timelineDays, difficultyMultiplier: terrainMult, hourlyRate: 45, totalLaborCost: secTotal },
       totalCost: projTotal, createdAt: new Date().toISOString(),
     });
@@ -609,6 +704,17 @@ export default function FencingPage() {
                 onFenceLinesChange={handleFenceLinesChange}
                 onTerrainAnalyzed={handleTerrainAnalyzed}
                 onMapCapture={(dataUrl) => { setMapImages(prev => [...prev, dataUrl]); }}
+                onAddPointOnLine={(coord, type, lineId) => {
+                  if (type === 'h_brace' || type === 'n_brace' || type === 'corner_brace') {
+                    const spec = BRACE_SPECS.find(b => b.id === type) || BRACE_SPECS[0];
+                    setBraceRecommendations(prev => [...prev, {
+                      type: type as 'h_brace' | 'n_brace' | 'corner_brace',
+                      label: spec.label,
+                      angleDegrees: type === 'corner_brace' ? 90 : 180,
+                      spec,
+                    }]);
+                  }
+                }}
               />
             </Card>
 
@@ -762,8 +868,8 @@ export default function FencingPage() {
             </Card>
             <Card title="Post Spacing" icon="&#x1f4cf;">
               <div className="space-y-4">
-                <DSlider label="Line Post Spacing" value={linePostSpacing} min={50} max={100} step={1}
-                  display={`${linePostSpacing} ft`} onChange={setLinePostSpacing} minLabel="50 ft" maxLabel="100 ft" />
+                <DSlider label="Line Post Spacing" value={linePostSpacing} min={30} max={70} step={1}
+                  display={`${linePostSpacing} ft`} onChange={setLinePostSpacing} minLabel="30 ft" maxLabel="70 ft" />
                 <DSlider label="T-Post Spacing" value={tPostSpacing} min={7} max={15} step={0.5}
                   display={`${tPostSpacing} ft`} onChange={setTPostSpacing} minLabel="7 ft" maxLabel="15 ft" />
                 <div className="bg-surface-200 rounded-lg p-3 text-xs text-steel-400">
@@ -913,7 +1019,9 @@ export default function FencingPage() {
                     { label: `T-Posts (${tPostRec.label} @ ${tPostSpacing}' spacing)`, value: materialCostPerFoot.tPosts },
                     { label: `Line Posts (${POST_MATERIALS.find(p => p.id === postMaterial)?.label ?? postMaterial} @ ${linePostSpacing}')`, value: materialCostPerFoot.linePosts },
                     { label: `Concrete${soilMultiplier > 1 ? ` (${soilMultiplier}x soil adj.)` : ''}`, value: materialCostPerFoot.concrete },
-                    { label: 'Hardware (clips, tensioners, etc.)', value: materialCostPerFoot.hardware },
+                    { label: 'Hardware (clips, ties)', value: materialCostPerFoot.hardware },
+                    ...(materialCostPerFoot.accessories > 0 ? [{ label: 'Accessories (caps, tensioners, indicators)', value: materialCostPerFoot.accessories }] : []),
+                    ...(materialCostPerFoot.steepSurcharge > 0 ? [{ label: `Steep Grade Surcharge (${steepFootage}' >15%)`, value: materialCostPerFoot.steepSurcharge }] : []),
                   ].map(row => (
                     <div key={row.label} className="flex justify-between items-center">
                       <span className="text-[10px] text-steel-500">{row.label}</span>
@@ -951,6 +1059,9 @@ export default function FencingPage() {
                         <span className="block text-steel-500 mt-0.5">&#x26a0;&#xfe0f; Soil data unavailable &mdash; using default difficulty</span>
                       )}
                       <span className="block text-amber-400/70">Elev change: {Math.round(terrainSuggestion.elevationChange)} ft | Confidence: {Math.round(terrainSuggestion.confidence * 100)}%</span>
+                      {steepFootage > 0 && (
+                        <span className="block text-red-400 font-semibold mt-0.5">⚠ {steepFootage}' of steep grade (&gt;15%) — $2/ft surcharge applied</span>
+                      )}
                     </div>
                   )}
                   <div className="grid grid-cols-2 gap-1.5">
@@ -1149,6 +1260,12 @@ export default function FencingPage() {
                       <div><span className="text-steel-500">Wire Rolls:</span> <span className="text-steel-200">{materialCalc.wireRolls} ({fenceType.startsWith('stay_tuff') ? selectedStayTuff.rollLength : 330}&apos; ea)</span></div>
                       <div><span className="text-steel-500">Concrete:</span> <span className="text-steel-200">{materialCalc.concreteBags} bags (80lb)</span></div>
                       <div><span className="text-steel-500">Gates:</span> <span className="text-steel-200">{gates.length}</span></div>
+                      {materialCalc.postCapsQty > 0 && <div><span className="text-steel-500">Post Caps:</span> <span className="text-steel-200">{materialCalc.postCapsQty}</span></div>}
+                      {materialCalc.tensionersQty > 0 && <div><span className="text-steel-500">Tensioners:</span> <span className="text-steel-200">{materialCalc.tensionersQty}</span></div>}
+                      {materialCalc.springIndicatorsQty > 0 && <div><span className="text-steel-500">Spring Indicators:</span> <span className="text-steel-200">{materialCalc.springIndicatorsQty}</span></div>}
+                      {materialCalc.concreteFillPostsQty > 0 && <div><span className="text-steel-500">Concrete Fill (posts):</span> <span className="text-steel-200">{materialCalc.concreteFillPostsQty}</span></div>}
+                      {materialCalc.concreteFillBracesQty > 0 && <div><span className="text-steel-500">Concrete Fill (braces):</span> <span className="text-steel-200">{materialCalc.concreteFillBracesQty}</span></div>}
+                      {steepFootage > 0 && <div><span className="text-red-400">Steep Grade:</span> <span className="text-red-300">{steepFootage}' (&gt;15%) — surcharge applied</span></div>}
                       {includePainting && <div><span className="text-steel-500">Paint:</span> <span className="text-steel-200">{paintEst?.gallonsNeeded || 0} gallons ({paintColor})</span></div>}
                     </div>
                   </div>

@@ -133,6 +133,19 @@ export interface FenceBidData {
   // Map screenshot data URLs (base64 PNGs) — supports multiple captures
   mapImages?: string[];
 
+  // Accessory quantities for PDF rendering
+  accessories?: {
+    postCaps: number;
+    tensioners: number;
+    springIndicators: number;
+    concreteFillPosts: number;
+    concreteFillBraces: number;
+  };
+
+  // Steep grade info
+  steepFootage?: number;
+  steepSurchargePerFoot?: number;
+
   // Terms (use default if empty)
   customTerms?: string[];
 }
@@ -909,6 +922,48 @@ export function generateFenceBidPDF(data: FenceBidData): void {
   doc.setTextColor(27, 38, 54);
   doc.text(`Total Linear Feet: ${totalLinearFeet.toLocaleString()}`, mx + 3, y);
   y += 10;
+
+  // Accessories breakdown (if any)
+  if (data.accessories) {
+    const acc = data.accessories;
+    const accRows: [string, number][] = [];
+    if (acc.postCaps > 0) accRows.push([`Post Caps (${acc.postCaps})`, acc.postCaps * 3.5]);
+    if (acc.tensioners > 0) accRows.push([`Inline Tensioners (${acc.tensioners})`, acc.tensioners * 12]);
+    if (acc.springIndicators > 0) accRows.push([`Spring Tension Indicators (${acc.springIndicators})`, acc.springIndicators * 18]);
+    if (acc.concreteFillPosts > 0) accRows.push([`Concrete Fill — Posts (${acc.concreteFillPosts})`, acc.concreteFillPosts * 8]);
+    if (acc.concreteFillBraces > 0) accRows.push([`Concrete Fill — Braces (${acc.concreteFillBraces})`, acc.concreteFillBraces * 12]);
+    if (accRows.length > 0) {
+      y = ensureSpace(doc, y, 8 + accRows.length * 7);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(27, 38, 54);
+      doc.text('Accessories', mx + 3, y);
+      y += 7;
+      for (const [label, cost] of accRows) {
+        y = ensureSpace(doc, y, 7);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(80, 80, 80);
+        doc.text(`  ${label}`, mx + 3, y);
+        doc.text(`$${cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y, { align: 'right' });
+        y += 7;
+      }
+    }
+  }
+
+  // Steep grade surcharge (if any)
+  if (data.steepFootage && data.steepSurchargePerFoot) {
+    y = ensureSpace(doc, y, 10);
+    doc.setFillColor(255, 240, 240);
+    doc.rect(mx, y - 4, cw, 8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(180, 40, 40);
+    const steepTotal = data.steepFootage * data.steepSurchargePerFoot;
+    doc.text(`Steep Grade Surcharge (${data.steepFootage}' @ $${data.steepSurchargePerFoot}/ft)`, mx + 3, y);
+    doc.text(`$${steepTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y, { align: 'right' });
+    y += 10;
+  }
 
   // Project total
   doc.setFillColor(27, 38, 54);
