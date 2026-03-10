@@ -1,139 +1,241 @@
 import Link from 'next/link';
 import HaydenLogo from '@/components/HaydenLogo';
+import AnimatedTexas from '@/components/AnimatedTexas';
+import { Reveal, RevealText, Marquee, StaggerReveal } from '@/components/animations';
+
+const SERVICES = [
+  {
+    tag: 'Fencing',
+    title: 'Ranch & Agricultural Fencing',
+    href: '/fencing',
+    desc: 'Draw fence lines on satellite maps. Auto-calculate posts, wire, bracing, and hardware with terrain analysis. Generate complete bids.',
+    stats: ['Stay Tuff Wire', 'Barbed Wire', 'Pipe & T-Post', 'H-Braces & Gates'],
+    bg: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800&q=60',
+  },
+  {
+    tag: 'Metal Roofing',
+    title: 'Cut Lists & Material Takeoffs',
+    href: '/roofing',
+    desc: 'Import EagleView or QuickMeasure reports. Generate precise panel cut lists for 6V Crimp, R-Panel, and Standing Seam with trim & fasteners.',
+    stats: ['6V Crimp', 'R-Panel', 'Standing Seam', 'Trim Lists'],
+    bg: 'https://images.unsplash.com/photo-1632759145351-1d592919f522?w=800&q=60',
+  },
+  {
+    tag: 'Pricing',
+    title: 'Receipt Scanning & Cost Tracking',
+    href: '/pricing',
+    desc: 'Upload supplier receipts to build a live price database. Auto-price your cut lists and track material costs over time.',
+    stats: ['AI Receipt Parsing', 'Price History', 'Auto-Cost Estimates', 'Multi-Supplier'],
+    bg: '',
+  },
+];
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-steel-900 via-steel-800 to-steel-950">
-      {/* Header */}
-      <header className="border-b border-steel-700/50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+    <div className="min-h-screen bg-black">
+
+      {/* ─── HERO: Full-bleed fence photo + dark overlay + animated Texas ─── */}
+      <section className="relative min-h-[100vh] flex flex-col overflow-hidden">
+        {/* Background image — fence in Texas Hill Country */}
+        <div
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{ backgroundImage: 'url(https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1600&q=70)' }}
+        />
+        {/* Dark overlay — keeps text readable, maintains dark bold feel */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/70 to-black" />
+        {/* Subtle noise texture */}
+        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\' opacity=\'0.5\'/%3E%3C/svg%3E")' }} />
+
+        {/* Animated Texas silhouette — rotates on scroll */}
+        <AnimatedTexas />
+
+        {/* Header (over hero) */}
+        <header className="relative z-10 border-b border-white/[0.06]">
+          <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
             <HaydenLogo className="h-10 w-auto" dark />
+            <nav className="hidden sm:flex items-center gap-6">
+              {['Fencing', 'Roofing', 'Pricing', 'Projects'].map((item) => (
+                <Link
+                  key={item}
+                  href={`/${item.toLowerCase()}`}
+                  className="hover-line text-white/60 hover:text-white transition text-xs uppercase tracking-widest font-medium"
+                >
+                  {item}
+                </Link>
+              ))}
+            </nav>
           </div>
-          <nav className="flex items-center gap-4">
-            <Link
-              href="/roofing"
-              className="text-steel-300 hover:text-white transition text-sm"
-            >
-              Roofing
-            </Link>
-            <Link
-              href="/pricing"
-              className="text-steel-300 hover:text-white transition text-sm"
-            >
-              Pricing
-            </Link>
-            <Link
-              href="/fencing"
-              className="text-steel-300 hover:text-white transition text-sm"
-            >
-              Fencing
-            </Link>
-            <Link
-              href="/projects"
-              className="text-steel-300 hover:text-white transition text-sm"
-            >
-              Projects
-            </Link>
-          </nav>
-        </div>
-      </header>
+        </header>
 
-      {/* Hero */}
-      <main className="max-w-7xl mx-auto px-6 py-16">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">
-            Your Complete Bid &amp; Estimating Toolkit
+        {/* Hero content */}
+        <div className="relative z-10 flex-1 flex flex-col justify-end max-w-7xl mx-auto w-full px-6 pb-16 md:pb-24">
+          {/* What we do — instantly clear */}
+          <Reveal>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="h-px w-12 bg-tan-400" />
+              <span className="text-tan-400 text-xs uppercase tracking-[0.3em] font-semibold">Texas Hill Country</span>
+            </div>
+          </Reveal>
+
+          <Reveal>
+            <h1 className="text-5xl md:text-7xl lg:text-[5.5rem] font-bold text-white mb-5 tracking-tightest leading-[0.92]">
+              <RevealText as="div" delay={0}>WE BUILD FENCES</RevealText>
+              <RevealText as="div" delay={1}>&amp; METAL ROOFS</RevealText>
+            </h1>
+          </Reveal>
+
+          <Reveal delay={300}>
+            <p className="text-white/60 text-base md:text-lg max-w-lg leading-relaxed mb-8">
+              Bid estimating tools built by contractors, for contractors.
+              Satellite mapping, material takeoffs, and PDF generation — all in one place.
+            </p>
+          </Reveal>
+
+          <Reveal delay={500}>
+            <div className="flex flex-wrap items-center gap-4">
+              <Link
+                href="/fencing"
+                className="magnetic-hover inline-flex items-center gap-2.5 bg-tan-400 text-black px-7 py-3.5 text-xs uppercase tracking-widest font-bold hover:bg-tan-300 transition-colors"
+              >
+                Start a Fencing Bid
+                <svg width="16" height="16" viewBox="0 0 25 25" fill="none"><path d="M20.5 12.5H4.5M20.5 12.5L13.5 5.5M20.5 12.5L13.5 19.5" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/></svg>
+              </Link>
+              <Link
+                href="/roofing"
+                className="magnetic-hover inline-flex items-center gap-2 border border-tan-400/30 text-tan-300 px-7 py-3.5 text-xs uppercase tracking-widest font-semibold hover:border-tan-400/60 hover:text-tan-200 transition-colors"
+              >
+                Roofing Cut Lists
+              </Link>
+            </div>
+          </Reveal>
+
+          {/* Quick stats bar */}
+          <Reveal delay={700}>
+            <div className="flex flex-wrap items-center gap-8 mt-12 pt-8 border-t border-white/[0.06]">
+              {[
+                ['Satellite Maps', 'Draw on aerial imagery'],
+                ['Stay Tuff Wire', '40+ catalog products'],
+                ['PDF Generation', 'Professional bid documents'],
+              ].map(([label, sub]) => (
+                <div key={label}>
+                  <p className="text-tan-400 text-sm font-bold">{label}</p>
+                  <p className="text-white/40 text-xs mt-0.5">{sub}</p>
+                </div>
+              ))}
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ─── MARQUEE: Services ticker ─── */}
+      <Marquee speed={28} className="border-b border-white/[0.06] py-3 bg-black text-tan-600 text-[10px] uppercase tracking-[0.3em] font-medium">
+        <span className="mx-8">Fencing Bids</span>
+        <span className="mx-8 text-tan-800">&#x25C6;</span>
+        <span className="mx-8">Metal Roofing</span>
+        <span className="mx-8 text-tan-800">&#x25C6;</span>
+        <span className="mx-8">Cut Lists</span>
+        <span className="mx-8 text-tan-800">&#x25C6;</span>
+        <span className="mx-8">Material Pricing</span>
+        <span className="mx-8 text-tan-800">&#x25C6;</span>
+        <span className="mx-8">Satellite Maps</span>
+        <span className="mx-8 text-tan-800">&#x25C6;</span>
+        <span className="mx-8">Stay Tuff Wire</span>
+        <span className="mx-8 text-tan-800">&#x25C6;</span>
+        <span className="mx-8">PDF Generation</span>
+        <span className="mx-8 text-tan-800">&#x25C6;</span>
+        <span className="mx-8">Terrain Analysis</span>
+        <span className="mx-8 text-tan-800">&#x25C6;</span>
+      </Marquee>
+
+      {/* ─── SERVICE CARDS: Photo backgrounds with dark overlay ─── */}
+      <section className="max-w-7xl mx-auto px-6 py-20">
+        <Reveal>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="h-px w-8 bg-tan-400/40" />
+            <span className="text-tan-500 text-xs uppercase tracking-[0.25em] font-semibold">Our Tools</span>
+          </div>
+          <h2 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-12">
+            Everything you need to bid,<br />estimate, and build.
           </h2>
-          <p className="text-steel-400 text-lg max-w-2xl mx-auto">
-            Import roof measurements, generate metal panel cut lists, price materials from your
-            receipts, and create fencing bids with satellite maps — all in one place.
-          </p>
+        </Reveal>
+
+        <div className="grid md:grid-cols-3 gap-4">
+          {SERVICES.map((svc, i) => (
+            <Reveal key={svc.tag} delay={i * 120}>
+              <Link href={svc.href} className="group block">
+                <div className="relative h-[420px] overflow-hidden rounded-sm border border-white/[0.06] hover:border-tan-400/20 transition-colors">
+                  {/* Card background image */}
+                  {svc.bg && (
+                    <div
+                      className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
+                      style={{ backgroundImage: `url(${svc.bg})` }}
+                    />
+                  )}
+                  {/* Dark overlay */}
+                  <div className={`absolute inset-0 ${svc.bg ? 'bg-gradient-to-t from-black via-black/85 to-black/50' : 'bg-black bg-grid'}`} />
+
+                  {/* Content */}
+                  <div className="relative z-10 h-full flex flex-col justify-end p-6">
+                    <div className="text-tan-400 text-[10px] uppercase tracking-[0.25em] font-bold mb-3">{svc.tag}</div>
+                    <h3 className="text-white text-xl font-bold mb-2 tracking-tight">{svc.title}</h3>
+                    <p className="text-white/50 text-sm leading-relaxed mb-5">{svc.desc}</p>
+
+                    <StaggerReveal className="flex flex-wrap gap-2 mb-5">
+                      {svc.stats.map((s) => (
+                        <span key={s} className="text-[10px] px-2.5 py-1 bg-white/[0.06] text-white/60 uppercase tracking-wider font-medium border border-white/[0.04]">
+                          {s}
+                        </span>
+                      ))}
+                    </StaggerReveal>
+
+                    <div className="flex items-center gap-2 text-tan-400 text-xs font-semibold uppercase tracking-widest opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                      Open Tool
+                      <svg width="14" height="14" viewBox="0 0 25 25" fill="none"><path d="M20.5 12.5H4.5M20.5 12.5L13.5 5.5M20.5 12.5L13.5 19.5" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/></svg>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            </Reveal>
+          ))}
         </div>
+      </section>
 
-        {/* Feature Cards */}
-        <div className="grid md:grid-cols-3 gap-8">
-          {/* Roofing Module */}
-          <Link href="/roofing" className="group">
-            <div className="bg-steel-800/50 backdrop-blur border border-steel-700/50 rounded-2xl p-8 hover:border-brand-500/50 transition-all hover:shadow-lg hover:shadow-brand-500/10">
-              <div className="w-14 h-14 bg-blue-500/10 rounded-xl flex items-center justify-center mb-6">
-                <svg className="w-7 h-7 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-                </svg>
-              </div>
-              <h3 className="text-white text-xl font-semibold mb-3">Metal Roofing Cut Lists</h3>
-              <p className="text-steel-400 text-sm mb-4">
-                Import EagleView, GAF QuickMeasure, or RoofGraf reports. Generate precise cut lists
-                for 6V Crimp, R-Panel, and Standing Seam panels with trim components.
-              </p>
-              <ul className="text-steel-500 text-xs space-y-1">
-                <li>✓ Parse measurement reports automatically</li>
-                <li>✓ 2D roof sketch with panel layout</li>
-                <li>✓ Complete trim &amp; fastener lists</li>
-                <li>✓ Visual cut list overlay</li>
-              </ul>
-              <div className="mt-6 text-brand-400 text-sm font-medium group-hover:text-brand-300 transition">
-                Open Roofing Tool →
-              </div>
-            </div>
-          </Link>
+      {/* ─── BOTTOM MARQUEE (reverse) ─── */}
+      <Marquee speed={22} reverse className="border-t border-white/[0.06] py-3 text-steel-800 text-[10px] uppercase tracking-[0.25em]">
+        <span className="mx-6">6V Crimp</span>
+        <span className="mx-6">R-Panel</span>
+        <span className="mx-6">Standing Seam</span>
+        <span className="mx-6">EagleView</span>
+        <span className="mx-6">QuickMeasure</span>
+        <span className="mx-6">RoofGraf</span>
+        <span className="mx-6">Stay Tuff 49/6</span>
+        <span className="mx-6">Barbed Wire</span>
+        <span className="mx-6">T-Posts</span>
+        <span className="mx-6">Pipe Posts</span>
+        <span className="mx-6">H-Braces</span>
+        <span className="mx-6">Tensioners</span>
+      </Marquee>
 
-          {/* Pricing Module */}
-          <Link href="/pricing" className="group">
-            <div className="bg-steel-800/50 backdrop-blur border border-steel-700/50 rounded-2xl p-8 hover:border-brand-500/50 transition-all hover:shadow-lg hover:shadow-brand-500/10">
-              <div className="w-14 h-14 bg-green-500/10 rounded-xl flex items-center justify-center mb-6">
-                <svg className="w-7 h-7 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                </svg>
-              </div>
-              <h3 className="text-white text-xl font-semibold mb-3">Material Pricing</h3>
-              <p className="text-steel-400 text-sm mb-4">
-                Upload receipts from your metal building suppliers. Build a live price database to
-                instantly estimate material costs for any job.
-              </p>
-              <ul className="text-steel-500 text-xs space-y-1">
-                <li>✓ Scan &amp; parse supplier receipts</li>
-                <li>✓ Track price history over time</li>
-                <li>✓ Auto-price your cut lists</li>
-                <li>✓ Export cost estimates</li>
-              </ul>
-              <div className="mt-6 text-brand-400 text-sm font-medium group-hover:text-brand-300 transition">
-                Open Pricing Tool →
-              </div>
-            </div>
-          </Link>
-
-          {/* Fencing Module */}
-          <Link href="/fencing" className="group">
-            <div className="bg-steel-800/50 backdrop-blur border border-steel-700/50 rounded-2xl p-8 hover:border-brand-500/50 transition-all hover:shadow-lg hover:shadow-brand-500/10">
-              <div className="w-14 h-14 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6">
-                <svg className="w-7 h-7 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498 4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 0 0-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0Z" />
-                </svg>
-              </div>
-              <h3 className="text-white text-xl font-semibold mb-3">Fencing Bids</h3>
-              <p className="text-steel-400 text-sm mb-4">
-                Draw fence lines over satellite imagery. Auto-calculate posts, bracing, wire, and
-                hardware with terrain and soil analysis built in.
-              </p>
-              <ul className="text-steel-500 text-xs space-y-1">
-                <li>✓ Draw on satellite maps</li>
-                <li>✓ Stay Tuff &amp; wire options</li>
-                <li>✓ Soil &amp; terrain analysis</li>
-                <li>✓ Complete bid generation</li>
-              </ul>
-              <div className="mt-6 text-brand-400 text-sm font-medium group-hover:text-brand-300 transition">
-                Open Fencing Tool →
-              </div>
-            </div>
-          </Link>
-        </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t border-steel-700/50 mt-16">
-        <div className="max-w-7xl mx-auto px-6 py-6 text-center text-steel-500 text-sm">
-          © 2026 Hayden Ranch Services — haydenranchservices.com
+      {/* ─── FOOTER ─── */}
+      <footer className="border-t border-white/[0.06]">
+        <div className="max-w-7xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <HaydenLogo className="h-7 w-auto opacity-40" dark />
+            <span className="text-steel-600 text-xs uppercase tracking-widest">
+              © 2026 Hayden Ranch Services
+            </span>
+          </div>
+          <div className="flex items-center gap-6">
+            {['Fencing', 'Roofing', 'Pricing', 'Projects'].map((item) => (
+              <Link
+                key={item}
+                href={`/${item.toLowerCase()}`}
+                className="hover-line text-steel-600 hover:text-tan-400 transition text-xs uppercase tracking-widest"
+              >
+                {item}
+              </Link>
+            ))}
+          </div>
         </div>
       </footer>
     </div>

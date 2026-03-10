@@ -521,7 +521,7 @@ export default function RoofSketchBuilder({ facets, onFacetsChange, selectedFace
       {/* Canvas */}
       <div
         ref={containerRef}
-        className="relative bg-surface-50 rounded-lg border border-steel-700/30 overflow-hidden"
+        className="relative bg-steel-900 rounded-lg border border-steel-800 overflow-hidden"
         style={{ height: '450px' }}
       >
         <canvas
@@ -541,7 +541,7 @@ export default function RoofSketchBuilder({ facets, onFacetsChange, selectedFace
           <button
             key={t.shape}
             onClick={() => addFacet(t.shape)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 text-amber-400 rounded-lg text-sm font-medium hover:bg-amber-500/20 transition border border-amber-500/20"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-tan-400/10 text-tan-300 rounded-lg text-sm font-medium hover:bg-white/20 transition border border-white/[0.06]"
           >
             <span className="text-base">{t.icon}</span>
             {t.label}
@@ -551,7 +551,7 @@ export default function RoofSketchBuilder({ facets, onFacetsChange, selectedFace
 
       {/* Selected Facet Editor */}
       {selectedFacet && (
-        <div className="bg-surface-50 rounded-lg border border-steel-700/30 p-4 space-y-4">
+        <div className="bg-steel-900 rounded-lg border border-steel-800 p-4 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-steel-200 text-sm">Edit Facet</h3>
             <button
@@ -569,7 +569,7 @@ export default function RoofSketchBuilder({ facets, onFacetsChange, selectedFace
                 type="text"
                 value={selectedFacet.label}
                 onChange={e => updateFacetProp(selectedFacet.id, 'label', e.target.value)}
-                className="w-full bg-surface-100 border border-steel-700/30 rounded px-2 py-1 text-sm text-steel-200 focus:border-amber-500/50 focus:outline-none"
+                className="w-full bg-steel-900 border border-steel-800 rounded px-2 py-1 text-sm text-steel-200 focus:border-white/20 focus:outline-none"
               />
             </div>
             <div>
@@ -577,7 +577,7 @@ export default function RoofSketchBuilder({ facets, onFacetsChange, selectedFace
               <select
                 value={selectedFacet.pitchRatio}
                 onChange={e => updateFacetProp(selectedFacet.id, 'pitch', e.target.value)}
-                className="w-full bg-surface-100 border border-steel-700/30 rounded px-2 py-1 text-sm text-steel-200 focus:border-amber-500/50 focus:outline-none"
+                className="w-full bg-steel-900 border border-steel-800 rounded px-2 py-1 text-sm text-steel-200 focus:border-white/20 focus:outline-none"
               >
                 {['2/12','3/12','4/12','5/12','6/12','7/12','8/12','9/12','10/12','12/12','14/12'].map(p => (
                   <option key={p} value={p}>{p}</option>
@@ -605,7 +605,7 @@ export default function RoofSketchBuilder({ facets, onFacetsChange, selectedFace
                   <select
                     value={edge.type}
                     onChange={e => updateEdgeType(selectedFacet.id, ei, e.target.value as EdgeType)}
-                    className="flex-1 bg-surface-100 border border-steel-700/30 rounded px-2 py-1 text-xs text-steel-200 focus:border-amber-500/50 focus:outline-none"
+                    className="flex-1 bg-steel-900 border border-steel-800 rounded px-2 py-1 text-xs text-steel-200 focus:border-white/20 focus:outline-none"
                     onMouseEnter={() => setHoveredEdge({ facetId: selectedFacet.id, edgeIndex: ei })}
                     onMouseLeave={() => setHoveredEdge(null)}
                   >

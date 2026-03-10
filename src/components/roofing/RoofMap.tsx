@@ -449,27 +449,27 @@ export default function RoofMap({
   const isDrawing = drawMode !== 'none';
 
   /* == JSX == */
-  if (!token) return (<div className="bg-surface-50 flex items-center justify-center rounded-xl" style={{ height: '500px' }}><div className="text-center max-w-sm"><p className="text-steel-400 font-medium mb-2">Mapbox Token Required</p><p className="text-steel-500 text-sm">Add <code className="bg-surface-200 px-1.5 py-0.5 rounded text-amber-400">NEXT_PUBLIC_MAPBOX_TOKEN</code> to <code className="bg-surface-200 px-1.5 py-0.5 rounded text-amber-400">.env.local</code></p></div></div>);
+  if (!token) return (<div className="bg-steel-900 flex items-center justify-center rounded-xl" style={{ height: '500px' }}><div className="text-center max-w-sm"><p className="text-steel-400 font-medium mb-2">Mapbox Token Required</p><p className="text-steel-500 text-sm">Add <code className="bg-black px-1.5 py-0.5 rounded text-white">NEXT_PUBLIC_MAPBOX_TOKEN</code> to <code className="bg-black px-1.5 py-0.5 rounded text-white">.env.local</code></p></div></div>);
   if (error) return (<div className="bg-red-950/30 flex items-center justify-center p-8 rounded-xl" style={{ height: '500px' }}><p className="text-red-400 text-sm">{error}</p></div>);
 
   return (
     <div className="space-y-3">
-      <div className="rounded-xl overflow-hidden border border-steel-700/30">
+      <div className="rounded-xl overflow-hidden border border-steel-800">
 
         {/* Toolbar */}
-        <div className="flex gap-2 p-3 bg-surface-50 border-b border-steel-700/30 flex-wrap items-center">
+        <div className="flex gap-2 p-3 bg-steel-900 border-b border-steel-800 flex-wrap items-center">
           <input type="text" value={address} onChange={e => setAddress(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleGeocode()}
             placeholder="Search address\u2026"
-            className="flex-1 min-w-[180px] bg-surface-200 border border-steel-700/30 rounded-lg px-3 py-2 text-sm text-steel-200 placeholder-steel-500 focus:ring-2 focus:ring-amber-500/50" />
-          <button onClick={handleGeocode} className="bg-amber-600 text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-amber-500 transition">Go</button>
-          <div className="border-l border-steel-700/30 h-8 mx-1" />
+            className="flex-1 min-w-[180px] bg-black border border-steel-800 rounded-lg px-3 py-2 text-sm text-steel-200 placeholder-steel-500 focus:ring-2 focus:ring-tan-400/40" />
+          <button onClick={handleGeocode} className="bg-tan-400 text-black text-sm font-medium px-3 py-2 rounded-lg hover:bg-tan-300 transition">Go</button>
+          <div className="border-l border-steel-800 h-8 mx-1" />
 
           {isDrawing ? (
             <div className="flex gap-2 items-center">
-              <span className="text-amber-400 text-sm animate-pulse">{drawMode === 'perimeter' ? 'Click vertices to trace perimeter\u2026' : 'Click 2 points for ' + EDGE_LABELS[drawMode as EdgeType] + ' line\u2026'}</span>
+              <span className="text-white text-sm animate-pulse">{drawMode === 'perimeter' ? 'Click vertices to trace perimeter\u2026' : 'Click 2 points for ' + EDGE_LABELS[drawMode as EdgeType] + ' line\u2026'}</span>
               {drawMode === 'perimeter' && drawVerts.length >= 3 && (
-                <button onClick={finishPerimeter} className="bg-amber-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-amber-500 transition">\u2713 Close (Enter)</button>
+                <button onClick={finishPerimeter} className="bg-tan-400 text-black text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-tan-300 transition">\u2713 Close (Enter)</button>
               )}
               <button onClick={cancelDraw} className="bg-steel-700 text-steel-300 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-steel-600 transition">Cancel (Esc)</button>
             </div>
@@ -481,7 +481,7 @@ export default function RoofMap({
               </button>
               {/* Step 2: Interior lines (only if perimeter exists) */}
               {hasPerimeter && (<>
-                <div className="border-l border-steel-700/30 h-6 mx-0.5" />
+                <div className="border-l border-steel-800 h-6 mx-0.5" />
                 <span className="text-steel-500 text-xs self-center mr-1">Interior:</span>
                 {INTERIOR_TYPES.map(t => (
                   <button key={t} onClick={() => startDraw(t)}
@@ -498,10 +498,10 @@ export default function RoofMap({
         <div ref={mapContainer} style={{ height: '500px', width: '100%' }} />
 
         {/* Status bar */}
-        <div className="flex items-center justify-between px-4 py-2.5 bg-surface-100 text-steel-300 text-sm">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-steel-900 text-steel-300 text-sm">
           <div className="flex gap-4">
             <span>\u2b1f Roofs: <strong className="text-steel-100">{polygons.length}</strong></span>
-            <span>\ud83d\udcd0 Area: <strong className="text-amber-400">{totalArea.toLocaleString()} sq ft</strong></span>
+            <span>\ud83d\udcd0 Area: <strong className="text-white">{totalArea.toLocaleString()} sq ft</strong></span>
           </div>
           <div className="flex gap-2.5 text-xs flex-wrap">
             {Object.entries(EDGE_COLORS).map(([t, c]) => (
@@ -517,15 +517,15 @@ export default function RoofMap({
           <div className="flex items-center gap-3">
             <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: poly.color || FACET_COLORS[pi % FACET_COLORS.length] }} />
             {editingId === poly.id ? (
-              <input type="text" value={poly.name} autoFocus onChange={e => updateMeta(poly.id, 'name', e.target.value)} onBlur={() => setEditingId(null)} onKeyDown={e => e.key === 'Enter' && setEditingId(null)} className="flex-1 bg-surface-200 border border-steel-600 rounded px-2 py-1 text-sm text-steel-200" />
+              <input type="text" value={poly.name} autoFocus onChange={e => updateMeta(poly.id, 'name', e.target.value)} onBlur={() => setEditingId(null)} onKeyDown={e => e.key === 'Enter' && setEditingId(null)} className="flex-1 bg-black border border-steel-600 rounded px-2 py-1 text-sm text-steel-200" />
             ) : (
-              <span className="flex-1 text-sm text-steel-200 cursor-pointer hover:text-amber-400 transition" onClick={() => setEditingId(poly.id)}>{poly.name}</span>
+              <span className="flex-1 text-sm text-steel-200 cursor-pointer hover:text-white transition" onClick={() => setEditingId(poly.id)}>{poly.name}</span>
             )}
-            <select title="Pitch" value={poly.pitch} onChange={e => updateMeta(poly.id, 'pitch', e.target.value)} className="bg-surface-200 border border-steel-700/30 rounded px-2 py-1 text-xs text-steel-300">
+            <select title="Pitch" value={poly.pitch} onChange={e => updateMeta(poly.id, 'pitch', e.target.value)} className="bg-black border border-steel-800 rounded px-2 py-1 text-xs text-steel-300">
               {['2/12','3/12','4/12','5/12','6/12','7/12','8/12','9/12','10/12','12/12','14/12'].map(p => <option key={p} value={p}>{p}</option>)}
             </select>
-            <span className="text-sm font-semibold text-amber-400 min-w-[80px] text-right">{poly.areaSqFt.toLocaleString()} sf</span>
-            <button onClick={() => setEdgeEditPoly(edgeEditPoly === poly.id ? null : poly.id)} className="text-steel-400 hover:text-amber-400 transition text-xs border border-steel-700/30 rounded px-2 py-1">{edgeEditPoly === poly.id ? 'Hide Details' : 'Edit Edges'}</button>
+            <span className="text-sm font-semibold text-white min-w-[80px] text-right">{poly.areaSqFt.toLocaleString()} sf</span>
+            <button onClick={() => setEdgeEditPoly(edgeEditPoly === poly.id ? null : poly.id)} className="text-steel-400 hover:text-white transition text-xs border border-steel-800 rounded px-2 py-1">{edgeEditPoly === poly.id ? 'Hide Details' : 'Edit Edges'}</button>
             <button onClick={() => deletePoly(poly.id)} className="text-steel-500 hover:text-red-400 transition text-lg">\u00d7</button>
           </div>
 
@@ -537,14 +537,14 @@ export default function RoofMap({
                 {poly.edges.map((e, ei) => {
                   const len = Math.round(edgeLen(e.from, e.to));
                   return (
-                    <div key={ei} className="flex items-center gap-2 bg-surface-200/50 rounded px-2 py-1">
+                    <div key={ei} className="flex items-center gap-2 bg-black/50 rounded px-2 py-1">
                       <span className="w-2 h-2 rounded-full" style={{ backgroundColor: EDGE_COLORS[e.type] }} />
                       <span className="text-steel-400 text-xs w-14">Edge {ei+1} ({len}')</span>
-                      <select value={e.type} onChange={ev => updateEdgeType(poly.id, ei, ev.target.value as EdgeType)} className="bg-surface-100 border border-steel-700/30 rounded px-1.5 py-0.5 text-xs text-steel-300 flex-1">
+                      <select value={e.type} onChange={ev => updateEdgeType(poly.id, ei, ev.target.value as EdgeType)} className="bg-steel-900 border border-steel-800 rounded px-1.5 py-0.5 text-xs text-steel-300 flex-1">
                         {(['eave','rake','hip','endwall','step_flashing'] as EdgeType[]).map(t => <option key={t} value={t}>{EDGE_LABELS[t]}</option>)}
                       </select>
-                      <button onClick={() => toggleFlashing(poly.id, ei, 'endwall')} className={'text-xs px-1.5 py-0.5 rounded border transition ' + (e.hasFlashing && e.flashingType === 'endwall' ? 'border-yellow-500 text-yellow-400 bg-yellow-500/10' : 'border-steel-700/30 text-steel-500 hover:text-yellow-400')}>+EW</button>
-                      <button onClick={() => toggleFlashing(poly.id, ei, 'step_flashing')} className={'text-xs px-1.5 py-0.5 rounded border transition ' + (e.hasFlashing && e.flashingType === 'step_flashing' ? 'border-orange-500 text-orange-400 bg-orange-500/10' : 'border-steel-700/30 text-steel-500 hover:text-orange-400')}>+SF</button>
+                      <button onClick={() => toggleFlashing(poly.id, ei, 'endwall')} className={'text-xs px-1.5 py-0.5 rounded border transition ' + (e.hasFlashing && e.flashingType === 'endwall' ? 'border-yellow-500 text-yellow-400 bg-yellow-500/10' : 'border-steel-800 text-steel-500 hover:text-yellow-400')}>+EW</button>
+                      <button onClick={() => toggleFlashing(poly.id, ei, 'step_flashing')} className={'text-xs px-1.5 py-0.5 rounded border transition ' + (e.hasFlashing && e.flashingType === 'step_flashing' ? 'border-white/20 text-steel-300 bg-white/10' : 'border-steel-800 text-steel-500 hover:text-steel-300')}>+SF</button>
                     </div>
                   );
                 })}
@@ -557,10 +557,10 @@ export default function RoofMap({
                   {poly.interiorLines.map(il => {
                     const len = Math.round(edgeLen(il.from, il.to));
                     return (
-                      <div key={il.id} className="flex items-center gap-2 bg-surface-200/50 rounded px-2 py-1">
+                      <div key={il.id} className="flex items-center gap-2 bg-black/50 rounded px-2 py-1">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: EDGE_COLORS[il.type] }} />
                         <span className="text-steel-400 text-xs w-14">{EDGE_LABELS[il.type]} ({len}')</span>
-                        <select value={il.type} onChange={ev => updateInteriorType(poly.id, il.id, ev.target.value as EdgeType)} className="bg-surface-100 border border-steel-700/30 rounded px-1.5 py-0.5 text-xs text-steel-300 flex-1">
+                        <select value={il.type} onChange={ev => updateInteriorType(poly.id, il.id, ev.target.value as EdgeType)} className="bg-steel-900 border border-steel-800 rounded px-1.5 py-0.5 text-xs text-steel-300 flex-1">
                           {INTERIOR_TYPES.map(t => <option key={t} value={t}>{EDGE_LABELS[t]}</option>)}
                         </select>
                         <button onClick={() => deleteInterior(poly.id, il.id)} className="text-steel-500 hover:text-red-400 transition text-sm">\u00d7</button>

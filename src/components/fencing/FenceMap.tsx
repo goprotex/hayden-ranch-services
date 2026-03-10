@@ -778,10 +778,10 @@ export default function FenceMap({
 
   if (!token) {
     return (
-      <div className="bg-surface-50 flex items-center justify-center rounded-xl" style={{ height: '500px' }}>
+      <div className="bg-steel-900 flex items-center justify-center rounded-xl" style={{ height: '500px' }}>
         <div className="text-center max-w-sm">
           <p className="text-steel-400 font-medium mb-2">Mapbox Token Required</p>
-          <p className="text-steel-500 text-sm">Add <code className="bg-surface-200 px-1.5 py-0.5 rounded text-amber-400">NEXT_PUBLIC_MAPBOX_TOKEN</code> to <code className="bg-surface-200 px-1.5 py-0.5 rounded text-amber-400">.env.local</code></p>
+          <p className="text-steel-500 text-sm">Add <code className="bg-black px-1.5 py-0.5 rounded text-white">NEXT_PUBLIC_MAPBOX_TOKEN</code> to <code className="bg-black px-1.5 py-0.5 rounded text-white">.env.local</code></p>
         </div>
       </div>
     );
@@ -796,39 +796,39 @@ export default function FenceMap({
   }
 
   return (
-    <div className="rounded-xl overflow-hidden border border-steel-700/30">
-      <div className="flex gap-2 p-3 bg-surface-50 border-b border-steel-700/30">
+    <div className="rounded-xl overflow-hidden border border-steel-800">
+      <div className="flex gap-2 p-3 bg-steel-900 border-b border-steel-800">
         <input type="text" value={address} onChange={(e) => setAddress(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleGeocode()}
           placeholder="Search address to fly to location\u2026"
-          className="flex-1 bg-surface-200 border border-steel-700/30 rounded-lg px-3 py-2 text-sm text-steel-200 placeholder-steel-500 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50" />
+          className="flex-1 bg-black border border-steel-800 rounded-lg px-3 py-2 text-sm text-steel-200 placeholder-steel-500 focus:ring-2 focus:ring-tan-400/40 focus:border-white/20" />
         <button onClick={handleGeocode}
-          className="bg-amber-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-amber-500 transition">Go</button>
+          className="bg-tan-400 text-black text-sm font-medium px-4 py-2 rounded-lg hover:bg-tan-300 transition">Go</button>
       </div>
       <div ref={mapContainer} style={{ height: '500px', width: '100%' }} />
       {/* Controls bar */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-surface-100 text-steel-300 text-sm">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-steel-900 text-steel-300 text-sm">
         <div className="flex gap-4 items-center">
           <span>&#x1f4cf; Lines: <strong className="text-steel-100">{lineCount}</strong></span>
-          <span>&#x1f4d0; Total: <strong className="text-amber-400">{Math.round(totalLength).toLocaleString()} ft</strong></span>
+          <span>&#x1f4d0; Total: <strong className="text-white">{Math.round(totalLength).toLocaleString()} ft</strong></span>
           {totalLength > 0 && <span className="text-steel-500">({(totalLength / 5280).toFixed(2)} mi)</span>}
         </div>
         <div className="flex gap-2 text-xs text-steel-500 items-center">
-          {analyzing && <span className="text-amber-400 animate-pulse">&#x26a1; Analyzing terrain...</span>}
+          {analyzing && <span className="text-white animate-pulse">&#x26a1; Analyzing terrain...</span>}
           {!mapLoaded && <span className="animate-pulse">Loading map&hellip;</span>}
           {mapLoaded && !analyzing && <span>&#x2713; Draw fence lines on satellite view</span>}
         </div>
       </div>
       {/* Gate placement, add-point & capture bar */}
       {lineCount > 0 && (
-        <div className="flex flex-col gap-2 px-4 py-2 bg-surface-200 border-t border-steel-700/20 text-xs">
+        <div className="flex flex-col gap-2 px-4 py-2 bg-black border-t border-white/[0.06] text-xs">
           <div className="flex items-center gap-3 flex-wrap">
             <button
               onClick={() => { setGatePlaceMode(p => !p); if (!gatePlaceMode) setAddPointMode(false); }}
               className={`px-3 py-1.5 rounded-lg font-semibold transition ${
                 gatePlaceMode
-                  ? 'bg-amber-500 text-surface-400 shadow-md'
-                  : 'bg-surface-50 text-steel-300 hover:bg-surface-100'
+                  ? 'bg-tan-400 text-black shadow-md'
+                  : 'bg-steel-900 text-steel-300 hover:bg-steel-900'
               }`}
             >
               {gatePlaceMode ? '&#x1f6aa; Click Fence Line to Place Gate' : '&#x1f6aa; Place Gate'}
@@ -846,7 +846,7 @@ export default function FenceMap({
                 className={`px-3 py-1.5 rounded-lg font-semibold transition ${
                   addPointMode
                     ? 'bg-emerald-500 text-white shadow-md'
-                    : 'bg-surface-50 text-steel-300 hover:bg-surface-100'
+                    : 'bg-steel-900 text-steel-300 hover:bg-steel-900'
                 }`}
               >
                 {addPointMode ? '&#x2795; Click Line to Add Point' : '&#x2795; Add Point'}
@@ -856,7 +856,7 @@ export default function FenceMap({
                   title="Point type to add"
                   value={addPointType}
                   onChange={e => setAddPointType(e.target.value as FencePointType)}
-                  className="bg-surface-50 border border-steel-700/30 rounded-lg px-2 py-1.5 text-[11px] text-steel-200"
+                  className="bg-steel-900 border border-steel-800 rounded-lg px-2 py-1.5 text-[11px] text-steel-200"
                 >
                   {POINT_TYPE_OPTIONS.map(o => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -874,7 +874,7 @@ export default function FenceMap({
             )}
 
             {onMapCapture && (
-              <button onClick={captureMap} className="px-3 py-1.5 rounded-lg bg-surface-50 text-steel-300 hover:bg-surface-100 transition font-medium ml-auto">
+              <button onClick={captureMap} className="px-3 py-1.5 rounded-lg bg-steel-900 text-steel-300 hover:bg-steel-900 transition font-medium ml-auto">
                 &#x1f4f8; Capture for PDF
               </button>
             )}
@@ -893,7 +893,7 @@ export default function FenceMap({
               </>
             )}
             {placedGates.length > 0 && (
-              <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded bg-amber-500 border border-amber-300"></span> Gate ({placedGates.length})</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded bg-white border border-white/30"></span> Gate ({placedGates.length})</span>
             )}
             {addedPoints.length > 0 && (
               <span className="flex items-center gap-1 text-emerald-400">&#x2795; {addedPoints.length} added point{addedPoints.length > 1 ? 's' : ''}</span>

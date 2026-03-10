@@ -27,12 +27,12 @@ export default function TrimTable({ cutList }: Props) {
     <div>
       {cutList.trim.length > 0 && (
         <div>
-          <div className='px-6 py-3 bg-surface-100 border-b border-steel-700/30'>
+          <div className='px-6 py-3 bg-steel-900 border-b border-steel-800'>
             <p className='text-[10px] font-bold text-steel-500 uppercase tracking-wider'>Trim Components</p>
           </div>
           <table className='w-full text-sm'>
             <thead>
-              <tr className='border-b border-steel-700/30 bg-surface-100'>
+              <tr className='border-b border-steel-800 bg-steel-900'>
                 <th className='text-left px-6 py-3 text-steel-500 text-xs font-semibold'>Trim Type</th>
                 <th className='text-right px-6 py-3 text-steel-500 text-xs font-semibold'>Pieces</th>
                 <th className='text-right px-6 py-3 text-steel-500 text-xs font-semibold'>Length Each</th>
@@ -41,11 +41,11 @@ export default function TrimTable({ cutList }: Props) {
             </thead>
             <tbody>
               {cutList.trim.map(piece => (
-                <tr key={piece.id} className='border-b border-steel-700/20 hover:bg-surface-200/40 transition'>
+                <tr key={piece.id} className='border-b border-white/[0.06] hover:bg-black/40 transition'>
                   <td className='px-6 py-2 font-medium text-steel-300 text-xs'>{TRIM_LABELS[piece.type] || piece.type}</td>
                   <td className='px-6 py-2 text-right text-steel-400 text-xs'>{piece.quantity}</td>
                   <td className='px-6 py-2 text-right text-steel-400 text-xs'>{piece.lengthFeet}&apos;</td>
-                  <td className='px-6 py-2 text-right font-semibold text-amber-400 text-xs'>{(piece.quantity * piece.lengthFeet).toFixed(1)}&apos;</td>
+                  <td className='px-6 py-2 text-right font-semibold text-white text-xs'>{(piece.quantity * piece.lengthFeet).toFixed(1)}&apos;</td>
                 </tr>
               ))}
             </tbody>
@@ -55,12 +55,12 @@ export default function TrimTable({ cutList }: Props) {
 
       {cutList.fasteners.length > 0 && (
         <div>
-          <div className='px-6 py-3 bg-surface-100 border-b border-steel-700/30'>
+          <div className='px-6 py-3 bg-steel-900 border-b border-steel-800'>
             <p className='text-[10px] font-bold text-steel-500 uppercase tracking-wider'>Fasteners</p>
           </div>
           <table className='w-full text-sm'>
             <thead>
-              <tr className='border-b border-steel-700/30 bg-surface-100'>
+              <tr className='border-b border-steel-800 bg-steel-900'>
                 <th className='text-left px-6 py-3 text-steel-500 text-xs font-semibold'>Type</th>
                 <th className='text-left px-6 py-3 text-steel-500 text-xs font-semibold'>Size</th>
                 <th className='text-right px-6 py-3 text-steel-500 text-xs font-semibold'>Quantity</th>
@@ -68,10 +68,10 @@ export default function TrimTable({ cutList }: Props) {
             </thead>
             <tbody>
               {cutList.fasteners.map((f, i) => (
-                <tr key={i} className='border-b border-steel-700/20 hover:bg-surface-200/40 transition'>
+                <tr key={i} className='border-b border-white/[0.06] hover:bg-black/40 transition'>
                   <td className='px-6 py-2 font-medium text-steel-300 text-xs'>{f.type}</td>
                   <td className='px-6 py-2 text-steel-400 text-xs'>{f.size}</td>
-                  <td className='px-6 py-2 text-right font-semibold text-amber-400 text-xs'>{f.quantity.toLocaleString()}</td>
+                  <td className='px-6 py-2 text-right font-semibold text-white text-xs'>{f.quantity.toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
@@ -81,12 +81,12 @@ export default function TrimTable({ cutList }: Props) {
 
       {cutList.accessories.length > 0 && (
         <div>
-          <div className='px-6 py-3 bg-surface-100 border-b border-steel-700/30'>
+          <div className='px-6 py-3 bg-steel-900 border-b border-steel-800'>
             <p className='text-[10px] font-bold text-steel-500 uppercase tracking-wider'>Accessories &amp; Supplies</p>
           </div>
           <table className='w-full text-sm'>
             <thead>
-              <tr className='border-b border-steel-700/30 bg-surface-100'>
+              <tr className='border-b border-steel-800 bg-steel-900'>
                 <th className='text-left px-6 py-3 text-steel-500 text-xs font-semibold'>Item</th>
                 <th className='text-right px-6 py-3 text-steel-500 text-xs font-semibold'>Quantity</th>
                 <th className='text-right px-6 py-3 text-steel-500 text-xs font-semibold'>Unit</th>
@@ -94,7 +94,7 @@ export default function TrimTable({ cutList }: Props) {
             </thead>
             <tbody>
               {cutList.accessories.map((acc, i) => (
-                <tr key={i} className='border-b border-steel-700/20 hover:bg-surface-200/40 transition'>
+                <tr key={i} className='border-b border-white/[0.06] hover:bg-black/40 transition'>
                   <td className='px-6 py-2 font-medium text-steel-300 text-xs'>{acc.name}</td>
                   <td className='px-6 py-2 text-right text-steel-400 text-xs'>{acc.quantity}</td>
                   <td className='px-6 py-2 text-right text-steel-500 text-xs'>{acc.unit}</td>

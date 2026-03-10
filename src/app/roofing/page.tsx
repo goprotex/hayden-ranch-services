@@ -378,19 +378,19 @@ export default function RoofingPage() {
 
   // Render
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] bg-mesh">
+    <div className="min-h-screen bg-black bg-grid">
       {/* Header */}
-      <header className="glass border-b border-steel-700/30 sticky top-0 z-50">
+      <header className="glass border-b border-steel-800 sticky top-0 z-50">
         <div className="max-w-[1600px] mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/" className="text-steel-400 hover:text-amber-400 transition">\u2190 Back</Link>
+            <Link href="/" className="text-steel-400 hover:text-white transition">\u2190 Back</Link>
             <div className="flex items-center gap-2">
               <HaydenLogo className="w-8 h-8" dark />
               <h1 className="text-steel-100 font-bold text-lg">{mode === 'bid' ? 'Roofing Bid Creator' : 'Metal Roofing Cut Lists'}</h1>
             </div>
           </div>
           {mode === 'bid' && (
-            <button onClick={handleDownloadBidPDF} className="text-sm bg-gradient-to-r from-amber-600 to-amber-500 text-white px-5 py-2.5 rounded-xl hover:from-amber-500 hover:to-amber-400 transition font-semibold flex items-center gap-2 glow-amber shadow-lg">
+            <button onClick={handleDownloadBidPDF} className="text-sm bg-tan-400 text-black px-5 py-2.5 rounded-xl hover:bg-tan-300 transition font-semibold flex items-center gap-2 ">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
               Download Bid PDF
             </button>
@@ -403,7 +403,7 @@ export default function RoofingPage() {
         <div className="flex gap-2 mb-6 animate-fade-in">
           {([['import', '\ud83d\udcc4 Import Report'], ['bid', '\ud83d\udcb0 Bid Creator']] as const).map(([m, label]) => (
             <button key={m} onClick={() => setMode(m as typeof mode)}
-              className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${mode === m ? 'bg-gradient-to-r from-amber-600 to-amber-500 text-white glow-amber shadow-lg' : 'glass text-steel-300 hover:text-steel-100 hover:border-steel-600 card-dark-hover'}`}>{label}</button>
+              className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${mode === m ? 'bg-tan-400 text-black ' : 'glass text-steel-300 hover:text-steel-100 hover:border-steel-600 card-dark-hover'}`}>{label}</button>
           ))}
         </div>
 
@@ -426,8 +426,8 @@ export default function RoofingPage() {
                 <div className="space-y-2">
                   <p className="text-xs text-steel-500">Upload a roof measurement report to auto-generate cut lists</p>
                   <input title="Upload report" type="file" accept=".txt,.csv,.pdf,.json,.xml" onChange={handleFileUpload} disabled={uploading}
-                    className="w-full text-sm text-steel-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-600/20 file:text-amber-400 hover:file:bg-amber-600/30 disabled:opacity-50" />
-                  {uploading && <p className="text-xs text-amber-400 animate-pulse">Processing file...</p>}
+                    className="w-full text-sm text-steel-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-tan-400/15 file:text-tan-300 hover:file:bg-tan-400/25 disabled:opacity-50" />
+                  {uploading && <p className="text-xs text-white animate-pulse">Processing file...</p>}
                   {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
                 </div>
               </Card>
@@ -436,13 +436,13 @@ export default function RoofingPage() {
               <Card title="\ud83c\udfe0 Roof Type">
                 <div className="space-y-3">
                   <select title="Roof type" value={roofType} onChange={e => setRoofType(e.target.value)}
-                    className="w-full bg-surface-200 border border-steel-700/30 rounded-xl px-3 py-2.5 text-sm text-steel-200 focus:ring-2 focus:ring-amber-500/50">
+                    className="w-full bg-black border border-steel-800 rounded-xl px-3 py-2.5 text-sm text-steel-200 focus:ring-2 focus:ring-tan-400/40">
                     {Object.entries(ROOF_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
                   <div>
                     <label className="block text-xs font-medium text-steel-400 mb-1">Panel Profile</label>
                     <select title="Panel profile" value={selectedPanelProfile} onChange={e => setSelectedPanelProfile(e.target.value as PanelProfile)}
-                      className="w-full bg-surface-200 border border-steel-700/30 rounded-xl px-3 py-2.5 text-sm text-steel-200 focus:ring-2 focus:ring-amber-500/50">
+                      className="w-full bg-black border border-steel-800 rounded-xl px-3 py-2.5 text-sm text-steel-200 focus:ring-2 focus:ring-tan-400/40">
                       {Object.values(PANEL_SPECS).map(s => <option key={s.id} value={s.id}>{s.name} ({s.widthInches}" coverage)</option>)}
                     </select>
                   </div>
@@ -451,18 +451,18 @@ export default function RoofingPage() {
                     <div className="grid grid-cols-3 gap-1.5">
                       {[26,24,22].map(g => (
                         <button key={g} onClick={() => setSelectedGauge(g)}
-                          className={`py-2 rounded-xl text-xs font-semibold transition-all ${selectedGauge === g ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50 glow-amber' : 'bg-surface-200 text-steel-400 border border-steel-700/30 hover:border-steel-600'}`}>{g} ga</button>
+                          className={`py-2 rounded-xl text-xs font-semibold transition-all ${selectedGauge === g ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-steel-800 hover:border-steel-600'}`}>{g} ga</button>
                       ))}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={includesTearOff} onChange={e => setIncludesTearOff(e.target.checked)} className="rounded accent-amber-500" />
+                      <input type="checkbox" checked={includesTearOff} onChange={e => setIncludesTearOff(e.target.checked)} className="rounded accent-tan-400" />
                       <span className="text-xs text-steel-400">Includes Tear-Off</span>
                     </label>
                     {includesTearOff && (
                       <select title="Roof layers" value={roofLayers} onChange={e => setRoofLayers(parseInt(e.target.value))}
-                        className="bg-surface-200 border border-steel-700/30 rounded-lg px-2 py-1 text-xs text-steel-300">
+                        className="bg-black border border-steel-800 rounded-lg px-2 py-1 text-xs text-steel-300">
                         <option value={1}>1 layer</option><option value={2}>2 layers</option><option value={3}>3 layers</option>
                       </select>
                     )}
@@ -482,10 +482,10 @@ export default function RoofingPage() {
                   <DSlider label="Fasteners" value={fastenerCost} min={0.05} max={0.5} step={0.01}
                     display={`$${fastenerCost.toFixed(2)}`} onChange={setFastenerCost} minLabel="$0.05" maxLabel="$0.50" />
 
-                  <div className="bg-surface-200/50 rounded-xl p-3 border border-steel-700/20">
+                  <div className="bg-black/50 rounded-xl p-3 border border-white/[0.06]">
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-medium text-steel-400">Total Materials</span>
-                      <span className="text-sm font-bold text-amber-400">${materialCostPerSqFt.toFixed(2)}/sqft</span>
+                      <span className="text-sm font-bold text-white">${materialCostPerSqFt.toFixed(2)}/sqft</span>
                     </div>
                   </div>
                 </div>
@@ -508,7 +508,7 @@ export default function RoofingPage() {
                 <div className="grid grid-cols-2 gap-1.5">
                   {PITCH_LABELS.map((l, i) => (
                     <button key={i} onClick={() => setPitchIdx(i)}
-                      className={`py-2 px-2 rounded-xl text-[11px] font-medium transition-all text-left ${pitchIdx === i ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50' : 'bg-surface-200 text-steel-400 border border-steel-700/30 hover:border-steel-600'}`}>
+                      className={`py-2 px-2 rounded-xl text-[11px] font-medium transition-all text-left ${pitchIdx === i ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-steel-800 hover:border-steel-600'}`}>
                       {l}<span className="block text-[9px] opacity-60">{PITCH_MULTIPLIERS[i]}x rate</span>
                     </button>
                   ))}
@@ -516,9 +516,9 @@ export default function RoofingPage() {
               </Card>
 
               {/* Effective Rate Box */}
-              <div className="card-dark p-4 glow-amber animate-glow-pulse">
+              <div className="card-dark p-4 animate-glow-pulse">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs font-medium text-amber-400">Effective Rate (to customer)</span>
+                  <span className="text-xs font-medium text-white">Effective Rate (to customer)</span>
                   <span className="text-2xl font-bold gradient-text">${effectiveRate.toFixed(2)}/sqft</span>
                 </div>
                 <div className="text-[10px] text-steel-500 space-y-0.5">
@@ -544,7 +544,7 @@ export default function RoofingPage() {
 
               <Card title="\ud83d\udcdd Project Overview">
                 <textarea value={bidOverview} onChange={e => setBidOverview(e.target.value)} rows={3}
-                  className="w-full bg-surface-200 border border-steel-700/30 rounded-xl px-3 py-2 text-xs text-steel-300 focus:ring-2 focus:ring-amber-500/50" placeholder="Describe the project scope..." />
+                  className="w-full bg-black border border-steel-800 rounded-xl px-3 py-2 text-xs text-steel-300 focus:ring-2 focus:ring-tan-400/40" placeholder="Describe the project scope..." />
               </Card>
             </div>
 
@@ -554,7 +554,7 @@ export default function RoofingPage() {
               <div className="flex gap-2 animate-fade-in">
                 {([['map', '\ud83d\uddfa Map & Sketch'], ['sections', '\ud83d\udccb Sections & Extras'], ['preview', '\ud83d\udc41 Bid Preview']] as [string, string][]).map(([v, label]) => (
                   <button key={v} onClick={() => setBidView(v as typeof bidView)}
-                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${bidView === v ? 'bg-amber-600/20 text-amber-400 border border-amber-500/50' : 'glass text-steel-400 hover:text-steel-200'}`}>{label}</button>
+                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${bidView === v ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'glass text-steel-400 hover:text-steel-200'}`}>{label}</button>
                 ))}
               </div>
 
@@ -563,7 +563,7 @@ export default function RoofingPage() {
                 <div className="space-y-4 animate-fade-in-up">
                   <div className="card-dark p-4">
                     <h3 className="text-steel-200 font-semibold text-sm mb-3 flex items-center gap-2">
-                      <span className="text-amber-400">\ud83d\uddfa</span> Satellite Map - Draw Roof Facets
+                      <span className="text-white">\ud83d\uddfa</span> Satellite Map - Draw Roof Facets
                     </h3>
                     <p className="text-xs text-steel-500 mb-3">Search for the property address, then use the polygon tool to trace roof sections. Each polygon becomes a bid section with real-world area calculations.</p>
                     <RoofMap onPolygonsChange={setMapPolygons} cutListPanels={cutListPanels} />
@@ -573,7 +573,7 @@ export default function RoofingPage() {
                     <div className="card-dark p-4 animate-fade-in">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="text-steel-200 font-semibold text-sm">Mapped Roof Sections</h3>
-                        <span className="text-xs text-amber-400 font-semibold">{mapPolygons.reduce((s, p) => s + p.areaSqFt, 0).toLocaleString()} sq ft total</span>
+                        <span className="text-xs text-white font-semibold">{mapPolygons.reduce((s, p) => s + p.areaSqFt, 0).toLocaleString()} sq ft total</span>
                       </div>
                       <div className="text-xs text-steel-500">
                         {mapPolygons.length} polygon(s) auto-synced to bid sections. Switch to "Sections & Extras" to adjust.
@@ -599,11 +599,11 @@ export default function RoofingPage() {
                 <div className="space-y-4 animate-fade-in-up">
                   {/* Roof Sections */}
                   <div className="card-dark overflow-hidden">
-                    <div className="px-5 py-3 border-b border-steel-700/30 flex items-center justify-between">
+                    <div className="px-5 py-3 border-b border-steel-800 flex items-center justify-between">
                       <h2 className="text-steel-200 font-semibold text-sm">Roof Sections</h2>
-                      <button onClick={addBidSection} className="text-xs bg-amber-600/20 text-amber-400 px-3 py-1.5 rounded-lg font-semibold hover:bg-amber-600/30 transition border border-amber-500/30">+ Add Section</button>
+                      <button onClick={addBidSection} className="text-xs bg-tan-400/10 text-tan-300 px-3 py-1.5 rounded-lg font-semibold hover:bg-white/20 transition border border-white/[0.12]">+ Add Section</button>
                     </div>
-                    <div className="px-5 py-2 bg-surface-200/50 border-b border-steel-700/20">
+                    <div className="px-5 py-2 bg-black/50 border-b border-white/[0.06]">
                       <div className="grid grid-cols-12 gap-3 text-[10px] font-semibold text-steel-500 uppercase tracking-wide">
                         <div className="col-span-4">Name</div>
                         <div className="col-span-2 text-right">Area (sq ft)</div>
@@ -618,21 +618,21 @@ export default function RoofingPage() {
                           <div className="grid grid-cols-12 gap-3 items-center">
                             <div className="col-span-4">
                               <input type="text" value={sec.name} onChange={e => updBidSec(sec.id, { name: e.target.value })}
-                                className="w-full bg-surface-200 border border-steel-700/30 rounded-lg px-2.5 py-1.5 text-sm text-steel-200 font-medium focus:ring-1 focus:ring-amber-500/50" placeholder="Section name" />
+                                className="w-full bg-black border border-steel-800 rounded-lg px-2.5 py-1.5 text-sm text-steel-200 font-medium focus:ring-1 focus:ring-tan-400/40" placeholder="Section name" />
                             </div>
                             <div className="col-span-2">
                               <input title="Area" type="number" value={bidSections[idx]?.areaSqFt || 0} onChange={e => updBidSec(sec.id, { areaSqFt: parseInt(e.target.value) || 0 })}
-                                className="w-full bg-surface-200 border border-steel-700/30 rounded-lg px-2.5 py-1.5 text-sm text-steel-300 text-right focus:ring-1 focus:ring-amber-500/50" />
+                                className="w-full bg-black border border-steel-800 rounded-lg px-2.5 py-1.5 text-sm text-steel-300 text-right focus:ring-1 focus:ring-tan-400/40" />
                             </div>
                             <div className="col-span-2">
                               <div className="relative">
                                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-steel-500">$</span>
                                 <input title="Rate override" type="number" step={0.25} value={bidSections[idx]?.ratePerSqFt || ''} onChange={e => updBidSec(sec.id, { ratePerSqFt: parseFloat(e.target.value) || 0 })}
-                                  className="w-full bg-surface-200 border border-steel-700/30 rounded-lg px-2.5 py-1.5 text-sm text-steel-300 text-right pl-5 focus:ring-1 focus:ring-amber-500/50" placeholder={effectiveRate.toFixed(2)} />
+                                  className="w-full bg-black border border-steel-800 rounded-lg px-2.5 py-1.5 text-sm text-steel-300 text-right pl-5 focus:ring-1 focus:ring-tan-400/40" placeholder={effectiveRate.toFixed(2)} />
                               </div>
                             </div>
                             <div className="col-span-3 text-right">
-                              <span className="text-sm font-bold text-amber-400">${fmt(sec.total)}</span>
+                              <span className="text-sm font-bold text-white">${fmt(sec.total)}</span>
                             </div>
                             <div className="col-span-1 text-right">
                               {bidComputed.length > 1 && <button onClick={() => rmBidSec(sec.id)} className="text-steel-500 hover:text-red-400 transition text-lg">\u00d7</button>}
@@ -645,12 +645,12 @@ export default function RoofingPage() {
 
                   {/* Extras */}
                   <div className="card-dark overflow-hidden">
-                    <div className="px-5 py-3 border-b border-steel-700/30 flex items-center justify-between">
+                    <div className="px-5 py-3 border-b border-steel-800 flex items-center justify-between">
                       <h2 className="text-steel-200 font-semibold text-sm">Add-Ons & Extras</h2>
                     </div>
-                    <div className="px-5 py-3 border-b border-steel-700/20 flex gap-1.5 flex-wrap">
+                    <div className="px-5 py-3 border-b border-white/[0.06] flex gap-1.5 flex-wrap">
                       {EXTRA_PRESETS.map(ep => (
-                        <button key={ep.name} onClick={() => addBidExtra(ep)} className="text-[10px] bg-surface-200 text-steel-400 px-2 py-1 rounded font-medium hover:bg-surface-50 hover:text-steel-200 transition border border-steel-700/20">+ {ep.name}</button>
+                        <button key={ep.name} onClick={() => addBidExtra(ep)} className="text-[10px] bg-black text-steel-400 px-2 py-1 rounded font-medium hover:bg-steel-900 hover:text-steel-200 transition border border-white/[0.06]">+ {ep.name}</button>
                       ))}
                     </div>
                     {bidExtras.length === 0 ? (
@@ -660,11 +660,11 @@ export default function RoofingPage() {
                         {bidExtras.map(ex => (
                           <div key={ex.id} className="px-5 py-2.5 flex items-center gap-3">
                             <input title="Extra name" type="text" value={ex.name} onChange={e => updBidExtra(ex.id, { name: e.target.value })}
-                              className="flex-1 bg-surface-200 border border-steel-700/30 rounded-lg px-2.5 py-1.5 text-sm text-steel-300 focus:ring-1 focus:ring-amber-500/50" />
+                              className="flex-1 bg-black border border-steel-800 rounded-lg px-2.5 py-1.5 text-sm text-steel-300 focus:ring-1 focus:ring-tan-400/40" />
                             <div className="relative w-28">
                               <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-steel-500">$</span>
                               <input title="Extra cost" type="number" value={ex.cost} onChange={e => updBidExtra(ex.id, { cost: parseFloat(e.target.value) || 0 })}
-                                className="w-full bg-surface-200 border border-steel-700/30 rounded-lg px-2.5 py-1.5 text-sm text-steel-300 text-right pl-5 focus:ring-1 focus:ring-amber-500/50" />
+                                className="w-full bg-black border border-steel-800 rounded-lg px-2.5 py-1.5 text-sm text-steel-300 text-right pl-5 focus:ring-1 focus:ring-tan-400/40" />
                             </div>
                             <button onClick={() => rmBidExtra(ex.id)} className="text-steel-500 hover:text-red-400 transition text-lg">\u00d7</button>
                           </div>
@@ -678,7 +678,7 @@ export default function RoofingPage() {
               {/* BID PREVIEW */}
               {bidView === 'preview' && (
                 <div className="card-dark overflow-hidden animate-fade-in-up">
-                  <div className="px-6 py-4 border-b border-steel-700/30 bg-surface-50">
+                  <div className="px-6 py-4 border-b border-steel-800 bg-steel-900">
                     <h2 className="text-xl font-bold text-steel-100">{COMPANY.name}</h2>
                     <p className="text-xs text-steel-500 mt-1">{COMPANY.address} \u2022 {COMPANY.phone} \u2022 {COMPANY.email}</p>
                   </div>
@@ -692,7 +692,7 @@ export default function RoofingPage() {
                     <div>
                       <h4 className="text-sm font-bold text-steel-300 mb-2 uppercase tracking-wide">Investment Summary</h4>
                       <table className="w-full text-sm">
-                        <thead><tr className="bg-surface-200">
+                        <thead><tr className="bg-black">
                           <th className="text-left px-3 py-2 font-medium text-steel-300">Section</th>
                           <th className="text-right px-3 py-2 font-medium text-steel-300">Area (sq ft)</th>
                           <th className="text-right px-3 py-2 font-medium text-steel-300">Rate</th>
@@ -700,7 +700,7 @@ export default function RoofingPage() {
                         </tr></thead>
                         <tbody>
                           {bidComputed.map((sec, i) => (
-                            <tr key={sec.id} className={i % 2 === 0 ? 'bg-surface-100/50' : ''}>
+                            <tr key={sec.id} className={i % 2 === 0 ? 'bg-steel-900/50' : ''}>
                               <td className="px-3 py-2 text-steel-300">{sec.name}</td>
                               <td className="px-3 py-2 text-right text-steel-400">{sec.areaSqFt.toLocaleString()}</td>
                               <td className="px-3 py-2 text-right text-steel-500">${sec.ratePerSqFt.toFixed(2)}/sqft</td>
@@ -708,7 +708,7 @@ export default function RoofingPage() {
                             </tr>
                           ))}
                           {bidExtras.map(ex => (
-                            <tr key={ex.id} className="bg-surface-100/30">
+                            <tr key={ex.id} className="bg-steel-900/30">
                               <td className="px-3 py-2 text-steel-400">{ex.name}</td>
                               <td className="px-3 py-2 text-right text-steel-600">\u2014</td>
                               <td className="px-3 py-2 text-right text-steel-600">\u2014</td>
@@ -718,18 +718,18 @@ export default function RoofingPage() {
                         </tbody>
                         <tfoot><tr className="border-t border-steel-600">
                           <td className="px-3 py-2 font-bold text-steel-200">Total: {bidTotalSqFt.toLocaleString()} sq ft</td><td></td>
-                          <td className="px-3 py-2 text-right font-bold text-lg text-amber-400" colSpan={2}>${fmt(bidProjTotal)}</td>
+                          <td className="px-3 py-2 text-right font-bold text-lg text-white" colSpan={2}>${fmt(bidProjTotal)}</td>
                         </tr></tfoot>
                       </table>
                     </div>
 
                     {/* Payment schedule */}
-                    <div className="bg-amber-950/30 rounded-xl p-4 border border-amber-700/30">
-                      <h4 className="text-sm font-bold text-amber-400 mb-2 uppercase tracking-wide">Payment Schedule</h4>
+                    <div className="bg-steel-900/60 rounded-xl p-4 border border-white/[0.08]">
+                      <h4 className="text-sm font-bold text-white mb-2 uppercase tracking-wide">Payment Schedule</h4>
                       <div className="space-y-1 text-sm text-steel-300">
                         <div className="flex justify-between"><span>Deposit ({bidDepositPercent}% - due at signing)</span><span className="font-semibold text-steel-200">${fmt(bidDeposit)}</span></div>
                         <div className="flex justify-between"><span>Balance (due at completion)</span><span className="font-semibold text-steel-200">${fmt(bidBalance)}</span></div>
-                        <div className="flex justify-between border-t border-amber-700/30 pt-1 mt-1"><span className="font-bold text-amber-400">Project Total</span><span className="font-bold text-lg text-amber-400">${fmt(bidProjTotal)}</span></div>
+                        <div className="flex justify-between border-t border-white/[0.08] pt-1 mt-1"><span className="font-bold text-white">Project Total</span><span className="font-bold text-lg text-white">${fmt(bidProjTotal)}</span></div>
                       </div>
                     </div>
 
@@ -738,7 +738,7 @@ export default function RoofingPage() {
                     </div>
 
                     <button onClick={handleDownloadBidPDF}
-                      className="w-full bg-gradient-to-r from-amber-600 to-amber-500 text-white font-bold py-3.5 px-4 rounded-xl hover:from-amber-500 hover:to-amber-400 transition text-sm flex items-center justify-center gap-2 glow-amber shadow-lg">
+                      className="w-full bg-tan-400 text-black font-bold py-3.5 px-4 rounded-xl hover:bg-tan-300 transition text-sm flex items-center justify-center gap-2 ">
                       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
                       Download Complete Bid PDF (with Terms & Signature Block)
                     </button>
@@ -747,14 +747,14 @@ export default function RoofingPage() {
               )}
 
               {/* Live Totals - sticky bottom */}
-              <div className="glass glow-amber rounded-xl p-5 shadow-2xl sticky bottom-4 animate-fade-in">
+              <div className="glass rounded-xl p-5 shadow-2xl sticky bottom-4 animate-fade-in">
                 <div className="grid grid-cols-6 gap-4 text-center">
                   <div><p className="text-[10px] text-steel-500 uppercase tracking-wide">Sections</p><p className="text-lg font-bold text-steel-200">{bidComputed.length}</p></div>
                   <div><p className="text-[10px] text-steel-500 uppercase tracking-wide">Total Area</p><p className="text-lg font-bold text-steel-200">{bidTotalSqFt.toLocaleString()} sqft</p></div>
                   <div><p className="text-[10px] text-steel-500 uppercase tracking-wide">Eff. Rate</p><p className="text-lg font-bold text-steel-200">${effectiveRate.toFixed(2)}/sqft</p></div>
                   <div><p className="text-[10px] text-steel-500 uppercase tracking-wide">Cost</p><p className="text-lg font-bold text-steel-300">${fmt(totalCost)}</p></div>
-                  <div><p className="text-[10px] text-steel-500 uppercase tracking-wide">Gross Margin</p><p className={`text-lg font-bold ${grossMarginPct >= 20 ? 'text-green-400' : grossMarginPct >= 10 ? 'text-amber-400' : 'text-red-400'}`}>{grossMarginPct.toFixed(1)}%</p></div>
-                  <div><p className="text-[10px] text-amber-400 uppercase tracking-wide font-semibold">Project Total</p><p className="text-2xl font-bold gradient-text">${fmt(bidProjTotal)}</p></div>
+                  <div><p className="text-[10px] text-steel-500 uppercase tracking-wide">Gross Margin</p><p className={`text-lg font-bold ${grossMarginPct >= 20 ? 'text-green-400' : grossMarginPct >= 10 ? 'text-white' : 'text-red-400'}`}>{grossMarginPct.toFixed(1)}%</p></div>
+                  <div><p className="text-[10px] text-white uppercase tracking-wide font-semibold">Project Total</p><p className="text-2xl font-bold gradient-text">${fmt(bidProjTotal)}</p></div>
                 </div>
               </div>
             </div>
@@ -772,12 +772,12 @@ export default function RoofingPage() {
                   <div>
                     <label className="block text-sm font-medium text-steel-400 mb-1">Project Name</label>
                     <input type="text" value={projectName} onChange={e => setProjectName(e.target.value)}
-                      className="w-full bg-surface-200 border border-steel-700/30 rounded-xl px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-amber-500/50" placeholder="e.g. Smith Residence" />
+                      className="w-full bg-black border border-steel-800 rounded-xl px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-tan-400/40" placeholder="e.g. Smith Residence" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-steel-400 mb-1">Address</label>
                     <input type="text" value={projectAddress} onChange={e => setProjectAddress(e.target.value)}
-                      className="w-full bg-surface-200 border border-steel-700/30 rounded-xl px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-amber-500/50" placeholder="e.g. 123 Main St, Buda TX" />
+                      className="w-full bg-black border border-steel-800 rounded-xl px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-tan-400/40" placeholder="e.g. 123 Main St, Buda TX" />
                   </div>
                 </div>
               </Card>
@@ -788,7 +788,7 @@ export default function RoofingPage() {
                     <div>
                       <label className="block text-sm font-medium text-steel-400 mb-1">Report Source</label>
                       <select title="Report source" value={reportSource} onChange={e => setReportSource(e.target.value as ReportSource)}
-                        className="w-full bg-surface-200 border border-steel-700/30 rounded-xl px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-amber-500/50">
+                        className="w-full bg-black border border-steel-800 rounded-xl px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-tan-400/40">
                         <option value="roofr">Roofr</option>
                         <option value="eagleview">EagleView</option>
                         <option value="gaf_quickmeasure">GAF QuickMeasure</option>
@@ -799,17 +799,17 @@ export default function RoofingPage() {
                     <div>
                       <label className="block text-sm font-medium text-steel-400 mb-1">Upload Report (PDF/XML/TXT)</label>
                       <input title="Upload report" type="file" accept=".txt,.csv,.pdf,.json,.xml" onChange={handleFileUpload} disabled={uploading}
-                        className="w-full text-sm text-steel-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-600/20 file:text-amber-400 hover:file:bg-amber-600/30 disabled:opacity-50" />
-                      {uploading && <p className="text-xs text-amber-400 mt-1 animate-pulse">Extracting text from PDF...</p>}
+                        className="w-full text-sm text-steel-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-tan-400/15 file:text-tan-300 hover:file:bg-tan-400/25 disabled:opacity-50" />
+                      {uploading && <p className="text-xs text-white mt-1 animate-pulse">Extracting text from PDF...</p>}
                       {uploadError && <p className="text-xs text-red-400 mt-1">{uploadError}</p>}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-steel-400 mb-1">Or paste report text</label>
                       <textarea value={reportText} onChange={e => setReportText(e.target.value)} rows={6}
-                        className="w-full bg-surface-200 border border-steel-700/30 rounded-xl px-3 py-2 text-sm font-mono text-steel-300 focus:ring-2 focus:ring-amber-500/50" placeholder="Paste your report data here..." />
+                        className="w-full bg-black border border-steel-800 rounded-xl px-3 py-2 text-sm font-mono text-steel-300 focus:ring-2 focus:ring-tan-400/40" placeholder="Paste your report data here..." />
                     </div>
                     <button onClick={handleImportReport} disabled={!reportText.trim()}
-                      className="w-full bg-amber-600 text-white font-semibold py-2.5 px-4 rounded-xl hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed transition">
+                      className="w-full bg-tan-400 text-black font-semibold py-2.5 px-4 rounded-xl hover:bg-tan-300 disabled:opacity-50 disabled:cursor-not-allowed transition">
                       Import & Parse Report
                     </button>
                   </div>
@@ -822,9 +822,9 @@ export default function RoofingPage() {
                     <label className="block text-sm font-medium text-steel-400 mb-2">Panel Profile</label>
                     <div className="space-y-2">
                       {Object.values(PANEL_SPECS).map(spec => (
-                        <label key={spec.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${selectedPanelProfile === spec.id ? 'border-amber-500/50 bg-amber-500/10' : 'border-steel-700/30 hover:border-steel-600'}`}>
+                        <label key={spec.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${selectedPanelProfile === spec.id ? 'border-white/20 bg-white/10' : 'border-steel-800 hover:border-steel-600'}`}>
                           <input type="radio" name="panel" value={spec.id} checked={selectedPanelProfile === spec.id}
-                            onChange={e => setSelectedPanelProfile(e.target.value as PanelProfile)} className="accent-amber-500" />
+                            onChange={e => setSelectedPanelProfile(e.target.value as PanelProfile)} className="accent-tan-400" />
                           <div>
                             <p className="text-sm font-medium text-steel-200">{spec.name}</p>
                             <p className="text-xs text-steel-500">{spec.widthInches}" coverage \u2022 up to {spec.maxLengthFeet}ft</p>
@@ -836,7 +836,7 @@ export default function RoofingPage() {
                   <div>
                     <label className="block text-sm font-medium text-steel-400 mb-1">Gauge</label>
                     <select title="Gauge" value={selectedGauge} onChange={e => setSelectedGauge(parseInt(e.target.value, 10))}
-                      className="w-full bg-surface-200 border border-steel-700/30 rounded-xl px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-amber-500/50">
+                      className="w-full bg-black border border-steel-800 rounded-xl px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-tan-400/40">
                       <option value={26}>26 Gauge</option><option value={24}>24 Gauge</option><option value={22}>22 Gauge</option>
                     </select>
                   </div>
@@ -864,7 +864,7 @@ export default function RoofingPage() {
                         const cl = cutLists.find(c => c.roofModelId === model.id);
                         setActiveCutList(cl || null);
                       }}
-                        className={`w-full text-left p-3 rounded-xl border text-sm transition ${activeModel?.id === model.id ? 'border-amber-500/50 bg-amber-500/10' : 'border-steel-700/30 hover:border-steel-600'}`}>
+                        className={`w-full text-left p-3 rounded-xl border text-sm transition ${activeModel?.id === model.id ? 'border-white/20 bg-white/10' : 'border-steel-800 hover:border-steel-600'}`}>
                         <p className="font-medium text-steel-200">{model.projectName}</p>
                         <p className="text-steel-500 text-xs">{model.totalAreaSqFt.toLocaleString()} sq ft \u2022 {new Date(model.createdAt).toLocaleDateString()}</p>
                       </button>
@@ -888,7 +888,7 @@ export default function RoofingPage() {
               {activeCutList && (
                 <>
                   <div className="card-dark overflow-hidden">
-                    <div className="px-6 py-4 border-b border-steel-700/30 flex items-center justify-between">
+                    <div className="px-6 py-4 border-b border-steel-800 flex items-center justify-between">
                       <h2 className="text-steel-200 font-semibold">Panel Cut List - {PANEL_SPECS[activeCutList.panelProfile].name}</h2>
                       <div className="flex items-center gap-3">
                         <span className="text-sm text-steel-400">{activeCutList.panels.length} panels \u2022 {Math.round(activeCutList.totalPanelSqFt).toLocaleString()} sq ft</span>
@@ -898,7 +898,7 @@ export default function RoofingPage() {
                     <CutListTable cutList={activeCutList} />
                   </div>
                   <div className="card-dark overflow-hidden">
-                    <div className="px-6 py-4 border-b border-steel-700/30">
+                    <div className="px-6 py-4 border-b border-steel-800">
                       <h2 className="text-steel-200 font-semibold">Trim & Accessories</h2>
                     </div>
                     <TrimTable cutList={activeCutList} />
@@ -927,7 +927,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 
 function DInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
   return <input type="text" value={value} onChange={e => onChange(e.target.value)}
-    className="w-full bg-surface-200 border border-steel-700/30 rounded-xl px-3 py-2.5 text-sm text-steel-200 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 placeholder-steel-600" placeholder={placeholder} />;
+    className="w-full bg-black border border-steel-800 rounded-xl px-3 py-2.5 text-sm text-steel-200 focus:ring-2 focus:ring-tan-400/40 focus:border-white/20 placeholder-steel-600" placeholder={placeholder} />;
 }
 
 function DSlider({ label, value, min, max, step, display, onChange, minLabel, maxLabel }: {
@@ -937,10 +937,10 @@ function DSlider({ label, value, min, max, step, display, onChange, minLabel, ma
     <div>
       <div className="flex justify-between items-center mb-1">
         <label className="text-xs font-medium text-steel-400">{label}</label>
-        <span className="text-sm font-bold text-amber-400">{display}</span>
+        <span className="text-sm font-bold text-white">{display}</span>
       </div>
       <input title={label} type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(parseFloat(e.target.value))}
-        className="w-full h-1.5 bg-surface-200 rounded-full appearance-none cursor-pointer" />
+        className="w-full h-1.5 bg-black rounded-full appearance-none cursor-pointer" />
       <div className="flex justify-between text-[10px] text-steel-600 mt-0.5"><span>{minLabel}</span><span>{maxLabel}</span></div>
     </div>
   );

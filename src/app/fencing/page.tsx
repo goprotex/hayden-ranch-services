@@ -19,7 +19,7 @@ import type { FenceType, FenceHeight } from '@/types';
 
 const FenceMap = dynamic(() => import('@/components/fencing/FenceMap'), {
   ssr: false,
-  loading: () => <div className="bg-surface-50 flex items-center justify-center h-[500px] animate-pulse rounded-xl"><p className="text-steel-500 text-sm">Loading satellite map...</p></div>,
+  loading: () => <div className="bg-steel-900 flex items-center justify-center h-[500px] animate-pulse rounded-xl"><p className="text-steel-500 text-sm">Loading satellite map...</p></div>,
 });
 
 const FENCE_TYPES: Record<string, string> = {
@@ -34,8 +34,8 @@ const FENCE_TYPES: Record<string, string> = {
 
 const TERRAIN_MAP: Record<string, { label: string; mult: number; color: string }> = {
   easy: { label: 'Easy', mult: 1.0, color: 'text-emerald-400' },
-  moderate: { label: 'Moderate', mult: 1.15, color: 'text-amber-400' },
-  difficult: { label: 'Difficult', mult: 1.35, color: 'text-orange-400' },
+  moderate: { label: 'Moderate', mult: 1.15, color: 'text-white' },
+  difficult: { label: 'Difficult', mult: 1.35, color: 'text-steel-300' },
   very_difficult: { label: 'Very Difficult', mult: 1.6, color: 'text-red-400' },
 };
 
@@ -674,22 +674,22 @@ export default function FencingPage() {
   }, [projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, totalFeet, timelineDays, terrain, secTotal, projTotal, addFenceBid, materialCalc, linePostSpacing, tPostSpacing, postMaterial, terrainMult]);
 
   return (
-    <div className="min-h-screen bg-surface-400 bg-mesh">
-      <header className="glass border-b border-steel-700/20 sticky top-0 z-50">
+    <div className="min-h-screen bg-black bg-grid">
+      <header className="glass border-b border-white/[0.06] sticky top-0 z-50">
         <div className="max-w-[1500px] mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/" className="text-steel-400 hover:text-amber-400 transition text-sm">&larr; Back</Link>
-            <h1 className="text-steel-100 font-bold text-lg">&#x26a1; Fence Bid Creator</h1>
+            <Link href="/" className="hover-line text-steel-400 hover:text-white transition text-xs uppercase tracking-widest">&larr; Back</Link>
+            <h1 className="text-white font-bold text-sm uppercase tracking-widest">Fence Bid Creator</h1>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={handleSaveBid} className="text-sm glass text-steel-300 px-4 py-2 rounded-lg hover:text-white transition font-medium">Save Bid</button>
+            <button onClick={handleSaveBid} className="text-xs uppercase tracking-wider glass text-steel-300 px-4 py-2 hover:text-white transition font-medium">Save Bid</button>
             {mapImages.length > 0 && (
               <span className="flex items-center gap-1.5 text-[10px]">
                 <span className="text-green-400">&#x2713; {mapImages.length} map{mapImages.length > 1 ? 's' : ''} captured</span>
                 <button onClick={() => setMapImages([])} className="text-red-400 hover:text-red-300 underline">clear</button>
               </span>
             )}
-            <button onClick={handleDownloadPDF} className="text-sm bg-gradient-to-r from-amber-600 to-orange-600 text-white px-5 py-2 rounded-lg hover:from-amber-500 hover:to-orange-500 transition font-semibold shadow-lg shadow-amber-900/30 flex items-center gap-2">
+            <button onClick={handleDownloadPDF} className="text-xs uppercase tracking-wider bg-tan-400 text-black px-5 py-2 hover:bg-tan-300 transition font-semibold flex items-center gap-2">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
               Download PDF
             </button>
@@ -725,27 +725,27 @@ export default function FencingPage() {
 
             {/* Soil type banner */}
             {terrainSuggestion?.soilType && (
-              <div className="mt-4 bg-gradient-to-r from-amber-900/30 to-orange-900/30 rounded-xl p-4 border border-amber-700/30 flex items-center gap-3">
+              <div className="mt-4 bg-steel-900/60 rounded-xl p-4 border border-white/[0.08] flex items-center gap-3">
                 <span className="text-2xl">&#x1f30d;</span>
                 <div className="flex-1">
-                  <p className="text-sm font-bold text-amber-300">Soil: {terrainSuggestion.soilType}</p>
-                  <p className="text-[11px] text-amber-400/70 mt-0.5">
+                  <p className="text-sm font-bold text-steel-200">Soil: {terrainSuggestion.soilType}</p>
+                  <p className="text-[11px] text-steel-400 mt-0.5">
                     Elevation change: {Math.round(terrainSuggestion.elevationChange)} ft &bull;
                     Avg elevation: {Math.round(terrainSuggestion.avgElevation)} ft &bull;
                     Suggested difficulty: {TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label}
                   </p>
                   {terrainSuggestion.drainage && (
-                    <p className="text-[11px] text-amber-400/60 mt-0.5">
+                    <p className="text-[11px] text-steel-500 mt-0.5">
                       Drainage: {terrainSuggestion.drainage}
                       {terrainSuggestion.hydric ? ` \u2022 Hydric: ${terrainSuggestion.hydric}` : ''}
                     </p>
                   )}
                   {terrainSuggestion.components && terrainSuggestion.components.length > 1 && (
-                    <p className="text-[10px] text-amber-400/50 mt-0.5">
+                    <p className="text-[10px] text-steel-500 mt-0.5">
                       Components: {terrainSuggestion.components.slice(0, 3).map((c: { name: string; percent: number }) => `${c.name} (${c.percent}%)`).join(', ')}
                     </p>
                   )}
-                  <p className="text-[10px] text-amber-400/50 mt-0.5">
+                  <p className="text-[10px] text-steel-500 mt-0.5">
                     Soil affects concrete requirements ({soilMultiplier}x) and labor difficulty.
                     Source: {terrainSuggestion.source === 'UC_Davis_SoilWeb' ? 'UC Davis SoilWeb' : 'USDA NRCS Web Soil Survey'}
                   </p>
@@ -753,7 +753,7 @@ export default function FencingPage() {
               </div>
             )}
             {terrainSuggestion && !terrainSuggestion.soilType && (
-              <div className="mt-4 bg-surface-200/50 rounded-xl p-3 border border-steel-700/30 flex items-center gap-3">
+              <div className="mt-4 bg-black/50 rounded-xl p-3 border border-steel-800 flex items-center gap-3">
                 <span className="text-xl">&#x26a0;&#xfe0f;</span>
                 <div>
                   <p className="text-xs text-steel-400">Soil data unavailable for this location</p>
@@ -801,7 +801,7 @@ export default function FencingPage() {
             <Card title="Fence Type" icon="&#x1f9f1;">
               <div className="space-y-3">
                 <select title="Fence type" value={fenceType} onChange={e => setFenceType(e.target.value as FenceType)}
-                  className="w-full bg-surface-200 border border-steel-700/30 rounded-lg px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-amber-500/50">
+                  className="w-full bg-black border border-steel-800 rounded-lg px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-tan-400/40">
                   {Object.entries(FENCE_TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
 
@@ -812,7 +812,7 @@ export default function FencingPage() {
                     <div className="grid grid-cols-5 gap-1.5">
                       {(['4ft','5ft','6ft','7ft','8ft'] as FenceHeight[]).map(h => (
                         <button key={h} onClick={() => setManualHeight(h)}
-                          className={`py-1.5 rounded-lg text-xs font-semibold transition ${manualHeight === h ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30' : 'bg-surface-200 text-steel-400 hover:bg-surface-50 hover:text-steel-200'}`}>{h}</button>
+                          className={`py-1.5 rounded-lg text-xs font-semibold transition ${manualHeight === h ? 'bg-tan-400 text-black' : 'bg-black text-steel-400 hover:bg-steel-900 hover:text-steel-200'}`}>{h}</button>
                       ))}
                     </div>
                   </div>
@@ -823,7 +823,7 @@ export default function FencingPage() {
                   <div className="grid grid-cols-2 gap-1.5">
                     {POST_MATERIALS.map(pm => (
                       <button key={pm.id} onClick={() => setPostMaterial(pm.id)}
-                        className={`py-2 px-2 rounded-lg text-[11px] font-medium transition text-left ${postMaterial === pm.id ? 'bg-amber-600/20 text-amber-300 border border-amber-500/50' : 'bg-surface-200 text-steel-400 border border-steel-700/20 hover:bg-surface-50'}`}>
+                        className={`py-2 px-2 rounded-lg text-[11px] font-medium transition text-left ${postMaterial === pm.id ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-white/[0.06] hover:bg-steel-900'}`}>
                         {pm.label}<span className="block text-[9px] opacity-70">{pm.diameter} &mdash; {pm.jointLengthFeet}ft joints</span>
                       </button>
                     ))}
@@ -837,7 +837,7 @@ export default function FencingPage() {
                     <div className="grid grid-cols-3 gap-1.5">
                       {currentGaugeOptions.map(g => (
                         <button key={g.gauge} onClick={() => setSquareTubeGauge(g.gauge)}
-                          className={`py-1.5 px-2 rounded-lg text-[10px] font-medium transition text-center ${squareTubeGauge === g.gauge ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30' : 'bg-surface-200 text-steel-400 hover:bg-surface-50 hover:text-steel-200'}`}>
+                          className={`py-1.5 px-2 rounded-lg text-[10px] font-medium transition text-center ${squareTubeGauge === g.gauge ? 'bg-tan-400 text-black' : 'bg-black text-steel-400 hover:bg-steel-900 hover:text-steel-200'}`}>
                           {g.gauge}<span className="block text-[9px] opacity-70">{g.wallThickness}</span>
                         </button>
                       ))}
@@ -851,7 +851,7 @@ export default function FencingPage() {
                     <div className="grid grid-cols-2 gap-1.5 mb-2">
                       {(Object.entries(WIRE_CATEGORY_LABELS) as [WireCategory, string][]).map(([cat, label]) => (
                         <button key={cat} onClick={() => { setWireCategory(cat); const first = STAY_TUFF_CATALOG.find(p => p.category === cat); if (first) setSelectedStayTuff(first); }}
-                          className={`py-1.5 px-2 rounded-lg text-[10px] font-medium transition text-left ${wireCategory === cat ? 'bg-amber-600/20 text-amber-300 border border-amber-500/50' : 'bg-surface-200 text-steel-400 border border-steel-700/20 hover:bg-surface-50'}`}>
+                          className={`py-1.5 px-2 rounded-lg text-[10px] font-medium transition text-left ${wireCategory === cat ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-white/[0.06] hover:bg-steel-900'}`}>
                           {label}
                         </button>
                       ))}
@@ -859,12 +859,12 @@ export default function FencingPage() {
                     <label className="block text-xs font-medium text-steel-400 mb-1">Stay-Tuff Product</label>
                     <select title="Stay-Tuff product" value={selectedStayTuff.id}
                       onChange={e => { const o = STAY_TUFF_CATALOG.find(x => x.id === e.target.value); if (o) setSelectedStayTuff(o); }}
-                      className="w-full bg-surface-200 border border-steel-700/30 rounded-lg px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-amber-500/50">
+                      className="w-full bg-black border border-steel-800 rounded-lg px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-tan-400/40">
                       {filteredStayTuff.map(o => <option key={o.id} value={o.id}>{o.partNo} — {o.spec} ({o.description})</option>)}
                     </select>
-                    <p className="text-[10px] text-amber-400/70 mt-1">
+                    <p className="text-[10px] text-steel-400 mt-1">
                       Wire height: {selectedStayTuff.height}&quot; &rarr; fence height: {fenceHeight} | {selectedStayTuff.rollLength}&apos; rolls | T-Post: {tPostRec.label}
-                      {selectedStayTuff.madeToOrder && <span className="text-orange-400 ml-1">(Made to Order)</span>}
+                      {selectedStayTuff.madeToOrder && <span className="text-steel-300 ml-1">(Made to Order)</span>}
                     </p>
                     <p className="text-[9px] text-steel-500 mt-0.5">{selectedStayTuff.whereUsed}</p>
                   </div>
@@ -877,7 +877,7 @@ export default function FencingPage() {
                   display={`${linePostSpacing} ft`} onChange={setLinePostSpacing} minLabel="30 ft" maxLabel="70 ft" />
                 <DSlider label="T-Post Spacing" value={tPostSpacing} min={7} max={15} step={0.5}
                   display={`${tPostSpacing} ft`} onChange={setTPostSpacing} minLabel="7 ft" maxLabel="15 ft" />
-                <div className="bg-surface-200 rounded-lg p-3 text-xs text-steel-400">
+                <div className="bg-black rounded-lg p-3 text-xs text-steel-400">
                   <div className="flex justify-between"><span>Line Posts (est):</span><span className="text-steel-200 font-semibold">{materialCalc.linePostCount}</span></div>
                   <div className="flex justify-between mt-1"><span>T-Posts ({tPostRec.label}):</span><span className="text-steel-200 font-semibold">{materialCalc.tPostCount}</span></div>
                 </div>
@@ -896,7 +896,7 @@ export default function FencingPage() {
                       { value: 'barbed_double' as TopWireType, label: 'Double Barbed Top', desc: '2 barbed strands on top + 1 on bottom' },
                     ]).map(opt => (
                       <button key={opt.value} onClick={() => setTopWireType(opt.value)}
-                        className={`py-2 px-3 rounded-lg text-left transition ${topWireType === opt.value ? 'bg-amber-600/20 text-amber-300 border border-amber-500/50' : 'bg-surface-200 text-steel-400 border border-steel-700/20 hover:bg-surface-50'}`}>
+                        className={`py-2 px-3 rounded-lg text-left transition ${topWireType === opt.value ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-white/[0.06] hover:bg-steel-900'}`}>
                         <span className="text-[11px] font-medium block">{opt.label}</span>
                         <span className="text-[9px] opacity-60">{opt.desc}</span>
                       </button>
@@ -911,7 +911,7 @@ export default function FencingPage() {
                           { value: '4_point' as BarbedWireType, label: '4-Point Barbed' },
                         ]).map(opt => (
                           <button key={opt.value} onClick={() => setBarbedWireType(opt.value)}
-                            className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition ${barbedWireType === opt.value ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30' : 'bg-surface-200 text-steel-400 hover:bg-surface-50'}`}>
+                            className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition ${barbedWireType === opt.value ? 'bg-tan-400 text-black' : 'bg-black text-steel-400 hover:bg-steel-900'}`}>
                             {opt.label}
                           </button>
                         ))}
@@ -933,7 +933,7 @@ export default function FencingPage() {
                       { value: '4_point' as BarbedWireType, label: '4-Point' },
                     ]).map(opt => (
                       <button key={opt.value} onClick={() => setBarbedWireType(opt.value)}
-                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition ${barbedWireType === opt.value ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30' : 'bg-surface-200 text-steel-400 hover:bg-surface-50'}`}>
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition ${barbedWireType === opt.value ? 'bg-tan-400 text-black' : 'bg-black text-steel-400 hover:bg-steel-900'}`}>
                         {opt.label}
                       </button>
                     ))}
@@ -951,7 +951,7 @@ export default function FencingPage() {
                   { value: 'four_per_post' as TiePattern, label: '4 Per Post', desc: '4 ties per post, evenly spaced' },
                 ]).map(opt => (
                   <button key={opt.value} onClick={() => setTiePattern(opt.value)}
-                    className={`py-2 px-3 rounded-lg text-left transition ${tiePattern === opt.value ? 'bg-amber-600/20 text-amber-300 border border-amber-500/50' : 'bg-surface-200 text-steel-400 border border-steel-700/20 hover:bg-surface-50'}`}>
+                    className={`py-2 px-3 rounded-lg text-left transition ${tiePattern === opt.value ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-white/[0.06] hover:bg-steel-900'}`}>
                     <span className="text-[11px] font-medium block">{opt.label}</span>
                     <span className="text-[9px] opacity-60">{opt.desc}</span>
                   </button>
@@ -969,7 +969,7 @@ export default function FencingPage() {
                   { get: concreteFillPosts, set: setConcreteFillPosts, label: 'Concrete-Filled Posts', desc: 'Fill square tube posts with concrete for maximum rigidity' },
                 ]).map(opt => (
                   <label key={opt.label} className="flex items-center gap-3 cursor-pointer group">
-                    <div className={`w-10 h-5 rounded-full transition relative ${opt.get ? 'bg-amber-600' : 'bg-surface-200'}`}
+                    <div className={`w-10 h-5 rounded-full transition relative ${opt.get ? 'bg-white' : 'bg-black'}`}
                       onClick={() => opt.set(!opt.get)}>
                       <div className={`absolute w-4 h-4 bg-white rounded-full top-0.5 transition-all ${opt.get ? 'left-5' : 'left-0.5'}`} />
                     </div>
@@ -990,7 +990,7 @@ export default function FencingPage() {
                     {(['h_brace', 'double_h'] as BraceType[]).map(bt => {
                       const spec = BRACE_SPECS.find(b => b.id === bt);
                       return <button key={bt} onClick={() => setPreferredHBrace(bt)}
-                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition text-left ${preferredHBrace === bt ? 'bg-amber-600/20 text-amber-300 border border-amber-500/50' : 'bg-surface-200 text-steel-400 border border-steel-700/20 hover:bg-surface-50'}`}>{spec?.label}</button>;
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition text-left ${preferredHBrace === bt ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-white/[0.06] hover:bg-steel-900'}`}>{spec?.label}</button>;
                     })}
                   </div>
                 </div>
@@ -1000,14 +1000,14 @@ export default function FencingPage() {
                     {(['corner_brace', 'n_brace'] as BraceType[]).map(bt => {
                       const spec = BRACE_SPECS.find(b => b.id === bt);
                       return <button key={bt} onClick={() => setPreferredCornerBrace(bt)}
-                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition text-left ${preferredCornerBrace === bt ? 'bg-amber-600/20 text-amber-300 border border-amber-500/50' : 'bg-surface-200 text-steel-400 border border-steel-700/20 hover:bg-surface-50'}`}>{spec?.label}</button>;
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition text-left ${preferredCornerBrace === bt ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-white/[0.06] hover:bg-steel-900'}`}>{spec?.label}</button>;
                     })}
                   </div>
                 </div>
                 {braceRecommendations.length > 0 && (
-                  <div className="bg-surface-200 rounded-lg p-3 text-xs space-y-1">
+                  <div className="bg-black rounded-lg p-3 text-xs space-y-1">
                     <p className="text-steel-400 font-medium">Auto-detected from map:</p>
-                    <p className="text-steel-300">H-Braces: <strong className="text-amber-400">{materialCalc.hBraces}</strong> | Corner: <strong className="text-amber-400">{materialCalc.cornerBraces}</strong></p>
+                    <p className="text-steel-300">H-Braces: <strong className="text-white">{materialCalc.hBraces}</strong> | Corner: <strong className="text-white">{materialCalc.cornerBraces}</strong></p>
                   </div>
                 )}
               </div>
@@ -1016,7 +1016,7 @@ export default function FencingPage() {
             <Card title="Pricing" icon="&#x1f4b0;">
               <div className="space-y-4">
                 {/* Material cost breakdown (auto-calculated) */}
-                <div className="bg-surface-200/60 rounded-lg p-3 space-y-1.5">
+                <div className="bg-black/60 rounded-lg p-3 space-y-1.5">
                   <p className="text-[10px] font-bold text-steel-400 uppercase tracking-wider mb-2">Material Cost / Ft (auto)</p>
                   {[
                     { label: `Wire (${fenceType.startsWith('stay_tuff') ? selectedStayTuff.height + '"' : FENCE_TYPES[fenceType]?.split(' ').slice(-2).join(' ') || fenceType})`, value: materialCostPerFoot.wire },
@@ -1033,9 +1033,9 @@ export default function FencingPage() {
                       <span className="text-[10px] text-steel-300 font-mono">${row.value.toFixed(2)}</span>
                     </div>
                   ))}
-                  <div className="border-t border-steel-700/30 pt-1.5 mt-1.5 flex justify-between items-center">
+                  <div className="border-t border-steel-800 pt-1.5 mt-1.5 flex justify-between items-center">
                     <span className="text-xs text-steel-300 font-semibold">Material Total</span>
-                    <span className="text-xs text-amber-400 font-bold font-mono">${materialCostPerFoot.total.toFixed(2)}/ft</span>
+                    <span className="text-xs text-white font-bold font-mono">${materialCostPerFoot.total.toFixed(2)}/ft</span>
                   </div>
                 </div>
 
@@ -1049,21 +1049,21 @@ export default function FencingPage() {
                     <span className={`text-xs font-bold ${TERRAIN_MAP[terrain]?.color || 'text-steel-300'}`}>{terrainMult}x labor</span>
                   </div>
                   {terrainSuggestion && (
-                    <div className="mb-2 bg-amber-900/20 border border-amber-700/30 rounded-lg p-2 text-[10px] text-amber-300">
+                    <div className="mb-2 bg-steel-900/40 border border-white/[0.08] rounded-lg p-2 text-[10px] text-steel-200">
                       <span className="font-semibold">&#x26a1; AI Suggested: {TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label}</span>
                       {terrainSuggestion.soilType && (
                         <>
-                          <span className="block text-amber-400/80 mt-0.5 font-semibold">&#x1f30d; Soil: {terrainSuggestion.soilType}</span>
+                          <span className="block text-steel-300 mt-0.5 font-semibold">&#x1f30d; Soil: {terrainSuggestion.soilType}</span>
                           {terrainSuggestion.drainage && (
-                            <span className="block text-amber-400/60">Drainage: {terrainSuggestion.drainage}</span>
+                            <span className="block text-steel-500">Drainage: {terrainSuggestion.drainage}</span>
                           )}
-                          <span className="block text-amber-400/70">Concrete multiplier: {soilMultiplier}x (based on soil difficulty)</span>
+                          <span className="block text-steel-400">Concrete multiplier: {soilMultiplier}x (based on soil difficulty)</span>
                         </>
                       )}
                       {!terrainSuggestion.soilType && (
                         <span className="block text-steel-500 mt-0.5">&#x26a0;&#xfe0f; Soil data unavailable &mdash; using default difficulty</span>
                       )}
-                      <span className="block text-amber-400/70">Elev change: {Math.round(terrainSuggestion.elevationChange)} ft | Confidence: {Math.round(terrainSuggestion.confidence * 100)}%</span>
+                      <span className="block text-steel-400">Elev change: {Math.round(terrainSuggestion.elevationChange)} ft | Confidence: {Math.round(terrainSuggestion.confidence * 100)}%</span>
                       {steepFootage > 0 && (
                         <span className="block text-red-400 font-semibold mt-0.5">⚠ {steepFootage}' of steep grade (&gt;15%) — $2/ft surcharge applied</span>
                       )}
@@ -1072,7 +1072,7 @@ export default function FencingPage() {
                   <div className="grid grid-cols-2 gap-1.5">
                     {Object.entries(TERRAIN_MAP).map(([k, v]) => (
                       <button key={k} onClick={() => setTerrain(k)}
-                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition text-left ${terrain === k ? 'bg-amber-600/20 text-amber-300 border border-amber-500/50' : 'bg-surface-200 text-steel-400 border border-steel-700/20 hover:bg-surface-50'}`}>
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition text-left ${terrain === k ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-white/[0.06] hover:bg-steel-900'}`}>
                         {v.label}<span className="block text-[9px] opacity-70">{v.mult}x labor rate</span>
                       </button>
                     ))}
@@ -1080,15 +1080,15 @@ export default function FencingPage() {
                 </div>
 
                 {/* Effective rate summary */}
-                <div className="bg-gradient-to-r from-amber-900/30 to-orange-900/30 rounded-lg p-3 border border-amber-700/30 space-y-1.5">
+                <div className="bg-steel-900/60 rounded-lg p-3 border border-white/[0.08] space-y-1.5">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs font-medium text-amber-300">Effective Rate</span>
-                    <span className="text-lg font-bold text-amber-400">${effectiveRate.toFixed(2)}/ft</span>
+                    <span className="text-xs font-medium text-steel-200">Effective Rate</span>
+                    <span className="text-lg font-bold text-white">${effectiveRate.toFixed(2)}/ft</span>
                   </div>
-                  <div className="text-[10px] text-amber-400/60 space-y-0.5">
+                  <div className="text-[10px] text-steel-500 space-y-0.5">
                     <div className="flex justify-between"><span>Material:</span><span>${materialCostPerFoot.total.toFixed(2)}/ft</span></div>
                     <div className="flex justify-between"><span>Labor ({terrainMult}x):</span><span>${(laborRate * terrainMult).toFixed(2)}/ft</span></div>
-                    <div className="flex justify-between border-t border-amber-700/30 pt-0.5"><span className="font-semibold">Combined:</span><span className="font-semibold">${effectiveRate.toFixed(2)}/ft</span></div>
+                    <div className="flex justify-between border-t border-white/[0.08] pt-0.5"><span className="font-semibold">Combined:</span><span className="font-semibold">${effectiveRate.toFixed(2)}/ft</span></div>
                   </div>
                 </div>
 
@@ -1102,7 +1102,7 @@ export default function FencingPage() {
             <Card title="Painting" icon="&#x1f3a8;">
               <div className="space-y-3">
                 <label className="flex items-center gap-3 cursor-pointer">
-                  <div className={`w-10 h-5 rounded-full transition relative ${includePainting ? 'bg-amber-600' : 'bg-surface-200'}`}
+                  <div className={`w-10 h-5 rounded-full transition relative ${includePainting ? 'bg-white' : 'bg-black'}`}
                     onClick={() => setIncludePainting(!includePainting)}>
                     <div className={`absolute w-4 h-4 bg-white rounded-full top-0.5 transition-all ${includePainting ? 'left-5' : 'left-0.5'}`} />
                   </div>
@@ -1112,11 +1112,11 @@ export default function FencingPage() {
                   <>
                     <DInput value={paintColor} onChange={setPaintColor} placeholder="Paint color" />
                     {paintEst && (
-                      <div className="bg-surface-200 rounded-lg p-3 text-xs text-steel-400 space-y-1">
+                      <div className="bg-black rounded-lg p-3 text-xs text-steel-400 space-y-1">
                         <div className="flex justify-between"><span>Paint:</span><span className="text-steel-200">{paintEst.gallonsNeeded} gallons</span></div>
                         <div className="flex justify-between"><span>Material:</span><span className="text-steel-200">${fmt(paintEst.materialCost)}</span></div>
                         <div className="flex justify-between"><span>Labor:</span><span className="text-steel-200">${fmt(paintEst.laborCost)}</span></div>
-                        <div className="flex justify-between border-t border-steel-700/30 pt-1 mt-1"><span className="font-medium text-steel-300">Total:</span><span className="font-bold text-amber-400">${fmt(paintEst.totalCost)}</span></div>
+                        <div className="flex justify-between border-t border-steel-800 pt-1 mt-1"><span className="font-medium text-steel-300">Total:</span><span className="font-bold text-white">${fmt(paintEst.totalCost)}</span></div>
                       </div>
                     )}
                   </>
@@ -1126,7 +1126,7 @@ export default function FencingPage() {
 
             <Card title="Overview Text" icon="&#x1f4dd;">
               <textarea value={projectOverview} onChange={e => setProjectOverview(e.target.value)} rows={3}
-                className="w-full bg-surface-200 border border-steel-700/30 rounded-lg px-3 py-2 text-xs text-steel-300 focus:ring-2 focus:ring-amber-500/50" placeholder="Describe the project scope..." />
+                className="w-full bg-black border border-steel-800 rounded-lg px-3 py-2 text-xs text-steel-300 focus:ring-2 focus:ring-tan-400/40" placeholder="Describe the project scope..." />
             </Card>
           </div>
           {/* RIGHT MAIN AREA */}
@@ -1142,18 +1142,18 @@ export default function FencingPage() {
               <div className="space-y-5 animate-fade-in">
 
                 <div className="card-dark overflow-hidden">
-                  <div className="px-5 py-3 border-b border-steel-700/20 flex items-center justify-between">
+                  <div className="px-5 py-3 border-b border-white/[0.06] flex items-center justify-between">
                     <h2 className="text-steel-200 font-semibold text-sm">Fence Sections</h2>
-                    <button onClick={addSection} className="text-xs bg-amber-600/20 text-amber-400 px-3 py-1.5 rounded-lg font-semibold hover:bg-amber-600/30 transition">+ Add Section</button>
+                    <button onClick={addSection} className="text-xs bg-tan-400/10 text-tan-300 px-3 py-1.5 rounded-lg font-semibold hover:bg-white/20 transition">+ Add Section</button>
                   </div>
                   <div className="divide-y divide-steel-700/20">
                     {computed.map((sec, idx) => (
                       <div key={sec.id} className="px-5 py-3">
                         <div className="grid grid-cols-12 gap-3 items-center">
-                          <div className="col-span-4"><input type="text" value={sec.name} onChange={e => updSec(sec.id, { name: e.target.value })} className="w-full bg-surface-200 border border-steel-700/30 rounded px-2.5 py-1.5 text-sm text-steel-200 font-medium focus:ring-1 focus:ring-amber-500/50" /></div>
-                          <div className="col-span-2"><input title="Linear feet" type="number" value={sections[idx]?.linearFeet || 0} onChange={e => updSec(sec.id, { linearFeet: parseInt(e.target.value) || 0 })} className="w-full bg-surface-200 border border-steel-700/30 rounded px-2.5 py-1.5 text-sm text-right text-steel-200 focus:ring-1 focus:ring-amber-500/50" /></div>
-                          <div className="col-span-2"><input type="number" step={0.5} value={sections[idx]?.ratePerFoot || ''} onChange={e => updSec(sec.id, { ratePerFoot: parseFloat(e.target.value) || 0 })} className="w-full bg-surface-200 border border-steel-700/30 rounded px-2.5 py-1.5 text-sm text-right text-steel-200 pl-5 focus:ring-1 focus:ring-amber-500/50" placeholder={effectiveRate.toFixed(2)} /></div>
-                          <div className="col-span-3 text-right"><span className="text-sm font-bold text-amber-400">${fmt(sec.total)}</span></div>
+                          <div className="col-span-4"><input type="text" value={sec.name} onChange={e => updSec(sec.id, { name: e.target.value })} className="w-full bg-black border border-steel-800 rounded px-2.5 py-1.5 text-sm text-steel-200 font-medium focus:ring-1 focus:ring-tan-400/40" /></div>
+                          <div className="col-span-2"><input title="Linear feet" type="number" value={sections[idx]?.linearFeet || 0} onChange={e => updSec(sec.id, { linearFeet: parseInt(e.target.value) || 0 })} className="w-full bg-black border border-steel-800 rounded px-2.5 py-1.5 text-sm text-right text-steel-200 focus:ring-1 focus:ring-tan-400/40" /></div>
+                          <div className="col-span-2"><input type="number" step={0.5} value={sections[idx]?.ratePerFoot || ''} onChange={e => updSec(sec.id, { ratePerFoot: parseFloat(e.target.value) || 0 })} className="w-full bg-black border border-steel-800 rounded px-2.5 py-1.5 text-sm text-right text-steel-200 pl-5 focus:ring-1 focus:ring-tan-400/40" placeholder={effectiveRate.toFixed(2)} /></div>
+                          <div className="col-span-3 text-right"><span className="text-sm font-bold text-white">${fmt(sec.total)}</span></div>
                           <div className="col-span-1 text-right">{computed.length > 1 && <button onClick={() => rmSec(sec.id)} className="text-steel-500 hover:text-red-400 transition">&times;</button>}</div>
                         </div>
                       </div>
@@ -1162,12 +1162,12 @@ export default function FencingPage() {
                 </div>
 
                 <div className="card-dark overflow-hidden">
-                  <div className="px-5 py-3 border-b border-steel-700/20 flex items-center justify-between">
+                  <div className="px-5 py-3 border-b border-white/[0.06] flex items-center justify-between">
                     <h2 className="text-steel-200 font-semibold text-sm">Gates</h2>
                     <div className="flex gap-1.5 flex-wrap">
                       {GATE_SPECS.map(gs => (
                         <button key={gs.size} onClick={() => addGate(gs)}
-                          className="text-[10px] bg-surface-200 text-steel-400 px-2 py-1 rounded font-medium hover:bg-surface-50 hover:text-steel-200 transition">+ {gs.label}</button>
+                          className="text-[10px] bg-black text-steel-400 px-2 py-1 rounded font-medium hover:bg-steel-900 hover:text-steel-200 transition">+ {gs.label}</button>
                       ))}
                     </div>
                   </div>
@@ -1180,15 +1180,15 @@ export default function FencingPage() {
                         return (
                           <div key={g.id} className="px-5 py-3">
                             <div className="flex items-center gap-3">
-                              <input title="Gate type" type="text" value={g.type} onChange={e => updGate(g.id, { type: e.target.value })} className="flex-1 bg-surface-200 border border-steel-700/30 rounded px-2.5 py-1.5 text-sm text-steel-200 focus:ring-1 focus:ring-amber-500/50" />
+                              <input title="Gate type" type="text" value={g.type} onChange={e => updGate(g.id, { type: e.target.value })} className="flex-1 bg-black border border-steel-800 rounded px-2.5 py-1.5 text-sm text-steel-200 focus:ring-1 focus:ring-tan-400/40" />
                               <div className="relative w-32">
                                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-steel-500">$</span>
-                                <input title="Gate cost" type="number" value={g.cost} onChange={e => updGate(g.id, { cost: parseFloat(e.target.value) || 0 })} className="w-full bg-surface-200 border border-steel-700/30 rounded px-2.5 py-1.5 text-sm text-right text-steel-200 pl-5 focus:ring-1 focus:ring-amber-500/50" />
+                                <input title="Gate cost" type="number" value={g.cost} onChange={e => updGate(g.id, { cost: parseFloat(e.target.value) || 0 })} className="w-full bg-black border border-steel-800 rounded px-2.5 py-1.5 text-sm text-right text-steel-200 pl-5 focus:ring-1 focus:ring-tan-400/40" />
                               </div>
                               <button onClick={() => rmGate(g.id)} className="text-steel-500 hover:text-red-400 transition">&times;</button>
                             </div>
                             {spec && (
-                              <div className="mt-2 bg-surface-200/50 rounded p-2 text-[10px] text-steel-500">
+                              <div className="mt-2 bg-black/50 rounded p-2 text-[10px] text-steel-500">
                                 <p className="font-medium text-steel-400 mb-1">Included hardware:</p>
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
                                   {spec.hardware.map((h, i) => <span key={i}>{h.quantity}x {h.name}</span>)}
@@ -1205,7 +1205,7 @@ export default function FencingPage() {
             )}
             {activeTab === 'preview' && (
               <div className="card-dark overflow-hidden animate-fade-in">
-                <div className="px-6 py-4 bg-gradient-to-r from-steel-900 to-steel-800 border-b border-steel-700/30">
+                <div className="px-6 py-4 bg-gradient-to-r from-steel-900 to-steel-800 border-b border-steel-800">
                   <h2 className="text-xl font-bold text-white">HAYDEN RANCH SERVICES</h2>
                   <p className="text-xs text-steel-400 mt-1">5900 Balcones Dr #26922, Austin, TX 78731 &bull; (830) 777-9111 &bull; office@haydenclaim.com</p>
                 </div>
@@ -1225,21 +1225,21 @@ export default function FencingPage() {
                       </tr></thead>
                       <tbody>
                         {computed.map((sec, i) => (
-                          <tr key={sec.id} className={i % 2 === 0 ? 'bg-surface-50/50' : ''}>
+                          <tr key={sec.id} className={i % 2 === 0 ? 'bg-steel-900/50' : ''}>
                             <td className="px-3 py-2 text-steel-300">{sec.name}</td>
                             <td className="px-3 py-2 text-right text-steel-400">{sec.linearFeet.toLocaleString()} ft @ ${sec.ratePerFoot.toFixed(2)}/ft</td>
                             <td className="px-3 py-2 text-right font-semibold text-steel-200">${fmt(sec.total)}</td>
                           </tr>
                         ))}
                         {gates.map(g => (
-                          <tr key={g.id} className="bg-surface-50/30">
+                          <tr key={g.id} className="bg-steel-900/30">
                             <td className="px-3 py-2 text-steel-300">{g.type}</td>
                             <td className="px-3 py-2 text-right text-steel-500">incl. hardware &amp; install</td>
                             <td className="px-3 py-2 text-right font-semibold text-steel-200">${fmt(g.cost)}</td>
                           </tr>
                         ))}
                         {includePainting && paintEst && (
-                          <tr className="bg-surface-50/30">
+                          <tr className="bg-steel-900/30">
                             <td className="px-3 py-2 text-steel-300">Painting ({paintColor})</td>
                             <td className="px-3 py-2 text-right text-steel-500">{paintEst.gallonsNeeded} gal + labor</td>
                             <td className="px-3 py-2 text-right font-semibold text-steel-200">${fmt(paintEst.totalCost)}</td>
@@ -1249,12 +1249,12 @@ export default function FencingPage() {
                       <tfoot><tr className="border-t-2 border-steel-600">
                         <td className="px-3 py-2 font-bold text-steel-200">{totalFeet.toLocaleString()} total ft</td>
                         <td></td>
-                        <td className="px-3 py-2 text-right font-bold text-xl text-amber-400">${fmt(projTotal)}</td>
+                        <td className="px-3 py-2 text-right font-bold text-xl text-white">${fmt(projTotal)}</td>
                       </tr></tfoot>
                     </table>
                   </div>
 
-                  <div className="bg-surface-200/50 rounded-lg p-4">
+                  <div className="bg-black/50 rounded-lg p-4">
                     <h4 className="text-sm font-bold text-steel-300 mb-2">Material Summary</h4>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
                       <div><span className="text-steel-500">Post Material:</span> <span className="text-steel-200">{POST_MATERIALS.find(p => p.id === postMaterial)?.label ?? postMaterial}{currentGaugeOptions.length > 0 ? ` ${squareTubeGauge}` : ''} ({POST_MATERIALS.find(p => p.id === postMaterial)?.jointLengthFeet ?? 20}&apos; joints)</span></div>
@@ -1275,19 +1275,19 @@ export default function FencingPage() {
                     </div>
                   </div>
 
-                  <div className="bg-gradient-to-r from-amber-900/20 to-orange-900/20 rounded-lg p-4 border border-amber-700/30">
-                    <h4 className="text-sm font-bold text-amber-300 mb-2 uppercase tracking-wide">Payment Schedule</h4>
+                  <div className="bg-steel-900/50 rounded-lg p-4 border border-white/[0.08]">
+                    <h4 className="text-sm font-bold text-steel-200 mb-2 uppercase tracking-wide">Payment Schedule</h4>
                     <div className="space-y-1 text-sm">
                       <div className="flex justify-between text-steel-300"><span>Deposit ({depositPercent}% - due at signing)</span><span className="font-semibold text-steel-200">${fmt(deposit)}</span></div>
                       <div className="flex justify-between text-steel-300"><span>Balance (due at completion)</span><span className="font-semibold text-steel-200">${fmt(balance)}</span></div>
-                      <div className="flex justify-between border-t border-amber-700/30 pt-1 mt-1"><span className="font-bold text-amber-300">Project Total</span><span className="font-bold text-xl text-amber-400">${fmt(projTotal)}</span></div>
+                      <div className="flex justify-between border-t border-white/[0.08] pt-1 mt-1"><span className="font-bold text-steel-200">Project Total</span><span className="font-bold text-xl text-white">${fmt(projTotal)}</span></div>
                     </div>
                   </div>
 
                   <p className="text-sm text-steel-400"><strong>Timeline:</strong> {timelineDays} to {timelineDays + Math.ceil(timelineDays * 0.25)} working days</p>
 
                   <button onClick={handleDownloadPDF}
-                    className="w-full bg-gradient-to-r from-amber-600 to-orange-600 text-white font-bold py-3 px-4 rounded-lg hover:from-amber-500 hover:to-orange-500 transition text-sm shadow-lg shadow-amber-900/30">
+                    className="w-full bg-tan-400 text-black font-bold py-3 px-4 rounded-lg hover:bg-tan-300 transition text-sm">
                     Download Complete Bid PDF (with Terms &amp; Signature Block)
                   </button>
                 </div>
@@ -1307,13 +1307,13 @@ export default function FencingPage() {
                         const result = syncReceiptPrices();
                         setReceiptSyncResult(result);
                         if (result.updated > 0) saveSharedPricesToServer();
-                      }} className="text-xs bg-amber-600/20 text-amber-400 px-3 py-1.5 rounded-lg font-semibold hover:bg-amber-600/30 transition">
+                      }} className="text-xs bg-tan-400/10 text-tan-300 px-3 py-1.5 rounded-lg font-semibold hover:bg-white/20 transition">
                         &#x26a1; Sync from Receipts ({priceDatabase.length} prices)
                       </button>
                     </div>
                     <p className="text-[10px] text-steel-500">
                       Update material prices below using your uploaded receipts. Go to
-                      <Link href="/pricing" className="text-amber-400 hover:text-amber-300 mx-1 underline">Material Pricing</Link>
+                      <Link href="/pricing" className="text-white hover:text-steel-200 mx-1 underline">Material Pricing</Link>
                       to upload more receipts.
                     </p>
                     {receiptSyncResult && (
@@ -1331,14 +1331,14 @@ export default function FencingPage() {
                     const cats = Array.from(new Set(materialPrices.map(m => m.category)));
                     return cats.map(cat => (
                       <div key={cat} className="mb-4">
-                        <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wide mb-2">{cat}</h4>
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wide mb-2">{cat}</h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           {materialPrices.filter(m => m.category === cat).map(mp => (
-                            <div key={mp.id} className="flex items-center gap-2 bg-surface-100/50 rounded px-3 py-2">
+                            <div key={mp.id} className="flex items-center gap-2 bg-steel-900/50 rounded px-3 py-2">
                               <span className="flex-1 text-xs text-steel-300 truncate" title={mp.name}>{mp.name}</span>
                               <span className="text-xs text-steel-500">/{mp.unit}</span>
                               <input type="number" step="0.01" min="0"
-                                className="w-20 bg-steel-800 text-right text-sm text-steel-200 px-2 py-1 rounded border border-steel-700 focus:border-amber-500 focus:outline-none"
+                                className="w-20 bg-steel-800 text-right text-sm text-steel-200 px-2 py-1 rounded border border-steel-700 focus:border-tan-400/60 focus:outline-none"
                                 value={mp.price}
                                 onChange={e => {
                                   const v = parseFloat(e.target.value) || 0;
@@ -1346,7 +1346,7 @@ export default function FencingPage() {
                                 }}
                                 onBlur={() => saveSharedPricesToServer()}
                               />
-                              <button className="text-xs text-steel-600 hover:text-amber-400" title="Reset"
+                              <button className="text-xs text-steel-600 hover:text-white" title="Reset"
                                 onClick={() => { updateMaterialPrice(mp.id, mp.defaultPrice); saveSharedPricesToServer(); }}
                               >?</button>
                             </div>
@@ -1355,7 +1355,7 @@ export default function FencingPage() {
                       </div>
                     ));
                   })()}
-                  <button className="mt-2 text-xs text-steel-500 hover:text-amber-400 underline"
+                  <button className="mt-2 text-xs text-steel-500 hover:text-white underline"
                     onClick={() => { resetMaterialPrices(); saveSharedPricesToServer(); }}>
                     Reset All to Defaults
                   </button>
@@ -1371,13 +1371,13 @@ export default function FencingPage() {
             <div className="flex items-center gap-4">
               <span className="text-steel-500">Sections: <strong className="text-steel-200">{sections.length}</strong></span>
               <span className="text-steel-500">Total: <strong className="text-steel-200">{totalFeet.toLocaleString()} ft</strong></span>
-              <span className="text-steel-500">Eff Rate: <strong className="text-amber-400">${effectiveRate.toFixed(2)}/ft</strong></span>
+              <span className="text-steel-500">Eff Rate: <strong className="text-white">${effectiveRate.toFixed(2)}/ft</strong></span>
               <span className="text-steel-500">Gates: <strong className="text-steel-200">{gates.length}</strong></span>
               <span className="text-steel-500">Braces: <strong className="text-steel-200">{materialCalc.hBraces + materialCalc.cornerBraces}</strong></span>
             </div>
             <div className="flex items-center gap-3">
               <span className="text-steel-400">Deposit ({depositPercent}%): <strong className="text-steel-200">${fmt(deposit)}</strong></span>
-              <span className="text-lg font-bold text-amber-400">${fmt(projTotal)}</span>
+              <span className="text-lg font-bold text-white">${fmt(projTotal)}</span>
             </div>
           </div>
         </div>
@@ -1401,10 +1401,10 @@ function DInput({ label, value, onChange, type = 'text', placeholder, suffix }: 
 }) {
   return (
     <div>
-      {label && <label className="block text-xs text-steel-400 mb-1">{label}</label>}
+      {label && <label className="block text-xs text-steel-500 mb-1 uppercase tracking-wider">{label}</label>}
       <div className="flex items-center gap-1">
         <input type={type} value={value} placeholder={placeholder}
-          className="w-full bg-steel-800 text-sm text-steel-200 px-3 py-2 rounded-lg border border-steel-700 focus:border-amber-500 focus:outline-none transition"
+          className="w-full bg-black text-sm text-steel-200 px-3 py-2 border border-steel-800 focus:border-tan-400/60 focus:outline-none transition"
           onChange={e => onChange(e.target.value)} />
         {suffix && <span className="text-xs text-steel-500 whitespace-nowrap">{suffix}</span>}
       </div>
@@ -1418,11 +1418,11 @@ function DSlider({ label, value, onChange, min, max, step = 1, display, minLabel
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <label className="text-xs text-steel-400">{label}</label>
-        <span className="text-xs font-mono text-amber-400">{display ?? value}</span>
+        <label className="text-xs text-steel-500 uppercase tracking-wider">{label}</label>
+        <span className="text-xs font-mono text-white">{display ?? value}</span>
       </div>
       <input type="range" min={min} max={max} step={step} value={value}
-        className="w-full accent-amber-500"
+        className="w-full"
         onChange={e => onChange(Number(e.target.value))} />
       {(minLabel || maxLabel) && (
         <div className="flex justify-between mt-0.5">
@@ -1437,7 +1437,7 @@ function DSlider({ label, value, onChange, min, max, step = 1, display, minLabel
 function TabBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick}
-      className={`px-4 py-2 text-sm font-medium rounded-t-lg transition ${active ? 'bg-steel-800 text-amber-400 border-b-2 border-amber-500' : 'text-steel-400 hover:text-steel-200'}`}>
+      className={`px-4 py-2 text-xs font-medium uppercase tracking-wider transition ${active ? 'bg-steel-800 text-white border-b border-white' : 'text-steel-500 hover:text-steel-200'}`}>
       {label}
     </button>
   );

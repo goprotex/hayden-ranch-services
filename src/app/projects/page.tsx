@@ -117,11 +117,11 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-surface-400 bg-mesh">
-      <header className="glass border-b border-steel-700/20 sticky top-0 z-50">
+    <div className="min-h-screen bg-black bg-grid">
+      <header className="glass border-b border-white/[0.06] sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/" className="text-steel-400 hover:text-amber-400 transition text-sm">\u2190 Back</Link>
+            <Link href="/" className="text-steel-400 hover:text-white transition text-sm">\u2190 Back</Link>
             <h1 className="text-steel-100 font-bold text-lg">\ud83d\udcc1 Projects</h1>
           </div>
           <div className="flex items-center gap-3">
@@ -130,7 +130,7 @@ export default function ProjectsPage() {
               + New Roof Bid
             </Link>
             <Link href="/fencing"
-              className="text-xs bg-gradient-to-r from-amber-600 to-orange-600 text-white px-3 py-1.5 rounded-lg hover:from-amber-500 hover:to-orange-500 transition font-semibold shadow-lg shadow-amber-900/30">
+              className="text-xs bg-tan-400 text-black px-3 py-1.5 rounded-lg hover:bg-tan-300 transition font-semibold ">
               + New Fence Bid
             </Link>
           </div>
@@ -152,7 +152,7 @@ export default function ProjectsPage() {
             {(['all', 'roofing', 'fencing'] as Tab[]).map(t => (
               <button key={t} onClick={() => setTab(t)}
                 className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                  tab === t ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/30' : 'glass text-steel-400 hover:text-steel-200'
+                  tab === t ? 'bg-tan-400 text-black' : 'glass text-steel-400 hover:text-steel-200'
                 }`}>
                 {t === 'all' ? 'All' : t === 'roofing' ? '\ud83c\udfe0 Roofing' : '\u26a1 Fencing'}
               </button>
@@ -161,9 +161,9 @@ export default function ProjectsPage() {
           <div className="flex-1" />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search projects..."
-            className="w-full sm:w-64 bg-surface-200 border border-steel-700/30 rounded-lg px-3 py-2 text-sm text-steel-200 placeholder-steel-500 focus:ring-2 focus:ring-amber-500/50" />
+            className="w-full sm:w-64 bg-black border border-steel-800 rounded-lg px-3 py-2 text-sm text-steel-200 placeholder-steel-500 focus:ring-2 focus:ring-tan-400/40" />
           <select title="Sort by" value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}
-            className="bg-surface-200 border border-steel-700/30 rounded-lg px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-amber-500/50">
+            className="bg-black border border-steel-800 rounded-lg px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-tan-400/40">
             <option value="date">Newest First</option>
             <option value="name">Name A-Z</option>
             <option value="cost">Highest Value</option>
@@ -187,7 +187,7 @@ export default function ProjectsPage() {
                 <Link href="/roofing" className="text-sm glass text-steel-300 px-5 py-2.5 rounded-lg hover:text-white transition font-medium">
                   \ud83c\udfe0 Create Roof Bid
                 </Link>
-                <Link href="/fencing" className="text-sm bg-gradient-to-r from-amber-600 to-orange-600 text-white px-5 py-2.5 rounded-lg hover:from-amber-500 hover:to-orange-500 transition font-semibold shadow-lg shadow-amber-900/30">
+                <Link href="/fencing" className="text-sm bg-tan-400 text-black px-5 py-2.5 rounded-lg hover:bg-tan-300 transition font-semibold ">
                   \u26a1 Create Fence Bid
                 </Link>
               </div>
@@ -201,7 +201,7 @@ export default function ProjectsPage() {
                 style={{ animationDelay: `${idx * 50}ms` }}>
                 <div className="flex items-start gap-4">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 ${
-                    item.type === 'roofing' ? 'bg-blue-500/10 text-blue-400' : 'bg-amber-500/10 text-amber-400'
+                    item.type === 'roofing' ? 'bg-blue-500/10 text-blue-400' : 'bg-tan-400/10 text-tan-300'
                   }`}>
                     {item.type === 'roofing' ? '\ud83c\udfe0' : '\u26a1'}
                   </div>
@@ -211,8 +211,8 @@ export default function ProjectsPage() {
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
                         item.status === 'complete' ? 'bg-emerald-500/10 text-emerald-400' :
                         item.status === 'in_progress' ? 'bg-blue-500/10 text-blue-400' :
-                        item.status === 'approved' ? 'bg-amber-500/10 text-amber-400' :
-                        'bg-surface-200 text-steel-400'
+                        item.status === 'approved' ? 'bg-tan-400/10 text-tan-300' :
+                        'bg-black text-steel-400'
                       }`}>
                         {item.status.replace(/_/g, ' ')}
                       </span>
@@ -226,7 +226,7 @@ export default function ProjectsPage() {
                   </div>
                   <div className="text-right shrink-0">
                     {item.cost > 0 && (
-                      <p className="text-lg font-bold text-amber-400">$${fmt(item.cost)}</p>
+                      <p className="text-lg font-bold text-white">$${fmt(item.cost)}</p>
                     )}
                     <button
                       onClick={() => handleDelete(item.id, item.type)}
@@ -250,9 +250,9 @@ export default function ProjectsPage() {
 
 function StatCard({ label, value, icon, accent }: { label: string; value: string; icon: string; accent?: string }) {
   const colors = accent === 'blue' ? 'from-blue-900/20 to-blue-900/5 border-blue-700/20'
-    : accent === 'amber' ? 'from-amber-900/20 to-amber-900/5 border-amber-700/20'
+    : accent === 'amber' ? 'from-amber-900/20 to-amber-900/5 border-white/[0.06]'
     : accent === 'green' ? 'from-emerald-900/20 to-emerald-900/5 border-emerald-700/20'
-    : 'from-surface-100 to-surface-50 border-steel-700/20';
+    : 'from-surface-100 to-surface-50 border-white/[0.06]';
   return (
     <div className={`bg-gradient-to-br ${colors} rounded-xl border p-4 animate-scale-in`}>
       <div className="flex items-center gap-3">

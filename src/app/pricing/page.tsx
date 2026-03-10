@@ -140,11 +140,11 @@ export default function PricingPage() {
   }, {} as Record<string, PriceEntry[]>);
 
   return (
-    <div className="min-h-screen bg-surface-400 bg-mesh">
-      <header className="glass border-b border-steel-700/20 sticky top-0 z-50">
+    <div className="min-h-screen bg-black bg-grid">
+      <header className="glass border-b border-white/[0.06] sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/" className="text-steel-400 hover:text-amber-400 transition text-sm">\u2190 Back</Link>
+            <Link href="/" className="text-steel-400 hover:text-white transition text-sm">\u2190 Back</Link>
             <h1 className="text-steel-100 font-bold text-lg">\ud83d\udcb0 Material Pricing</h1>
           </div>
           <span className="text-sm text-steel-500">
@@ -174,7 +174,7 @@ export default function PricingPage() {
 
         {/* Manual sync button when receipts exist but haven't been synced */}
         {priceDatabase.length > 0 && !syncResult && (
-          <div className="mb-6 bg-surface-300 border border-steel-700/30 rounded-xl p-4 flex items-center justify-between">
+          <div className="mb-6 bg-steel-900 border border-steel-800 rounded-xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <span className="text-xl">&#x1f4cb;</span>
               <p className="text-xs text-steel-400">
@@ -185,7 +185,7 @@ export default function PricingPage() {
               const result = syncReceiptPrices();
               setSyncResult(result);
               if (result.updated > 0) saveSharedPricesToServer();
-            }} className="text-xs bg-amber-600/20 text-amber-400 px-4 py-2 rounded-lg font-semibold hover:bg-amber-600/30 transition whitespace-nowrap">
+            }} className="text-xs bg-tan-400/10 text-tan-300 px-4 py-2 rounded-lg font-semibold hover:bg-white/20 transition whitespace-nowrap">
               &#x26a1; Sync to Fencing Prices
             </button>
           </div>
@@ -199,7 +199,7 @@ export default function PricingPage() {
                 <div>
                   <label className="block text-sm font-medium text-steel-400 mb-1">Supplier Name (optional)</label>
                   <input type="text" value={supplierName} onChange={(e) => setSupplierName(e.target.value)}
-                    className="w-full bg-surface-200 border border-steel-700/30 rounded-lg px-3 py-2 text-sm text-steel-200 placeholder-steel-500 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50"
+                    className="w-full bg-black border border-steel-800 rounded-lg px-3 py-2 text-sm text-steel-200 placeholder-steel-500 focus:ring-2 focus:ring-tan-400/40 focus:border-white/20"
                     placeholder="e.g. Mueller, Metal Mart..." />
                 </div>
 
@@ -207,7 +207,7 @@ export default function PricingPage() {
                   <label className="block text-sm font-medium text-steel-400 mb-1">Upload Receipt (Image, PDF, or Text)</label>
                   <input ref={fileInputRef} type="file" accept=".txt,.csv,.pdf,.jpg,.jpeg,.png,.webp,.heic,.bmp,.tiff"
                     onChange={handleFileUpload} title="Upload a receipt file"
-                    className="w-full text-sm text-steel-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-600/20 file:text-amber-400 hover:file:bg-amber-600/30"
+                    className="w-full text-sm text-steel-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-tan-400/15 file:text-tan-300 hover:file:bg-tan-400/25"
                     disabled={uploadStatus === 'uploading' || uploadStatus === 'processing'} />
                   <p className="text-xs text-steel-500 mt-1">\ud83d\udcf8 Photo scans, PDFs, text files \u2014 AI reads them all</p>
 
@@ -218,7 +218,7 @@ export default function PricingPage() {
                     </div>
                   )}
                   {uploadStatus === 'processing' && (
-                    <div className="mt-3 flex items-center gap-2 text-sm text-amber-400">
+                    <div className="mt-3 flex items-center gap-2 text-sm text-white">
                       <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
                       \ud83e\udd16 AI is reading your receipt...
                     </div>
@@ -226,8 +226,8 @@ export default function PricingPage() {
                   {uploadStatus === 'done' && <div className="mt-3 flex items-center gap-2 text-sm text-emerald-400">\u2705 Receipt parsed successfully!</div>}
                   {uploadStatus === 'error' && <div className="mt-3 text-sm text-red-400 bg-red-950/30 p-2 rounded-lg">\u274c {uploadError}</div>}
                   {previewUrl && (
-                    <div className="mt-3 border border-steel-700/30 rounded-lg overflow-hidden">
-                      <img src={previewUrl} alt="Receipt preview" className="w-full max-h-48 object-contain bg-surface-100" />
+                    <div className="mt-3 border border-steel-800 rounded-lg overflow-hidden">
+                      <img src={previewUrl} alt="Receipt preview" className="w-full max-h-48 object-contain bg-steel-900" />
                     </div>
                   )}
                 </div>
@@ -235,13 +235,13 @@ export default function PricingPage() {
                 <div>
                   <label className="block text-sm font-medium text-steel-400 mb-1">Or paste receipt text</label>
                   <textarea value={receiptText} onChange={(e) => setReceiptText(e.target.value)} rows={10}
-                    className="w-full bg-surface-200 border border-steel-700/30 rounded-lg px-3 py-2 text-sm font-mono text-steel-200 placeholder-steel-500 focus:ring-2 focus:ring-amber-500/50"
+                    className="w-full bg-black border border-steel-800 rounded-lg px-3 py-2 text-sm font-mono text-steel-200 placeholder-steel-500 focus:ring-2 focus:ring-tan-400/40"
                     placeholder="Paste your receipt text here..." />
                 </div>
 
                 <button onClick={handleParseReceipt}
                   disabled={!receiptText.trim() || uploadStatus === 'processing'}
-                  className="w-full bg-gradient-to-r from-amber-600 to-orange-600 text-white font-semibold py-2.5 px-4 rounded-lg hover:from-amber-500 hover:to-orange-500 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-amber-900/30">
+                  className="w-full bg-tan-400 text-black font-semibold py-2.5 px-4 rounded-lg hover:bg-tan-300 disabled:opacity-50 disabled:cursor-not-allowed transition ">
                   {uploadStatus === 'processing' ? '\ud83e\udd16 AI Parsing...' : 'Parse Receipt'}
                 </button>
               </div>
@@ -255,8 +255,8 @@ export default function PricingPage() {
                     <button key={r.id} onClick={() => setActiveReceipt(r)}
                       className={`w-full text-left p-3 rounded-lg border text-sm transition ${
                         activeReceipt?.id === r.id
-                          ? 'border-amber-500/50 bg-amber-900/20'
-                          : 'border-steel-700/30 hover:border-steel-600/50 bg-surface-200/50'
+                          ? 'border-white/20 bg-steel-900/60'
+                          : 'border-steel-800 hover:border-steel-600/50 bg-black/50'
                       }`}>
                       <p className="font-medium text-steel-200">{r.supplier}</p>
                       <p className="text-steel-500 text-xs">
@@ -273,16 +273,16 @@ export default function PricingPage() {
           <div className="lg:col-span-2 space-y-6 animate-fade-in">
             {activeReceipt && (
               <div className="card-dark overflow-hidden">
-                <div className="px-6 py-4 border-b border-steel-700/20 flex justify-between items-center">
+                <div className="px-6 py-4 border-b border-white/[0.06] flex justify-between items-center">
                   <div>
                     <h2 className="text-steel-200 font-semibold">{activeReceipt.supplier}</h2>
                     <p className="text-sm text-steel-500">{activeReceipt.date}</p>
                   </div>
-                  <p className="text-lg font-bold text-amber-400">${activeReceipt.total.toFixed(2)}</p>
+                  <p className="text-lg font-bold text-white">${activeReceipt.total.toFixed(2)}</p>
                 </div>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-steel-700/20 bg-surface-100">
+                    <tr className="border-b border-white/[0.06] bg-steel-900">
                       <th className="text-left px-6 py-3 text-steel-400 font-medium">Item</th>
                       <th className="text-right px-6 py-3 text-steel-400 font-medium">Qty</th>
                       <th className="text-right px-6 py-3 text-steel-400 font-medium">Unit Price</th>
@@ -292,13 +292,13 @@ export default function PricingPage() {
                   </thead>
                   <tbody>
                     {activeReceipt.items.map((item, i) => (
-                      <tr key={i} className="border-b border-steel-700/10 hover:bg-surface-100/50">
+                      <tr key={i} className="border-b border-steel-700/10 hover:bg-steel-900/50">
                         <td className="px-6 py-2 text-steel-300">{item.description}</td>
                         <td className="px-6 py-2 text-right text-steel-400">{item.quantity}</td>
                         <td className="px-6 py-2 text-right text-steel-400">${item.unitPrice.toFixed(2)}</td>
-                        <td className="px-6 py-2 text-right font-medium text-amber-400">${item.totalPrice.toFixed(2)}</td>
+                        <td className="px-6 py-2 text-right font-medium text-white">${item.totalPrice.toFixed(2)}</td>
                         <td className="px-6 py-2">
-                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-surface-200 text-steel-400">
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-black text-steel-400">
                             {item.category.replace(/_/g, ' ')}
                           </span>
                         </td>
@@ -310,7 +310,7 @@ export default function PricingPage() {
             )}
 
             <div className="card-dark overflow-hidden">
-              <div className="px-6 py-4 border-b border-steel-700/20">
+              <div className="px-6 py-4 border-b border-white/[0.06]">
                 <h2 className="text-steel-200 font-semibold">Price Database</h2>
                 <p className="text-sm text-steel-500 mt-1">All prices extracted from your uploaded receipts</p>
               </div>
@@ -322,15 +322,15 @@ export default function PricingPage() {
               ) : (
                 Object.entries(pricesByCategory).map(([category, entries]) => (
                   <div key={category}>
-                    <div className="px-6 py-2 bg-surface-100 border-b border-steel-700/20">
-                      <p className="text-xs font-bold text-amber-400 uppercase tracking-wider">{category.replace(/_/g, ' ')}</p>
+                    <div className="px-6 py-2 bg-steel-900 border-b border-white/[0.06]">
+                      <p className="text-xs font-bold text-white uppercase tracking-wider">{category.replace(/_/g, ' ')}</p>
                     </div>
                     <table className="w-full text-sm">
                       <tbody>
                         {entries.map((entry) => (
-                          <tr key={entry.id} className="border-b border-steel-700/10 hover:bg-surface-100/50">
+                          <tr key={entry.id} className="border-b border-steel-700/10 hover:bg-steel-900/50">
                             <td className="px-6 py-2 text-steel-300">{entry.description}</td>
-                            <td className="px-6 py-2 text-right font-medium text-amber-400">${entry.unitPrice.toFixed(2)}/{entry.unit}</td>
+                            <td className="px-6 py-2 text-right font-medium text-white">${entry.unitPrice.toFixed(2)}/{entry.unit}</td>
                             <td className="px-6 py-2 text-right text-steel-500 text-xs">{entry.supplier} \u2022 {entry.date}</td>
                           </tr>
                         ))}

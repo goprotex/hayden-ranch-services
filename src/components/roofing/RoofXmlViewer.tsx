@@ -160,12 +160,12 @@ export default function RoofXmlViewer({ model, cutList, xmlSource }: RoofViewerP
           <>
             <span className="mx-2 w-px h-5 bg-steel-700" />
             <label className="flex items-center gap-1.5 text-xs text-steel-400 cursor-pointer select-none">
-              <input type="checkbox" checked={showEdgeLabels} onChange={e => setShowEdgeLabels(e.target.checked)} className="accent-amber-500 w-3.5 h-3.5" />
+              <input type="checkbox" checked={showEdgeLabels} onChange={e => setShowEdgeLabels(e.target.checked)} className="accent-tan-400 w-3.5 h-3.5" />
               Edge labels
             </label>
             {cutList && (
               <label className="flex items-center gap-1.5 text-xs text-steel-400 cursor-pointer select-none">
-                <input type="checkbox" checked={showPanels} onChange={e => setShowPanels(e.target.checked)} className="accent-amber-500 w-3.5 h-3.5" />
+                <input type="checkbox" checked={showPanels} onChange={e => setShowPanels(e.target.checked)} className="accent-tan-400 w-3.5 h-3.5" />
                 Panel overlay
               </label>
             )}
@@ -187,7 +187,7 @@ export default function RoofXmlViewer({ model, cutList, xmlSource }: RoofViewerP
           <svg
             ref={svgRef}
             viewBox={viewBox}
-            className="w-full bg-surface-200 rounded-xl"
+            className="w-full bg-black rounded-xl"
             style={{ height: 520 }}
             xmlns="http://www.w3.org/2000/svg"
           >
@@ -278,7 +278,7 @@ export default function RoofXmlViewer({ model, cutList, xmlSource }: RoofViewerP
           </svg>
 
           {/* Edge type legend */}
-          <div className="px-4 py-3 border-t border-steel-700/30 flex flex-wrap gap-x-4 gap-y-1">
+          <div className="px-4 py-3 border-t border-steel-800 flex flex-wrap gap-x-4 gap-y-1">
             {(Object.entries(EDGE_COLORS) as [EdgeType, string][]).filter(([type]) =>
               model.facets.some(f => f.edgeTypes.some(e => e.type === type))
             ).map(([type, color]) => (
@@ -295,7 +295,7 @@ export default function RoofXmlViewer({ model, cutList, xmlSource }: RoofViewerP
         <div className="card-dark overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="bg-surface-200 text-steel-400 uppercase text-xs">
+              <thead className="bg-black text-steel-400 uppercase text-xs">
                 <tr>
                   <th className="px-4 py-3">Facet</th>
                   <th className="px-4 py-3 text-right">Area (sf)</th>
@@ -309,7 +309,7 @@ export default function RoofXmlViewer({ model, cutList, xmlSource }: RoofViewerP
               <tbody className="divide-y divide-steel-700/20">
                 {model.facets.map((f, idx) => (
                   <tr key={f.id}
-                    className={`hover:bg-surface-200/50 cursor-pointer transition ${selectedFacet === f.id ? 'bg-amber-500/10' : ''}`}
+                    className={`hover:bg-steel-900/50 cursor-pointer transition ${selectedFacet === f.id ? 'bg-white/10' : ''}`}
                     onClick={() => { setSelectedFacet(selectedFacet === f.id ? null : f.id); setViewTab('sketch'); }}
                   >
                     <td className="px-4 py-3 font-medium text-steel-200 flex items-center gap-2">
@@ -337,7 +337,7 @@ export default function RoofXmlViewer({ model, cutList, xmlSource }: RoofViewerP
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-surface-200/50 font-semibold text-steel-300 text-xs">
+              <tfoot className="bg-steel-900/50 font-semibold text-steel-300 text-xs">
                 <tr>
                   <td className="px-4 py-3">TOTAL ({model.facets.length} facets)</td>
                   <td className="px-4 py-3 text-right tabular-nums">{Math.round(stats.totalArea).toLocaleString()}</td>
@@ -362,7 +362,7 @@ export default function RoofXmlViewer({ model, cutList, xmlSource }: RoofViewerP
 
       {viewTab === 'xml' && xmlSource && (
         <div className="card-dark overflow-hidden">
-          <div className="px-4 py-3 border-b border-steel-700/30 flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-steel-800 flex items-center justify-between">
             <span className="text-sm font-medium text-steel-300">XML Source ({xmlSource.length.toLocaleString()} chars)</span>
             <button onClick={() => { navigator.clipboard.writeText(xmlSource); }}
               className="text-xs bg-steel-700/30 text-steel-300 px-3 py-1 rounded-lg hover:bg-steel-700/50 transition">
@@ -380,7 +380,7 @@ export default function RoofXmlViewer({ model, cutList, xmlSource }: RoofViewerP
         const f = model.facets.find(x => x.id === selectedFacet);
         if (!f) return null;
         return (
-          <div className="card-dark p-4 border-l-4 border-amber-500 animate-fade-in-up">
+          <div className="card-dark p-4 border-l-4 border-white/20 animate-fade-in-up">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-steel-200 font-semibold">{f.label}</h3>
               <button onClick={() => setSelectedFacet(null)} className="text-xs text-steel-500 hover:text-steel-300">✕ Close</button>
@@ -395,7 +395,7 @@ export default function RoofXmlViewer({ model, cutList, xmlSource }: RoofViewerP
               <p className="text-[10px] text-steel-500 uppercase mb-1">Edges</p>
               <div className="flex flex-wrap gap-2">
                 {f.edgeTypes.map(e => (
-                  <span key={e.id} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-surface-200 text-steel-300">
+                  <span key={e.id} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-black text-steel-300">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: EDGE_COLORS[e.type] }} />
                     {EDGE_LABELS[e.type]} — {e.lengthFeet.toFixed(1)}ft
                   </span>
@@ -407,7 +407,7 @@ export default function RoofXmlViewer({ model, cutList, xmlSource }: RoofViewerP
                 <p className="text-[10px] text-steel-500 uppercase mb-1">Vertex Coordinates</p>
                 <div className="flex flex-wrap gap-2">
                   {f.vertices.map((v, i) => (
-                    <span key={i} className="text-xs text-steel-500 font-mono bg-surface-200 px-2 py-0.5 rounded">
+                    <span key={i} className="text-xs text-steel-500 font-mono bg-black px-2 py-0.5 rounded">
                       ({v.x.toFixed(1)}, {v.y.toFixed(1)})
                     </span>
                   ))}
@@ -428,7 +428,7 @@ export default function RoofXmlViewer({ model, cutList, xmlSource }: RoofViewerP
 function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button onClick={onClick}
-      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${active ? 'bg-amber-600/30 text-amber-400 ring-1 ring-amber-500/30' : 'bg-surface-200 text-steel-400 hover:text-steel-300 hover:bg-surface-300'}`}>
+      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${active ? 'bg-tan-400/10 text-tan-300 ring-1 ring-tan-400/30' : 'bg-black text-steel-400 hover:text-steel-300 hover:bg-steel-900'}`}>
       {children}
     </button>
   );
@@ -436,7 +436,7 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-surface-200 rounded-xl px-4 py-3">
+    <div className="bg-black rounded-xl px-4 py-3">
       <p className="text-[10px] text-steel-500 uppercase tracking-wider">{label}</p>
       <p className="text-lg font-bold text-steel-200 mt-0.5">{value}</p>
     </div>

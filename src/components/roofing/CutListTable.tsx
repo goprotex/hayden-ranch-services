@@ -30,10 +30,10 @@ export default function CutListTable({ cutList }: Props) {
   return (
     <div>
       {/* Summary stats */}
-      <div className='px-6 py-4 bg-surface-200/60 border-b border-steel-700/30'>
+      <div className='px-6 py-4 bg-black/60 border-b border-steel-800'>
         <div className='grid grid-cols-2 md:grid-cols-5 gap-4 text-sm'>
           <div><p className='text-steel-500 text-xs'>Total Panels</p><p className='font-bold text-steel-100'>{cutList.panels.length}</p></div>
-          <div><p className='text-steel-500 text-xs'>Panel Width</p><p className='font-bold text-amber-400'>{widthIn}&quot; ({widthFt.toFixed(1)} ft)</p></div>
+          <div><p className='text-steel-500 text-xs'>Panel Width</p><p className='font-bold text-white'>{widthIn}&quot; ({widthFt.toFixed(1)} ft)</p></div>
           <div><p className='text-steel-500 text-xs'>Coverage Area</p><p className='font-bold text-steel-100'>{Math.round(cutList.totalPanelSqFt).toLocaleString()} sq ft</p></div>
           <div><p className='text-steel-500 text-xs'>Waste ({Math.round(cutList.wasteFactor * 100)}%)</p><p className='font-bold text-steel-100'>{Math.round(cutList.totalWasteSqFt).toLocaleString()} sq ft</p></div>
           <div><p className='text-steel-500 text-xs'>Gauge</p><p className='font-bold text-steel-100'>{cutList.gauge} ga</p></div>
@@ -41,14 +41,14 @@ export default function CutListTable({ cutList }: Props) {
       </div>
 
       {/* Unique cut lengths badges */}
-      <div className='px-6 py-3 bg-surface-100 border-b border-steel-700/30'>
+      <div className='px-6 py-3 bg-steel-900 border-b border-steel-800'>
         <p className='text-[10px] font-bold text-steel-500 uppercase tracking-wider mb-2'>Unique Cut Lengths</p>
         <div className='flex flex-wrap gap-2'>
           {uniqueLengths.map(len => {
             const count = cutList.panels.filter(p => p.lengthFeet === len).length;
             return (
-              <span key={len} className='inline-flex items-center gap-1.5 bg-surface-200 border border-steel-700/30 rounded-full px-3 py-1 text-xs'>
-                <strong className='text-amber-400'>{len}&apos;</strong>
+              <span key={len} className='inline-flex items-center gap-1.5 bg-black border border-steel-800 rounded-full px-3 py-1 text-xs'>
+                <strong className='text-white'>{len}&apos;</strong>
                 <span className='text-steel-500'>&times; {count}</span>
               </span>
             );
@@ -57,7 +57,7 @@ export default function CutListTable({ cutList }: Props) {
       </div>
 
       {/* VISUAL CUT DIAGRAM */}
-      <div className='px-6 py-4 border-b border-steel-700/30'>
+      <div className='px-6 py-4 border-b border-steel-800'>
         <p className='text-[10px] font-bold text-steel-500 uppercase tracking-wider mb-3'>Panel Layout Diagram</p>
         {facetIds.map((fid, fi) => {
           const panels = facetGroups.get(fid) || [];
@@ -103,7 +103,7 @@ export default function CutListTable({ cutList }: Props) {
       {/* Detail table */}
       <table className='w-full text-sm'>
         <thead>
-          <tr className='border-b border-steel-700/30 bg-surface-100'>
+          <tr className='border-b border-steel-800 bg-steel-900'>
             <th className='text-left px-6 py-3 text-steel-500 text-xs font-semibold'>#</th>
             <th className='text-left px-6 py-3 text-steel-500 text-xs font-semibold'>Facet</th>
             <th className='text-left px-6 py-3 text-steel-500 text-xs font-semibold'>Panel</th>
@@ -114,12 +114,12 @@ export default function CutListTable({ cutList }: Props) {
         </thead>
         <tbody>
           {cutList.panels.map((panel, i) => (
-            <tr key={panel.id} className='border-b border-steel-700/20 hover:bg-surface-200/40 transition'>
+            <tr key={panel.id} className='border-b border-white/[0.06] hover:bg-black/40 transition'>
               <td className='px-6 py-2 text-steel-600 text-xs'>{i + 1}</td>
               <td className='px-6 py-2 text-steel-400 text-xs'>{panel.facetId}</td>
               <td className='px-6 py-2 font-medium text-steel-300 text-xs'>{spec.name}</td>
               <td className='px-6 py-2 text-right text-steel-400 text-xs'>{panel.widthInches}&quot;</td>
-              <td className='px-6 py-2 text-right font-semibold text-amber-400 text-xs'>{panel.lengthFeet}&apos;</td>
+              <td className='px-6 py-2 text-right font-semibold text-white text-xs'>{panel.lengthFeet}&apos;</td>
               <td className='px-6 py-2 text-right text-steel-400 text-xs'>{((panel.lengthFeet * panel.widthInches) / 12).toFixed(1)}</td>
             </tr>
           ))}
