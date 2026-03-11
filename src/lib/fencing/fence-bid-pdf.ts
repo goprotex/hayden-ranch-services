@@ -771,6 +771,165 @@ export function generateFenceBidPDF(data: FenceBidData): void {
       doc.text('What\'s Below the Surface', mx, y);
       y += 5;
 
+      // ─── Bedrock depth cross-section visual ───
+      if (site.bedrockDepthIn != null) {
+        const vizH = 62; // total height of the visual
+        y = ensureSpace(doc, y, vizH + 8);
+
+        const depth = site.bedrockDepthIn;
+        const ft = Math.floor(depth / 12);
+        const inches = depth % 12;
+        const depthLabel = ft > 0 ? `${ft}' ${inches > 0 ? inches + '"' : ''}`.trim() : `${depth}"`;
+
+        // Scale: map 0–60 inches of real depth to the visual height
+        const maxScaleIn = Math.max(60, depth + 12);
+        const soilZoneH = Math.min((depth / maxScaleIn) * (vizH - 8), vizH - 14);
+        const bedrockY = y + 4 + soilZoneH;
+
+        // Dimensions
+        const vizX = mx + 10;
+        const vizW = cw - 20;
+        const postW = 5;
+        const postX = vizX + vizW * 0.35;
+        const postDepthIn = Math.min(36, depth); // post can't go deeper than bedrock
+        const postH = (postDepthIn / maxScaleIn) * (vizH - 8);
+        const postAboveH = 12; // above-ground portion
+
+        // ── Ground surface line ──
+        const groundY = y + 4;
+        // Sky / air above ground
+        doc.setFillColor(232, 243, 255);
+        doc.rect(vizX, groundY - 3, vizW, 3, 'F');
+
+        // ── Soil zone ──
+        doc.setFillColor(194, 163, 120); // warm tan (soil)
+        doc.rect(vizX, groundY, vizW, soilZoneH, 'F');
+
+        // Soil texture — scattered dots for rock fragments
+        if (site.rockFragmentPct != null && site.rockFragmentPct > 10) {
+          doc.setFillColor(160, 140, 110);
+          const numDots = Math.min(Math.round(site.rockFragmentPct / 3), 20);
+          // Deterministic positions based on index
+          for (let d = 0; d < numDots; d++) {
+            const dx = vizX + 4 + ((d * 37 + 13) % (Math.round(vizW) - 8));
+            const dy = groundY + 2 + ((d * 23 + 7) % Math.max(1, Math.round(soilZoneH - 4)));
+            const r = 0.6 + (d % 3) * 0.3;
+            doc.circle(dx, dy, r, 'F');
+          }
+        }
+
+        // ── Bedrock zone ──
+        const bedrockZoneH = vizH - 8 - soilZoneH;
+        doc.setFillColor(140, 140, 150); // grey rock
+        doc.rect(vizX, bedrockY, vizW, bedrockZoneH, 'F');
+        // Rock texture — horizontal cracks
+        doc.setDrawColor(120, 120, 130);
+        doc.setLineWidth(0.2);
+        for (let c = 0; c < 4; c++) {
+          const cy = bedrockY + 2 + c * (bedrockZoneH / 4.5);
+          if (cy < bedrockY + bedrockZoneH - 1) {
+            const cx1 = vizX + 3 + (c * 19) % (vizW * 0.3);
+            const cx2 = cx1 + 15 + (c * 11) % 25;
+            doc.line(cx1, cy, Math.min(cx2, vizX + vizW - 3), cy);
+          }
+        }
+
+        // ── Bedrock boundary line (dashed feel — thick colored line) ──
+        doc.setDrawColor(180, 60, 40); // reddish indicator
+        doc.setLineWidth(0.6);
+        doc.line(vizX, bedrockY, vizX + vizW, bedrockY);
+
+        // ── Fence post ──
+        // Below-ground portion
+        doc.setFillColor(90, 90, 90);
+        doc.rect(postX, groundY, postW, postH, 'F');
+        // Above-ground portion
+        doc.setFillColor(70, 70, 70);
+        doc.rect(postX, groundY - postAboveH, postW, postAboveH, 'F');
+        // Post cap
+        doc.setFillColor(50, 50, 50);
+        doc.rect(postX - 0.5, groundY - postAboveH - 1.2, postW + 1, 1.2, 'F');
+
+        // ── Ground surface accent ──
+        doc.setDrawColor(80, 120, 50); // green grass line
+        doc.setLineWidth(0.8);
+        doc.line(vizX, groundY, vizX + vizW, groundY);
+
+        // ── Depth callout arrow (right side) ──
+        const arrowX = vizX + vizW + 4;
+        doc.setDrawColor(27, 38, 54);
+        doc.setLineWidth(0.4);
+        // Vertical line from ground to bedrock
+        doc.line(arrowX, groundY, arrowX, bedrockY);
+        // Top tick
+        doc.line(arrowX - 1.5, groundY, arrowX + 1.5, groundY);
+        // Bottom tick
+        doc.line(arrowX - 1.5, bedrockY, arrowX + 1.5, bedrockY);
+        // Arrow heads
+        doc.setFillColor(27, 38, 54);
+        // Down arrow
+        doc.triangle(arrowX - 1, bedrockY - 1.5, arrowX + 1, bedrockY - 1.5, arrowX, bedrockY, 'F');
+        // Up arrow
+        doc.triangle(arrowX - 1, groundY + 1.5, arrowX + 1, groundY + 1.5, arrowX, groundY, 'F');
+
+        // Depth label alongside arrow
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(180, 60, 40);
+        const midArrow = (groundY + bedrockY) / 2;
+        doc.text(depthLabel, arrowX + 3, midArrow + 1);
+
+        // ── Labels ──
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+
+        // "GROUND LEVEL" label
+        doc.setTextColor(80, 120, 50);
+        doc.text('GROUND LEVEL', vizX + vizW * 0.65, groundY - 1);
+
+        // "SOIL" label
+        doc.setTextColor(120, 90, 50);
+        const soilMidY = groundY + soilZoneH / 2 + 2;
+        doc.text('SOIL', vizX + 3, soilMidY);
+
+        // "BEDROCK" label
+        doc.setTextColor(255, 255, 255);
+        const rockMidY = bedrockY + bedrockZoneH / 2 + 2;
+        doc.text(site.restrictionType ? site.restrictionType.toUpperCase() : 'BEDROCK', vizX + 3, rockMidY);
+
+        // "POST" label
+        doc.setTextColor(50, 50, 50);
+        doc.setFontSize(6);
+        doc.text('FENCE POST', postX + postW + 2, groundY + postH / 2);
+
+        // Post depth label
+        doc.setTextColor(100, 100, 100);
+        doc.setFontSize(6);
+        const postDepthStr = postDepthIn >= 12 ? `${Math.floor(postDepthIn / 12)}' set` : `${postDepthIn}" set`;
+        doc.text(postDepthStr, postX + postW + 2, groundY + postH / 2 + 4);
+
+        // ── Severity indicator badge ──
+        const severity = depth <= 18 ? 'ROCK DRILL REQUIRED' : depth <= 30 ? 'PARTIAL ROCK DRILLING' : 'POSSIBLE ROCK';
+        const badgeColor: [number, number, number] = depth <= 18 ? [180, 50, 40] : depth <= 30 ? [200, 140, 40] : [80, 140, 80];
+        const badgeW = doc.getTextWidth(severity) + 6;
+        doc.setFillColor(...badgeColor);
+        const badgeX = vizX;
+        const badgeY = y + vizH - 3;
+        doc.roundedRect(badgeX, badgeY, badgeW + 2, 5, 1, 1, 'F');
+        doc.setFontSize(6.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text(severity, badgeX + 1 + badgeW / 2, badgeY + 3.5, { align: 'center' });
+
+        // Standard post depth reference
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'italic');
+        doc.setTextColor(120, 120, 120);
+        doc.text('Standard post depth: 30–36"', vizX + vizW - 2, badgeY + 3.5, { align: 'right' });
+
+        y += vizH + 6;
+      }
+
       doc.setFontSize(8.5);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(55, 55, 60);
