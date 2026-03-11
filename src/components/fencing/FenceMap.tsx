@@ -139,6 +139,7 @@ export default function FenceMap({
   const [addPointType, setAddPointType] = useState<FencePointType>('h_brace');
   const [addedPoints, setAddedPoints] = useState<{ coordinate: [number, number]; type: FencePointType; lineId: string }[]>([]);
   const addedPointMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const [terrain3d, setTerrain3d] = useState(false);
 
   type MapboxDraw = {
     getAll: () => GeoJSON.FeatureCollection;
@@ -732,6 +733,25 @@ export default function FenceMap({
         map.on('load', () => {
           if (!cancelled) setMapLoaded(true);
 
+          // Add Mapbox DEM source for 3D terrain
+          map.addSource('mapbox-dem', {
+            type: 'raster-dem',
+            url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+            tileSize: 512,
+            maxzoom: 14,
+          });
+
+          // Add sky layer for 3D mode atmosphere
+          map.addLayer({
+            id: 'sky',
+            type: 'sky',
+            paint: {
+              'sky-type': 'atmosphere',
+              'sky-atmosphere-sun': [0.0, 0.0],
+              'sky-atmosphere-sun-intensity': 15,
+            },
+          });
+
           // Add Bing Maps aerial tile layer for higher resolution imagery
           map.addSource('bing-aerial', {
             type: 'raster',
@@ -812,6 +832,31 @@ export default function FenceMap({
           <span>&#x1f4cf; Lines: <strong className="text-steel-100">{lineCount}</strong></span>
           <span>&#x1f4d0; Total: <strong className="text-white">{Math.round(totalLength).toLocaleString()} ft</strong></span>
           {totalLength > 0 && <span className="text-steel-500">({(totalLength / 5280).toFixed(2)} mi)</span>}
+          {mapLoaded && (
+            <button
+              onClick={() => {
+                const map = mapRef.current;
+                if (!map) return;
+                const next = !terrain3d;
+                setTerrain3d(next);
+                if (next) {
+                  map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+                  map.easeTo({ pitch: 60, bearing: map.getBearing(), duration: 800 });
+                } else {
+                  map.setTerrain();
+                  map.easeTo({ pitch: 0, duration: 800 });
+                }
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                terrain3d
+                  ? 'bg-tan-400 text-black shadow-md'
+                  : 'bg-steel-800 text-steel-300 hover:bg-steel-700'
+              }`}
+              title={terrain3d ? 'Switch to 2D view' : 'Switch to 3D terrain view'}
+            >
+              {terrain3d ? '\u{1F3D4}\uFE0F 3D On' : '\u{1F3D4}\uFE0F 3D'}
+            </button>
+          )}
         </div>
         <div className="flex gap-2 text-xs text-steel-500 items-center">
           {analyzing && <span className="text-white animate-pulse">&#x26a1; Analyzing terrain...</span>}
