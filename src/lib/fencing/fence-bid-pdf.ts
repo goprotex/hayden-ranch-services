@@ -514,6 +514,84 @@ export function generateFenceBidPDF(data: FenceBidData): void {
     y += wLines.length * 3.5 + 8;
   }
 
+  // ── Product Photos Page ──
+  if (data.productImages && data.productImages.length > 0) {
+    doc.addPage();
+    y = 20;
+
+    // Section header with accent bar
+    doc.setFillColor(27, 38, 54);
+    doc.rect(mx, y - 3, cw, 9, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('YOUR FENCE MATERIALS', mx + 4, y + 3);
+    y += 14;
+
+    doc.setTextColor(60, 60, 60);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'italic');
+    const introText = `Below are the actual Stay-Tuff products specified for your ${data.fenceType} installation. All wire is Made in USA with a 20 Year Limited Warranty.`;
+    const introLines = doc.splitTextToSize(introText, cw);
+    doc.text(introLines, mx, y);
+    y += introLines.length * 3.5 + 6;
+
+    // Layout photos in a grid — 2 columns
+    const colW = (cw - 6) / 2;
+    const photos = data.productImages;
+
+    for (let i = 0; i < photos.length; i++) {
+      const col = i % 2;
+      const isNewRow = col === 0;
+
+      if (isNewRow && i > 0) {
+        y += 4; // gap between rows
+      }
+
+      // Check if we need a new page (estimate ~80mm per image row)
+      if (isNewRow) {
+        y = ensureSpace(doc, y, 85);
+      }
+
+      const imgX = mx + col * (colW + 6);
+
+      // Compute actual aspect ratio for correct rendering
+      let imgH = colW * 0.75; // fallback 4:3
+      try {
+        const imgProps = doc.getImageProperties(photos[i].dataUrl);
+        imgH = (colW - 1) * (imgProps.height / imgProps.width);
+      } catch { /* use fallback */ }
+
+      try {
+        // Photo border
+        doc.setDrawColor(220, 220, 220);
+        doc.setLineWidth(0.3);
+        doc.rect(imgX, y, colW, imgH);
+
+        // Image
+        const fmt = photos[i].dataUrl.includes('image/png') ? 'PNG' : 'JPEG';
+        doc.addImage(photos[i].dataUrl, fmt, imgX + 0.5, y + 0.5, colW - 1, imgH - 1);
+
+        // Label below photo
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(27, 38, 54);
+        const labelLines = doc.splitTextToSize(photos[i].label, colW);
+        doc.text(labelLines, imgX + colW / 2, y + imgH + 3, { align: 'center' });
+
+        // Only advance y after the second column (or last image)
+        if (col === 1 || i === photos.length - 1) {
+          y += imgH + labelLines.length * 3 + 4;
+        }
+      } catch {
+        // Skip failed images
+        if (col === 1 || i === photos.length - 1) {
+          y += 10;
+        }
+      }
+    }
+  }
+
   // ── Property Research & Site Analysis (comprehensive) ──
   if (data.soilNarrative || data.siteData) {
     y = ensureSpace(doc, y, 40);
@@ -1305,81 +1383,191 @@ export function generateFenceBidPDF(data: FenceBidData): void {
     y += 4;
   }
 
-  // ── Product Photos Page ──
-  if (data.productImages && data.productImages.length > 0) {
-    doc.addPage();
-    y = 20;
+  // ── Compact Materials Order Summary (supplier-friendly) ──
+  {
+    // Aggregate materials across all sections into a compact list
+    const matMap = new Map<string, { shortName: string; qty: string; sortOrder: number }>();
 
-    // Section header with accent bar
-    doc.setFillColor(27, 38, 54);
-    doc.rect(mx, y - 3, cw, 9, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('YOUR FENCE MATERIALS', mx + 4, y + 3);
-    y += 14;
+    const totalLinearFeet = data.sections.reduce((s, sec) => s + sec.linearFeet, 0);
 
-    doc.setTextColor(60, 60, 60);
-    doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'italic');
-    const introText = `Below are the actual Stay-Tuff products specified for your ${data.fenceType} installation. All wire is Made in USA with a 20 Year Limited Warranty.`;
-    const introLines = doc.splitTextToSize(introText, cw);
-    doc.text(introLines, mx, y);
-    y += introLines.length * 3.5 + 6;
+    for (const sec of data.sections) {
+      if (!sec.materials) continue;
+      for (const m of sec.materials) {
+        const n = m.name.toLowerCase();
+        // Classify by material type and extract a short supplier-friendly name
+        let key = '';
+        let shortName = '';
+        let order = 99;
 
-    // Layout photos in a grid — 2 columns
-    const colW = (cw - 6) / 2;
-    const photos = data.productImages;
+        if (n.includes('stay-tuff') || n.includes('stay tuff') || (n.startsWith('fence wire') && n.includes('galvanized'))) {
+          key = 'wire';
+          // Extract model from name e.g. "Stay-Tuff 2096-6"
+          const modelMatch = m.name.match(/Stay-Tuff\s+([\w-]+)/i);
+          shortName = modelMatch ? `Stay-Tuff ${modelMatch[1]} Wire` : 'Fence Wire';
+          order = 1;
+        } else if (n.startsWith('barbed wire') || (n.includes('barbed') && n.includes('strand'))) {
+          key = 'barbed_main';
+          shortName = 'Barbed Wire (main fence)';
+          order = 1;
+        } else if (n.includes('field fence wire')) {
+          key = 'field_wire';
+          shortName = 'Field Fence Wire';
+          order = 1;
+        } else if (n.includes('no-climb') || n.includes('no climb')) {
+          key = 'no_climb';
+          shortName = 'No-Climb Horse Fence Wire';
+          order = 1;
+        } else if (n.includes('fence wire')) {
+          key = 'wire_gen';
+          shortName = 'Fence Wire';
+          order = 1;
+        } else if (n.includes('high-tensile barbed') || n.includes('barbed top') || (n.includes('barbed') && !n.includes('strand'))) {
+          key = 'top_wire';
+          shortName = m.name.match(/barbed/i) ? 'HT Barbed Wire (top/bottom)' : 'HT Smooth Wire (top/bottom)';
+          order = 2;
+        } else if (n.includes('high-tensile smooth') || n.includes('ht smooth')) {
+          key = 'top_wire_smooth';
+          shortName = 'HT Smooth Wire (top/bottom)';
+          order = 2;
+        } else if (n.startsWith('t-post') || n.includes('t-posts') || n.includes('studded')) {
+          key = 'tposts';
+          const sizeMatch = m.name.match(/([\d.]+)['\u2019]/);
+          shortName = sizeMatch ? `T-Posts (${sizeMatch[1]}')` : 'T-Posts';
+          order = 3;
+        } else if (n.includes('line post') || n.includes('drill stem') || n.includes('square tube')) {
+          key = 'lineposts';
+          const pipeMatch = m.name.match(/([\d/"-]+\s*(?:OD|x\s*[\d/"]+))/i);
+          shortName = pipeMatch ? `Line Posts (${pipeMatch[1]})` : 'Line Posts (pipe)';
+          order = 4;
+        } else if (n.includes('h-brace') || n.includes('brace assembl')) {
+          key = 'braces';
+          shortName = 'H-Brace Assemblies';
+          order = 5;
+        } else if (n.includes('concrete')) {
+          key = 'concrete';
+          shortName = 'Concrete Mix (80 lb bags)';
+          order = 6;
+        } else if (n.includes('tensioner')) {
+          key = 'tensioners';
+          shortName = 'Inline Wire Tensioners';
+          order = 7;
+        } else if (n.includes('clip') || n.includes('staple')) {
+          key = 'clips';
+          shortName = 'Fence Clips / Staples';
+          order = 8;
+        } else {
+          key = `other_${m.name.slice(0, 20)}`;
+          shortName = m.name.split('—')[0].trim();
+          order = 10;
+        }
 
-    for (let i = 0; i < photos.length; i++) {
-      const col = i % 2;
-      const isNewRow = col === 0;
-
-      if (isNewRow && i > 0) {
-        y += 4; // gap between rows
+        if (!matMap.has(key)) {
+          matMap.set(key, { shortName, qty: m.quantity, sortOrder: order });
+        } else {
+          // For multi-section: append quantities
+          const existing = matMap.get(key)!;
+          existing.qty += ` + ${m.quantity}`;
+        }
       }
+    }
 
-      // Check if we need a new page (estimate ~80mm per image row)
-      if (isNewRow) {
-        y = ensureSpace(doc, y, 85);
-      }
+    // Sort by order
+    const sortedMats = Array.from(matMap.values()).sort((a, b) => a.sortOrder - b.sortOrder);
 
-      const imgX = mx + col * (colW + 6);
+    if (sortedMats.length > 0) {
+      y = ensureSpace(doc, y, 40);
 
-      // Compute actual aspect ratio for correct rendering
-      let imgH = colW * 0.75; // fallback 4:3
-      try {
-        const imgProps = doc.getImageProperties(photos[i].dataUrl);
-        imgH = (colW - 1) * (imgProps.height / imgProps.width);
-      } catch { /* use fallback */ }
+      // Header bar
+      doc.setFillColor(27, 38, 54);
+      doc.rect(mx, y - 3, cw, 9, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text('MATERIALS ORDER SUMMARY', mx + 4, y + 3);
+      y += 12;
 
-      try {
-        // Photo border
-        doc.setDrawColor(220, 220, 220);
-        doc.setLineWidth(0.3);
-        doc.rect(imgX, y, colW, imgH);
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Total project: ${totalLinearFeet.toLocaleString()} linear feet across ${data.sections.length} section${data.sections.length > 1 ? 's' : ''}`, mx, y);
+      y += 5;
 
-        // Image
-        const fmt = photos[i].dataUrl.includes('image/png') ? 'PNG' : 'JPEG';
-        doc.addImage(photos[i].dataUrl, fmt, imgX + 0.5, y + 0.5, colW - 1, imgH - 1);
+      // Table header
+      doc.setFillColor(240, 243, 248);
+      doc.rect(mx, y - 3, cw, 7, 'F');
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(27, 38, 54);
+      doc.text('Material', mx + 3, y + 1);
+      doc.text('Quantity', mx + cw - 3, y + 1, { align: 'right' });
+      y += 7;
 
-        // Label below photo
-        doc.setFontSize(7);
+      for (let i = 0; i < sortedMats.length; i++) {
+        const row = sortedMats[i];
+        // Clean qty: take first quantity only (no multi-section duplication for single-section bids)
+        const cleanQty = row.qty.includes('+') ? row.qty.split('+').map(s => s.trim()).join(' + ') : row.qty;
+        // Truncate qty for compact display
+        const qtyShort = cleanQty.length > 50 ? cleanQty.slice(0, 47) + '...' : cleanQty;
+
+        const nameLines = doc.splitTextToSize(row.shortName, cw * 0.55);
+        const qtyLines = doc.splitTextToSize(qtyShort, cw * 0.4);
+        const rowH = Math.max(nameLines.length, qtyLines.length) * 3.5 + 2;
+
+        y = ensureSpace(doc, y, rowH);
+
+        if (i % 2 === 0) {
+          doc.setFillColor(250, 251, 252);
+          doc.rect(mx, y - 3, cw, rowH, 'F');
+        }
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(40, 40, 40);
+        doc.text(nameLines, mx + 3, y);
+
         doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
         doc.setTextColor(27, 38, 54);
-        const labelLines = doc.splitTextToSize(photos[i].label, colW);
-        doc.text(labelLines, imgX + colW / 2, y + imgH + 3, { align: 'center' });
+        doc.text(qtyLines, mx + cw - 3, y, { align: 'right' });
 
-        // Only advance y after the second column (or last image)
-        if (col === 1 || i === photos.length - 1) {
-          y += imgH + labelLines.length * 3 + 4;
-        }
-      } catch {
-        // Skip failed images
-        if (col === 1 || i === photos.length - 1) {
-          y += 10;
+        y += rowH;
+      }
+
+      // Accessories
+      if (data.accessories) {
+        const accItems: { name: string; qty: number }[] = [];
+        if (data.accessories.postCaps > 0) accItems.push({ name: 'Post Caps', qty: data.accessories.postCaps });
+        if (data.accessories.springIndicators > 0) accItems.push({ name: 'Spring Tension Indicators', qty: data.accessories.springIndicators });
+        if (data.accessories.concreteFillPosts > 0) accItems.push({ name: 'Concrete Fill (posts)', qty: data.accessories.concreteFillPosts });
+        if (data.accessories.concreteFillBraces > 0) accItems.push({ name: 'Concrete Fill (braces)', qty: data.accessories.concreteFillBraces });
+
+        for (const acc of accItems) {
+          y = ensureSpace(doc, y, 6);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8);
+          doc.setTextColor(40, 40, 40);
+          doc.text(acc.name, mx + 3, y);
+          doc.setFont('helvetica', 'bold');
+          doc.text(String(acc.qty), mx + cw - 3, y, { align: 'right' });
+          y += 5;
         }
       }
+
+      // Gates
+      if (data.gates && data.gates.length > 0) {
+        y = ensureSpace(doc, y, 6);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(40, 40, 40);
+        for (const gate of data.gates) {
+          doc.text(gate.type, mx + 3, y);
+          doc.setFont('helvetica', 'bold');
+          doc.text('1', mx + cw - 3, y, { align: 'right' });
+          y += 5;
+        }
+      }
+
+      y += 6;
     }
   }
 
