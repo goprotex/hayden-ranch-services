@@ -781,9 +781,12 @@ export function generateFenceBidPDF(data: FenceBidData): void {
         const inches = depth % 12;
         const depthLabel = ft > 0 ? `${ft}' ${inches > 0 ? inches + '"' : ''}`.trim() : `${depth}"`;
 
-        // Scale: map 0–60 inches of real depth to the visual height
-        const maxScaleIn = Math.max(60, depth + 12);
-        const soilZoneH = Math.min((depth / maxScaleIn) * (vizH - 8), vizH - 14);
+        const rockAnchorIn = 12; // always set at least 1' into bedrock
+        const totalPostDepthIn = depth + rockAnchorIn; // soil + rock anchor
+
+        // Scale: map 0 to max depth to the visual height
+        const maxScaleIn = Math.max(60, totalPostDepthIn + 6);
+        const soilZoneH = Math.min((depth / maxScaleIn) * (vizH - 8), vizH - 18);
         const bedrockY = y + 4 + soilZoneH;
 
         // Dimensions
@@ -791,8 +794,9 @@ export function generateFenceBidPDF(data: FenceBidData): void {
         const vizW = cw - 20;
         const postW = 5;
         const postX = vizX + vizW * 0.35;
-        const postDepthIn = Math.min(36, depth); // post can't go deeper than bedrock
-        const postH = (postDepthIn / maxScaleIn) * (vizH - 8);
+        const postSoilH = soilZoneH; // post through entire soil zone
+        const postRockH = (rockAnchorIn / maxScaleIn) * (vizH - 8); // 12" into bedrock
+        const postTotalH = postSoilH + postRockH;
         const postAboveH = 12; // above-ground portion
 
         // ── Ground surface line ──
@@ -809,7 +813,6 @@ export function generateFenceBidPDF(data: FenceBidData): void {
         if (site.rockFragmentPct != null && site.rockFragmentPct > 10) {
           doc.setFillColor(160, 140, 110);
           const numDots = Math.min(Math.round(site.rockFragmentPct / 3), 20);
-          // Deterministic positions based on index
           for (let d = 0; d < numDots; d++) {
             const dx = vizX + 4 + ((d * 37 + 13) % (Math.round(vizW) - 8));
             const dy = groundY + 2 + ((d * 23 + 7) % Math.max(1, Math.round(soilZoneH - 4)));
@@ -834,15 +837,24 @@ export function generateFenceBidPDF(data: FenceBidData): void {
           }
         }
 
-        // ── Bedrock boundary line (dashed feel — thick colored line) ──
-        doc.setDrawColor(180, 60, 40); // reddish indicator
+        // ── Bedrock boundary line (thick colored line) ──
+        doc.setDrawColor(180, 60, 40);
         doc.setLineWidth(0.6);
         doc.line(vizX, bedrockY, vizX + vizW, bedrockY);
 
-        // ── Fence post ──
-        // Below-ground portion
+        // ── Fence post — extends through soil AND into bedrock ──
+        // Soil portion of post
         doc.setFillColor(90, 90, 90);
-        doc.rect(postX, groundY, postW, postH, 'F');
+        doc.rect(postX, groundY, postW, postSoilH, 'F');
+        // Bedrock-anchored portion of post (slightly lighter to show rock contact)
+        doc.setFillColor(75, 75, 80);
+        doc.rect(postX, bedrockY, postW, postRockH, 'F');
+        // Concrete collar around post in bedrock (wider band)
+        doc.setFillColor(180, 180, 175);
+        doc.rect(postX - 1.5, bedrockY, postW + 3, postRockH * 0.6, 'F');
+        // Re-draw post over concrete
+        doc.setFillColor(75, 75, 80);
+        doc.rect(postX, bedrockY, postW, postRockH, 'F');
         // Above-ground portion
         doc.setFillColor(70, 70, 70);
         doc.rect(postX, groundY - postAboveH, postW, postAboveH, 'F');
@@ -850,63 +862,95 @@ export function generateFenceBidPDF(data: FenceBidData): void {
         doc.setFillColor(50, 50, 50);
         doc.rect(postX - 0.5, groundY - postAboveH - 1.2, postW + 1, 1.2, 'F');
 
+        // ── Rock anchor indicator bracket (left side of post) ──
+        const bracketX = postX - 4;
+        doc.setDrawColor(220, 180, 50); // gold/amber bracket
+        doc.setLineWidth(0.4);
+        doc.line(bracketX, bedrockY, bracketX, bedrockY + postRockH); // vertical
+        doc.line(bracketX, bedrockY, bracketX + 1.5, bedrockY); // top tick
+        doc.line(bracketX, bedrockY + postRockH, bracketX + 1.5, bedrockY + postRockH); // bottom tick
+        // "1' INTO ROCK" label
+        doc.setFontSize(5.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(220, 180, 50);
+        const rockMid = bedrockY + postRockH / 2 + 1.5;
+        // Rotate label vertically alongside bracket
+        doc.text('1\' ROCK SET', bracketX - 1.5, rockMid, { angle: 90 });
+
         // ── Ground surface accent ──
         doc.setDrawColor(80, 120, 50); // green grass line
         doc.setLineWidth(0.8);
         doc.line(vizX, groundY, vizX + vizW, groundY);
 
-        // ── Depth callout arrow (right side) ──
+        // ── Bedrock depth callout arrow (right side) ──
         const arrowX = vizX + vizW + 4;
         doc.setDrawColor(27, 38, 54);
         doc.setLineWidth(0.4);
-        // Vertical line from ground to bedrock
         doc.line(arrowX, groundY, arrowX, bedrockY);
-        // Top tick
         doc.line(arrowX - 1.5, groundY, arrowX + 1.5, groundY);
-        // Bottom tick
         doc.line(arrowX - 1.5, bedrockY, arrowX + 1.5, bedrockY);
-        // Arrow heads
         doc.setFillColor(27, 38, 54);
-        // Down arrow
         doc.triangle(arrowX - 1, bedrockY - 1.5, arrowX + 1, bedrockY - 1.5, arrowX, bedrockY, 'F');
-        // Up arrow
         doc.triangle(arrowX - 1, groundY + 1.5, arrowX + 1, groundY + 1.5, arrowX, groundY, 'F');
 
-        // Depth label alongside arrow
         doc.setFontSize(8);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(180, 60, 40);
         const midArrow = (groundY + bedrockY) / 2;
         doc.text(depthLabel, arrowX + 3, midArrow + 1);
 
+        // ── Total post depth callout arrow (far right) ──
+        const arrow2X = arrowX + 14;
+        const postBottomY = bedrockY + postRockH;
+        doc.setDrawColor(70, 70, 70);
+        doc.setLineWidth(0.3);
+        doc.line(arrow2X, groundY, arrow2X, postBottomY);
+        doc.line(arrow2X - 1.5, groundY, arrow2X + 1.5, groundY);
+        doc.line(arrow2X - 1.5, postBottomY, arrow2X + 1.5, postBottomY);
+        doc.setFillColor(70, 70, 70);
+        doc.triangle(arrow2X - 0.8, postBottomY - 1.2, arrow2X + 0.8, postBottomY - 1.2, arrow2X, postBottomY, 'F');
+        doc.triangle(arrow2X - 0.8, groundY + 1.2, arrow2X + 0.8, groundY + 1.2, arrow2X, groundY, 'F');
+
+        const totalFt = Math.floor(totalPostDepthIn / 12);
+        const totalIn = totalPostDepthIn % 12;
+        const totalLabel = totalFt > 0 ? `${totalFt}' ${totalIn > 0 ? totalIn + '"' : ''}`.trim() : `${totalPostDepthIn}"`;
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(70, 70, 70);
+        const mid2 = (groundY + postBottomY) / 2;
+        doc.text(`${totalLabel} total`, arrow2X + 3, mid2 - 1);
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'normal');
+        doc.text('post depth', arrow2X + 3, mid2 + 2.5);
+
         // ── Labels ──
         doc.setFontSize(7);
         doc.setFont('helvetica', 'bold');
 
-        // "GROUND LEVEL" label
+        // "GROUND LEVEL"
         doc.setTextColor(80, 120, 50);
         doc.text('GROUND LEVEL', vizX + vizW * 0.65, groundY - 1);
 
-        // "SOIL" label
+        // "SOIL"
         doc.setTextColor(120, 90, 50);
         const soilMidY = groundY + soilZoneH / 2 + 2;
         doc.text('SOIL', vizX + 3, soilMidY);
 
-        // "BEDROCK" label
+        // "BEDROCK"
         doc.setTextColor(255, 255, 255);
         const rockMidY = bedrockY + bedrockZoneH / 2 + 2;
         doc.text(site.restrictionType ? site.restrictionType.toUpperCase() : 'BEDROCK', vizX + 3, rockMidY);
 
-        // "POST" label
+        // "FENCE POST" label
         doc.setTextColor(50, 50, 50);
         doc.setFontSize(6);
-        doc.text('FENCE POST', postX + postW + 2, groundY + postH / 2);
+        doc.text('FENCE POST', postX + postW + 2, groundY + postSoilH * 0.35);
 
-        // Post depth label
-        doc.setTextColor(100, 100, 100);
-        doc.setFontSize(6);
-        const postDepthStr = postDepthIn >= 12 ? `${Math.floor(postDepthIn / 12)}' set` : `${postDepthIn}" set`;
-        doc.text(postDepthStr, postX + postW + 2, groundY + postH / 2 + 4);
+        // "ANCHORED IN ROCK" label near the rock portion
+        doc.setTextColor(220, 180, 50);
+        doc.setFontSize(5.5);
+        doc.setFont('helvetica', 'bold');
+        doc.text('ANCHORED IN ROCK', postX + postW + 2, bedrockY + postRockH / 2 + 1);
 
         // ── Severity indicator badge ──
         const severity = depth <= 18 ? 'ROCK DRILL REQUIRED' : depth <= 30 ? 'PARTIAL ROCK DRILLING' : 'POSSIBLE ROCK';
