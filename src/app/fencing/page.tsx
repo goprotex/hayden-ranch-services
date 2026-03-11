@@ -111,7 +111,6 @@ export default function FencingPage() {
 
   // Pricing
   const laborRate = 6; // fixed $/ft labor — not shown to customer
-  const [terrain, setTerrain] = useState('moderate');
   const depositPercent = 65; // fixed 65% deposit
 
   // Painting
@@ -129,6 +128,7 @@ export default function FencingPage() {
 
   // Terrain analysis
   const [terrainSuggestion, setTerrainSuggestion] = useState<TerrainSuggestion | null>(null);
+  const terrain = terrainSuggestion?.suggestedDifficulty || 'moderate';
   // Elevation segment data for steep terrain surcharge
   const [steepFootage, setSteepFootage] = useState(0);
 
@@ -163,7 +163,6 @@ export default function FencingPage() {
 
   const handleTerrainAnalyzed = useCallback((analysis: TerrainSuggestion) => {
     setTerrainSuggestion(analysis);
-    if (analysis.confidence > 0.4) setTerrain(analysis.suggestedDifficulty);
     if (analysis.steepFootage != null) setSteepFootage(analysis.steepFootage);
   }, []);
 
@@ -1083,13 +1082,11 @@ export default function FencingPage() {
                       )}
                     </div>
                   )}
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {Object.entries(TERRAIN_MAP).map(([k, v]) => (
-                      <button key={k} onClick={() => setTerrain(k)}
-                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition text-left ${terrain === k ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-white/[0.06] hover:bg-steel-900'}`}>
-                        {v.label}<span className="block text-[9px] opacity-70">{v.mult}x labor rate</span>
-                      </button>
-                    ))}
+                  <div className="bg-steel-900/40 border border-white/[0.08] rounded-lg p-2">
+                    <span className={`text-[11px] font-semibold ${TERRAIN_MAP[terrain]?.color || 'text-steel-300'}`}>
+                      {TERRAIN_MAP[terrain]?.label || terrain}
+                    </span>
+                    <span className="block text-[9px] text-steel-500">Auto-calculated from soil &amp; terrain analysis</span>
                   </div>
                 </div>
 
