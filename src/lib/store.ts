@@ -161,6 +161,15 @@ export const useAppStore = create<AppState>()(
     {
       name: 'hayden-ranch-store',
       version: 2,
+      onRehydrateStorage: () => {
+        return (state, error) => {
+          // After hydrating from localStorage, always fetch latest prices from server
+          // so every browser gets up-to-date receipt-synced prices
+          if (!error && state) {
+            state.loadSharedPrices();
+          }
+        };
+      },
       merge: (persistedState, currentState) => {
         const persisted = (persistedState || {}) as Partial<AppState>;
         const merged = { ...currentState, ...persisted } as AppState;

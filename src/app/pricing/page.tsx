@@ -54,8 +54,8 @@ export default function PricingPage() {
       // Auto-sync receipt prices to fencing material prices
       const result = syncReceiptPrices();
       setSyncResult(result);
-      // Persist updated prices to server for all users
-      if (result.updated > 0) saveSharedPricesToServer();
+      // Persist current prices to server for all users / browsers
+      saveSharedPricesToServer();
       setActiveReceipt(receipt);
       setSupplierName('');
     },
@@ -90,8 +90,8 @@ export default function PricingPage() {
     // Auto-sync receipt prices to fencing material prices
     const result = syncReceiptPrices();
     setSyncResult(result);
-    // Persist updated prices to server for all users
-    if (result.updated > 0) saveSharedPricesToServer();
+    // Persist current prices to server for all users / browsers
+    saveSharedPricesToServer();
     setActiveReceipt(receipt);
     setReceiptText('');
     setSupplierName('');

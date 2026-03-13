@@ -1357,7 +1357,7 @@ export default function FencingPage() {
                       <button onClick={() => {
                         const result = syncReceiptPrices();
                         setReceiptSyncResult(result);
-                        if (result.updated > 0) saveSharedPricesToServer();
+                        saveSharedPricesToServer();
                       }} className="text-xs bg-tan-400/10 text-tan-300 px-3 py-1.5 rounded-lg font-semibold hover:bg-white/20 transition">
                         &#x26a1; Sync from Receipts ({priceDatabase.length} prices)
                       </button>
