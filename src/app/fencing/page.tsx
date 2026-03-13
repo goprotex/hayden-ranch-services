@@ -17,7 +17,7 @@ import {
 import { generateFenceBidPDF, calculateSectionMaterials, calculateLaborEstimate, buildSiteAdjustments, type FenceBidSection, type BidGate, type FenceBidData, type TopWireType } from '@/lib/fencing/fence-bid-pdf';
 import { loadProductPhotos } from '@/lib/fencing/product-photos';
 import type { DrawnLine, VertexAngle, TerrainSuggestion, ElevationSegment, FenceMapHandle, MapGate } from '@/components/fencing/FenceMap';
-import type { FenceType, FenceHeight } from '@/types';
+import type { FenceType, FenceHeight, FencePointType } from '@/types';
 
 const FenceMap = dynamic(() => import('@/components/fencing/FenceMap'), {
   ssr: false,
@@ -127,6 +127,8 @@ export default function FencingPage() {
   const [drawnLines, setDrawnLines] = useState<DrawnLine[]>([]);
   const [vertexAngles, setVertexAngles] = useState<VertexAngle[]>([]);
   const [braceRecommendations, setBraceRecommendations] = useState<BraceRecommendation[]>([]);
+  // Manually placed map points (separate from auto-detected braces so they survive line redraws)
+  const [manualMapPoints, setManualMapPoints] = useState<{ id: string; type: FencePointType }[]>([]);
 
   // Terrain analysis
   const [terrainSuggestion, setTerrainSuggestion] = useState<TerrainSuggestion | null>(null);
@@ -323,37 +325,58 @@ export default function FencingPage() {
     const wireTieCostPerFt = (findPrice('wire_tie') * tiesPerPost) / tPostSpacing;
     // Estimated total footage for per-foot normalization
     const estTotalFeet = sections.reduce((s, c) => s + c.linearFeet, 0) || 1000;
-    // Brace/termination points: 2 ends + mid-run splices every 660'
-    const estBraceCount = 2 + Math.max(0, Math.floor(estTotalFeet / 660) - 1);
+    // Actual brace count from auto-detected + manually placed map points
+    const autoHBraces = braceRecommendations.filter(b => b.type === 'h_brace' || b.type === 'n_brace').length;
+    const autoCornerBraces = braceRecommendations.filter(b => b.type === 'corner_brace').length;
+    const manualHBraces = manualMapPoints.filter(p => p.type === 'h_brace' || p.type === 'n_brace').length;
+    const manualCornerBraces = manualMapPoints.filter(p => p.type === 'corner_brace').length;
+    const manualDoubleH = manualMapPoints.filter(p => p.type === 'double_h').length;
+    const manualLinePosts = manualMapPoints.filter(p => p.type === 'line_post').length;
+    const manualKickers = manualMapPoints.filter(p => p.type === 'kicker').length;
+    const manualWaterGaps = manualMapPoints.filter(p => p.type === 'water_gap').length;
+    const actualHBraces = autoHBraces + manualHBraces + 2; // +2 end assemblies
+    const actualCornerBraces = autoCornerBraces + manualCornerBraces;
+    const actualBraceCount = actualHBraces + actualCornerBraces + (manualDoubleH * 2); // double_h = 2 assemblies
     // Tensioners: 1 per horizontal strand per brace/termination point
     const tensionersPerFt = includeTensioners
-      ? (findPrice('tensioner') * horizStrands * estBraceCount) / estTotalFeet
+      ? (findPrice('tensioner') * horizStrands * actualBraceCount) / estTotalFeet
       : 0;
     // Spring indicators: 1 per strand per brace point
     const springIndicatorsPerFt = includeSpringIndicators
-      ? (findPrice('spring_tension_indicator') * horizStrands * estBraceCount) / estTotalFeet
+      ? (findPrice('spring_tension_indicator') * horizStrands * actualBraceCount) / estTotalFeet
       : 0;
-    // Post caps: 1 per line post
+    // Post caps: 1 per line post + 2 per brace assembly
     const postCapsCostPerFt = includePostCaps
-      ? findPrice('post_cap') / linePostSpacing
+      ? (findPrice('post_cap') / linePostSpacing) + (actualBraceCount * 2 * findPrice('post_cap')) / estTotalFeet
       : 0;
     // Concrete fill (inside tube): only for square tube posts
     const concreteFillCostPerFt = (concreteFillPosts && postSpec?.shape === 'square')
       ? findPrice('concrete_fill_post') / linePostSpacing
       : 0;
-    // Brace diagonal pipe cost: each brace uses 1 rail + 1 welded diagonal (10' each), cut from same pipe joints
+    // Brace assembly cost: each brace has 2 posts + rail pipe + diagonal pipe (10' pieces cut from joints)
     const bracePiecesPerJoint = Math.floor(jointLen / 10);
-    const bracePipeCostPerFt = bracePiecesPerJoint > 0
-      ? (2 * jointPrice / bracePiecesPerJoint) / linePostSpacing
-      : 0;
-    const hardwareCostPerFt = clipsCostPerFt + wireTieCostPerFt + tensionersPerFt + bracePipeCostPerFt;
-    const accessoryCostPerFt = postCapsCostPerFt + springIndicatorsPerFt + concreteFillCostPerFt;
+    const bracePipeCostEach = bracePiecesPerJoint > 0 ? (2 * jointPrice / bracePiecesPerJoint) : 0;
+    const bracePostCostEach = 2 * pricePerPost;
+    const braceConcreteCostEach = 2 * bagsPerBracePost * findPrice('concrete_bag');
+    const braceAssemblyCostEach = bracePipeCostEach + bracePostCostEach + braceConcreteCostEach;
+    const braceCostPerFt = (actualBraceCount * braceAssemblyCostEach) / estTotalFeet;
+    // Extra manual line posts & kickers (on top of spacing-based count)
+    const extraPostCount = manualLinePosts + manualKickers;
+    const extraPostCostPerFt = (extraPostCount * pricePerPost) / estTotalFeet;
+    const extraPostConcreteCostPerFt = (extraPostCount * bagsPerLinePost * findPrice('concrete_bag')) / estTotalFeet;
+    // Kicker brace hardware
+    const kickerCostPerFt = (manualKickers * findPrice('kicker_brace')) / estTotalFeet;
+    // Water gap cable kits
+    const waterGapCostPerFt = (manualWaterGaps * findPrice('water_gap_cable')) / estTotalFeet;
+    const hardwareCostPerFt = clipsCostPerFt + wireTieCostPerFt + tensionersPerFt + kickerCostPerFt;
+    const accessoryCostPerFt = postCapsCostPerFt + springIndicatorsPerFt + concreteFillCostPerFt + waterGapCostPerFt;
 
     // Steep terrain surcharge: additional $2/ft for sections with >15% grade
     const steepSurchargePerFt = steepFootage > 0 ? (steepFootage * 2) / estTotalFeet : 0;
 
     const total = wireCostPerFt + topWireCostPerFt + tPostCostPerFt + linePostCostPerFt
-      + concreteCostPerFt + hardwareCostPerFt + accessoryCostPerFt + steepSurchargePerFt;
+      + concreteCostPerFt + extraPostCostPerFt + extraPostConcreteCostPerFt
+      + hardwareCostPerFt + accessoryCostPerFt + braceCostPerFt + steepSurchargePerFt;
     return {
       wire: Math.round(wireCostPerFt * 100) / 100,
       topWire: Math.round(topWireCostPerFt * 100) / 100,
@@ -362,13 +385,14 @@ export default function FencingPage() {
       concrete: Math.round(concreteCostPerFt * 100) / 100,
       hardware: Math.round(hardwareCostPerFt * 100) / 100,
       accessories: Math.round(accessoryCostPerFt * 100) / 100,
+      braces: Math.round(braceCostPerFt * 100) / 100,
       steepSurcharge: Math.round(steepSurchargePerFt * 100) / 100,
       total: Math.round(total * 100) / 100,
       // Expose per-post concrete bags for materialCalc
       _bagsPerLinePost: bagsPerLinePost,
       _bagsPerBracePost: bagsPerBracePost,
     };
-  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType, barbedWireType, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, steepFootage, sections, tiePattern]);
+  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType, barbedWireType, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, steepFootage, sections, tiePattern, braceRecommendations, manualMapPoints]);
 
   const baseRate = materialCostPerFoot.total + laborRate;
   const effectiveRate = useMemo(() => Math.round((materialCostPerFoot.total + laborRate * terrainMult) * 100) / 100, [materialCostPerFoot.total, laborRate, terrainMult]);
@@ -404,14 +428,21 @@ export default function FencingPage() {
       }
     }
 
-    const linePostCount = baseLinePostCount + gradeTransitionPosts;
+    // Manually placed map points
+    const extraLinePosts = manualMapPoints.filter(p => p.type === 'line_post' || p.type === 'kicker').length;
+    const waterGapCount = manualMapPoints.filter(p => p.type === 'water_gap').length;
+
+    const linePostCount = baseLinePostCount + gradeTransitionPosts + extraLinePosts;
     // T-posts go between each pair of line posts
     const spans = Math.max(0, linePostCount - 1);
     const tPostsPerSpan = Math.max(0, Math.floor(linePostSpacing / tPostSpacing) - 1);
     const tPostCount = spans * tPostsPerSpan;
-    const hBraces = braceRecommendations.filter(b => b.type === 'h_brace' || b.type === 'n_brace').length + 2;
-    const cornerBraces = braceRecommendations.filter(b => b.type === 'corner_brace').length;
-    const totalBraces = hBraces + cornerBraces;
+    const hBraces = braceRecommendations.filter(b => b.type === 'h_brace' || b.type === 'n_brace').length
+      + manualMapPoints.filter(p => p.type === 'h_brace' || p.type === 'n_brace').length + 2;
+    const cornerBraces = braceRecommendations.filter(b => b.type === 'corner_brace').length
+      + manualMapPoints.filter(p => p.type === 'corner_brace').length;
+    const doubleHBraces = manualMapPoints.filter(p => p.type === 'double_h').length;
+    const totalBraces = hBraces + cornerBraces + (doubleHBraces * 2);
     const wireRolls = Math.ceil((totalFeet * 1.1) / (fenceType.startsWith('stay_tuff') ? selectedStayTuff.rollLength : 330));
 
     // Concrete bags: diameter-based calculation from materialCostPerFoot
@@ -444,14 +475,16 @@ export default function FencingPage() {
     return {
       linePostCount,
       gradeTransitionPosts,
+      extraLinePosts,
       tPostCount: Math.max(0, tPostCount),
-      hBraces, cornerBraces, totalBraces,
+      hBraces, cornerBraces, doubleHBraces, totalBraces,
+      waterGapCount,
       wireRolls, concreteBags,
       postCapsQty, tensionersQty, springIndicatorsQty,
       concreteFillPostsQty, concreteFillBracesQty,
       horizStrands,
     };
-  }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations, fenceType, selectedStayTuff, materialCostPerFoot, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, postMaterial, terrainSuggestion]);
+  }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations, manualMapPoints, fenceType, selectedStayTuff, materialCostPerFoot, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, postMaterial, terrainSuggestion]);
 
   // Auto-calculate timeline from labor estimate
   const tiesPerLinePost = tiePattern === 'every_strand' ? materialCalc.horizStrands
@@ -838,20 +871,46 @@ export default function FencingPage() {
                 onMapCapture={(dataUrl) => { setMapImages(prev => [...prev, dataUrl]); }}
                 onGatesPlaced={handleGatesPlaced}
                 onAddPointOnLine={(coord, type, lineId) => {
-                  if (type === 'h_brace' || type === 'n_brace' || type === 'corner_brace') {
-                    const spec = BRACE_SPECS.find(b => b.id === type) || BRACE_SPECS[0];
-                    setBraceRecommendations(prev => [...prev, {
-                      type: type as 'h_brace' | 'n_brace' | 'corner_brace',
-                      label: spec.label,
-                      angleDegrees: type === 'corner_brace' ? 90 : 180,
-                      spec,
-                    }]);
-                  } else if (type === 'gate') {
+                  if (type === 'gate') {
                     const defaultSpec = GATE_SPECS.find(s => s.size === '10ft') || GATE_SPECS[3];
                     setGates(p => [...p, {
                       id: uid(), type: defaultSpec.label, width: defaultSpec.widthFeet,
                       cost: defaultSpec.defaultPrice + defaultSpec.defaultInstallCost,
                     }]);
+                  } else {
+                    // Track all non-gate manual points for pricing
+                    setManualMapPoints(prev => [...prev, { id: uid(), type }]);
+                  }
+                }}
+                onPointTypeChange={(coord, newType, oldType) => {
+                  if (newType === oldType) return;
+                  // If changed TO gate, add a gate line item
+                  if (newType === 'gate') {
+                    const defaultSpec = GATE_SPECS.find(s => s.size === '10ft') || GATE_SPECS[3];
+                    setGates(p => [...p, {
+                      id: uid(), type: defaultSpec.label, width: defaultSpec.widthFeet,
+                      cost: defaultSpec.defaultPrice + defaultSpec.defaultInstallCost,
+                    }]);
+                  }
+                  // Add the new type as a manual point (for non-gate)
+                  if (newType !== 'gate') {
+                    setManualMapPoints(prev => [...prev, { id: uid(), type: newType }]);
+                  }
+                  // Remove one instance of the old type from manual points or auto braces
+                  if (oldType !== 'gate') {
+                    setManualMapPoints(prev => {
+                      const idx = prev.findIndex(p => p.type === oldType);
+                      if (idx >= 0) return prev.filter((_, i) => i !== idx);
+                      return prev;
+                    });
+                    // Also try removing from auto braces if it was an auto-detected brace
+                    if (oldType === 'h_brace' || oldType === 'n_brace' || oldType === 'corner_brace') {
+                      setBraceRecommendations(prev => {
+                        const idx = prev.findIndex(b => b.type === oldType);
+                        if (idx >= 0) return prev.filter((_, i) => i !== idx);
+                        return prev;
+                      });
+                    }
                   }
                 }}
               />
@@ -1158,7 +1217,8 @@ export default function FencingPage() {
                     { label: `T-Posts (${tPostRec.label} @ ${tPostSpacing}' spacing)`, value: materialCostPerFoot.tPosts },
                     { label: `Line Posts (${POST_MATERIALS.find(p => p.id === postMaterial)?.label ?? postMaterial} @ ${linePostSpacing}')`, value: materialCostPerFoot.linePosts },
                     { label: `Concrete${soilMultiplier > 1 ? ` (${soilMultiplier}x soil adj.)` : ''}`, value: materialCostPerFoot.concrete },
-                    { label: 'Hardware (clips, ties)', value: materialCostPerFoot.hardware },
+                    { label: `Braces (${materialCalc.totalBraces} assemblies)`, value: materialCostPerFoot.braces },
+                    { label: 'Hardware (clips, ties, kickers)', value: materialCostPerFoot.hardware },
                     ...(materialCostPerFoot.accessories > 0 ? [{ label: 'Accessories (caps, tensioners, indicators)', value: materialCostPerFoot.accessories }] : []),
                     ...(materialCostPerFoot.steepSurcharge > 0 ? [{ label: `Steep Grade Surcharge (${steepFootage}' >15%)`, value: materialCostPerFoot.steepSurcharge }] : []),
                   ].map(row => (

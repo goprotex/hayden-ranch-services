@@ -22,7 +22,7 @@ interface FenceMapProps {
   onTerrainAnalyzed?: (analysis: TerrainSuggestion) => void;
   onMapCapture?: (dataUrl: string) => void;
   onGatesPlaced?: (gates: MapGate[]) => void;
-  onPointTypeChange?: (coordinate: [number, number], type: FencePointType) => void;
+  onPointTypeChange?: (coordinate: [number, number], newType: FencePointType, oldType: FencePointType) => void;
   /** Called when a new point is added along a fence line (for gates, braces, etc.) */
   onAddPointOnLine?: (coordinate: [number, number], type: FencePointType, nearestLineId: string) => void;
   /** Spacing (ft) between line posts — used to show post markers on the map */
@@ -372,12 +372,13 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
           container.querySelectorAll('button[data-pt]').forEach(btn => {
             btn.addEventListener('click', () => {
               const newType = btn.getAttribute('data-pt') as FencePointType;
+              const oldType = activeType as FencePointType;
               setPointOverrides(prev => {
                 const next = new Map(prev);
                 next.set(key, newType);
                 return next;
               });
-              onPointTypeChange?.(brace.coordinate, newType);
+              onPointTypeChange?.(brace.coordinate, newType, oldType);
               popup.remove();
             });
           });
