@@ -13,6 +13,10 @@ import { DEFAULT_MATERIAL_PRICES, MaterialPrice } from '@/lib/fencing/fence-mate
 import { matchReceiptsToCatalog } from '@/lib/pricing/receipt-matcher';
 import { fetchSharedPrices, saveSharedPrices, fetchSharedReceipts, saveSharedReceipts } from '@/lib/pricing/shared-pricing';
 
+// Module-level cooldown timestamp — kept outside Zustand to avoid
+// triggering persist serialization cycles.
+let _lastPriceSaveAt = 0;
+
 interface AppState {
   // Projects
   projects: Project[];
@@ -139,12 +143,10 @@ export const useAppStore = create<AppState>()(
       },
 
       // Shared pricing — persist to server so all users get the same prices
-      _lastPriceSaveAt: 0,
       loadSharedPrices: async () => {
         // Skip loading if we just saved (cooldown prevents stale server data
         // from overwriting freshly-synced receipt prices)
-        const elapsed = Date.now() - (get() as unknown as { _lastPriceSaveAt: number })._lastPriceSaveAt;
-        if (elapsed < 60_000) return;
+        if (Date.now() - _lastPriceSaveAt < 60_000) return;
 
         const result = await fetchSharedPrices();
         // Only overwrite local state with actually-saved server data,
@@ -160,7 +162,7 @@ export const useAppStore = create<AppState>()(
       saveSharedPricesToServer: async (): Promise<boolean> => {
         const prices = get().materialPrices;
         const ok = await saveSharedPrices(prices);
-        if (ok) set(() => ({ _lastPriceSaveAt: Date.now() } as unknown as Partial<AppState>));
+        if (ok) _lastPriceSaveAt = Date.now();
         return ok;
       },
 
