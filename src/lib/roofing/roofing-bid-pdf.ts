@@ -267,7 +267,7 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   const hasMichroma = await registerMichromaFont(doc);
   const brandFont = hasMichroma ? 'Michroma' : 'helvetica';
   // Michroma is ~30% wider than Helvetica — scale font sizes down to prevent overflow
-  const sz = (s: number) => { sz(hasMichroma ? s * 0.78 : s); };
+  const sz = (s: number) => { doc.setFontSize(hasMichroma ? s * 0.78 : s); };
 
   // Header
   doc.setFillColor(30, 41, 59);
