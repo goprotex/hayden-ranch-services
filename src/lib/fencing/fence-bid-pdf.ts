@@ -412,6 +412,24 @@ async function loadLogoDataUrl(): Promise<string | null> {
   } catch { return null; }
 }
 
+// Register Michroma font with jsPDF (matches website branding)
+async function registerMichromaFont(doc: jsPDF): Promise<boolean> {
+  try {
+    const resp = await fetch('/fonts/Michroma-Regular.ttf');
+    if (!resp.ok) return false;
+    const buf = await resp.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const base64 = btoa(binary);
+    doc.addFileToVFS('Michroma-Regular.ttf', base64);
+    doc.addFont('Michroma-Regular.ttf', 'Michroma', 'normal');
+    doc.addFont('Michroma-Regular.ttf', 'Michroma', 'bold');
+    doc.addFont('Michroma-Regular.ttf', 'Michroma', 'italic');
+    return true;
+  } catch { return false; }
+}
+
 // Main PDF generator
 // ============================================================
 
@@ -425,6 +443,10 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
 
   // Load logo
   const logoDataUrl = await loadLogoDataUrl();
+
+  // Register brand font (falls back to helvetica if unavailable)
+  const hasMichroma = await registerMichromaFont(doc);
+  const brandFont = hasMichroma ? 'Michroma' : 'helvetica';
 
   // ── Page 1: Header ──
   // Dark navy banner
@@ -440,11 +462,11 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   // Company name & contact
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(22);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.text(COMPANY.name, mx + textOffsetX, y + 3);
 
   doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(brandFont, 'normal');
   doc.setTextColor(200, 210, 220);
   doc.text(COMPANY.address, mx + textOffsetX, y + 11);
   doc.text(`${COMPANY.phone}  •  ${COMPANY.email}`, mx + textOffsetX, y + 16);
@@ -464,7 +486,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   // ── Title ──
   doc.setTextColor(27, 38, 54);
   doc.setFontSize(15);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   const title = data.fenceType.toUpperCase() + ' INSTALLATION PROPOSAL';
   doc.text(title, pw / 2, y, { align: 'center' });
   y += 10;
@@ -478,35 +500,35 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
 
   // Left column: Prepared For
   doc.setFontSize(7);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(150, 150, 150);
   doc.text('PREPARED FOR', mx + 5, y + 5);
 
   doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(27, 38, 54);
   doc.text(data.clientName || 'Customer', mx + 5, y + 12);
 
   if (data.propertyAddress) {
     doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     doc.setTextColor(80, 80, 80);
     doc.text(data.propertyAddress, mx + 5, y + 17);
   }
 
   // Right column: Project Name
   doc.setFontSize(7);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(150, 150, 150);
   doc.text('PROJECT', mx + cw / 2 + 5, y + 5);
 
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(27, 38, 54);
   doc.text(data.projectName || 'Fence Installation', mx + cw / 2 + 5, y + 12);
 
   doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(brandFont, 'normal');
   doc.setTextColor(80, 80, 80);
   const specLine = [data.fenceHeight, data.stayTuffModel].filter(Boolean).join(' — ');
   if (specLine) doc.text(specLine, mx + cw / 2 + 5, y + 17);
@@ -515,12 +537,12 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
 
   // ── Project Overview ──
   doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.text('PROJECT OVERVIEW', mx, y);
   y += 6;
 
   doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(brandFont, 'normal');
   doc.setTextColor(60, 60, 60);
   const overviewLines = doc.splitTextToSize(data.projectOverview, cw);
   doc.text(overviewLines, mx, y);
@@ -543,7 +565,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
 
         doc.setTextColor(27, 38, 54);
         doc.setFontSize(11);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(brandFont, 'bold');
         if (mi === 0) {
           doc.text(data.mapImages.length === 1 ? 'SITE MAP & FENCE LAYOUT' : `SITE MAP & FENCE LAYOUT (${mi + 1} of ${data.mapImages.length})`, mx, y);
         } else {
@@ -557,7 +579,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
         // Legend on first image only
         if (mi === 0) {
           doc.setFontSize(7);
-          doc.setFont('helvetica', 'italic');
+          doc.setFont(brandFont, 'italic');
           doc.setTextColor(100, 100, 100);
           let legend = 'Satellite view showing fence line placement, gate locations, and brace positions. Orange = fence line, Red = end posts, Blue = corner braces, Green = H-braces, Yellow = gates.';
           if (data.enclosedAcreage && data.enclosedAcreage > 0) {
@@ -579,12 +601,12 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     y = ensureSpace(doc, y, 25);
     doc.setTextColor(27, 38, 54);
     doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.text('STAY-TUFF 20 YEAR LIMITED WARRANTY', mx, y);
     y += 5;
 
     doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     doc.setTextColor(60, 60, 60);
     const warrantyText = `Stay-Tuff field fence is Made in USA and comes with a 20 Year Limited Warranty against manufacturing defects. This warranty covers the fence wire against rust-through, wire breakage due to manufacturing defects, and loss of structural integrity under normal agricultural use. The Stay-Tuff warranty is transferable to subsequent property owners. Complete warranty details available at staytuff.com/warranty-pdf.`;
     const wLines = doc.splitTextToSize(warrantyText, cw);
@@ -602,13 +624,13 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     doc.rect(mx, y - 3, cw, 9, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.text('YOUR FENCE MATERIALS', mx + 4, y + 3);
     y += 14;
 
     doc.setTextColor(60, 60, 60);
     doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'italic');
+    doc.setFont(brandFont, 'italic');
     const introText = `Below are the actual Stay-Tuff products specified for your ${data.fenceType} installation. All wire is Made in USA with a 20 Year Limited Warranty.`;
     const introLines = doc.splitTextToSize(introText, cw);
     doc.text(introLines, mx, y);
@@ -652,7 +674,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
 
         // Label below photo
         doc.setFontSize(7);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(brandFont, 'bold');
         doc.setTextColor(27, 38, 54);
         const labelLines = doc.splitTextToSize(photos[i].label, colW);
         doc.text(labelLines, imgX + colW / 2, y + imgH + 3, { align: 'center' });
@@ -679,13 +701,13 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     doc.rect(mx, y - 3, cw, 9, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.text('PROPERTY RESEARCH & SITE ANALYSIS', mx + 4, y + 3);
     y += 12;
 
     doc.setTextColor(60, 60, 60);
     doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'italic');
+    doc.setFont(brandFont, 'italic');
     doc.text('Before designing your fence, our team researched your property using the USDA National Resources Conservation Service', mx, y);
     y += 3.5;
     doc.text('(NRCS) Web Soil Survey and supplemental USDA Soil Data Access databases. Here is what we found:', mx, y);
@@ -733,20 +755,20 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
 
           // Label
           doc.setFontSize(6.5);
-          doc.setFont('helvetica', 'bold');
+          doc.setFont(brandFont, 'bold');
           doc.setTextColor(100, 110, 130);
           doc.text(boxes[i].label.toUpperCase(), bx + 3, y + 6);
 
           // Value
           doc.setFontSize(9);
-          doc.setFont('helvetica', 'bold');
+          doc.setFont(brandFont, 'bold');
           doc.setTextColor(27, 38, 54);
           doc.text(boxes[i].value, bx + 3, y + 11.5);
 
           // Note
           if (boxes[i].note) {
             doc.setFontSize(6);
-            doc.setFont('helvetica', 'italic');
+            doc.setFont(brandFont, 'italic');
             doc.setTextColor(130, 130, 150);
             doc.text(boxes[i].note, bx + 3, y + 15);
           }
@@ -760,12 +782,12 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       y = ensureSpace(doc, y, 20);
       doc.setTextColor(27, 38, 54);
       doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.text('Understanding Your Land', mx, y);
       y += 5;
 
       doc.setFontSize(8.5);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(brandFont, 'normal');
       doc.setTextColor(55, 55, 60);
       const soilLines = doc.splitTextToSize(data.soilNarrative, cw);
       for (let i = 0; i < soilLines.length; i++) {
@@ -781,12 +803,12 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       y = ensureSpace(doc, y, 25);
       doc.setTextColor(27, 38, 54);
       doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.text('Soil Profile', mx, y);
       y += 5;
 
       doc.setFontSize(8.5);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(brandFont, 'normal');
       doc.setTextColor(55, 55, 60);
 
       if (site.taxonomy) {
@@ -821,17 +843,17 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       if (site.components && site.components.length > 0) {
         y = ensureSpace(doc, y, 10);
         doc.setFontSize(8.5);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(brandFont, 'normal');
         const compIntro = `The soil survey divides your property's soil map unit into ${site.components.length} component${site.components.length > 1 ? 's' : ''}:`;
         doc.text(compIntro, mx, y);
         y += 4.5;
 
         for (const comp of site.components) {
           y = ensureSpace(doc, y, 5);
-          doc.setFont('helvetica', 'bold');
+          doc.setFont(brandFont, 'bold');
           doc.setFontSize(8);
           doc.text(`• ${comp.name}`, mx + 3, y);
-          doc.setFont('helvetica', 'normal');
+          doc.setFont(brandFont, 'normal');
           const compDetail = ` — ${comp.percent}% of area${comp.drainage ? ', ' + comp.drainage + ' drainage' : ''}${comp.hydric === 'Yes' ? ', hydric (wetland)' : ''}`;
           doc.text(compDetail, mx + 3 + doc.getTextWidth(`• ${comp.name}`), y);
           y += 4;
@@ -845,7 +867,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       y = ensureSpace(doc, y, 25);
       doc.setTextColor(27, 38, 54);
       doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.text('What\'s Below the Surface', mx, y);
       y += 5;
 
@@ -951,7 +973,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
         doc.line(bracketX, bedrockY + postRockH, bracketX + 1.5, bedrockY + postRockH); // bottom tick
         // "X' INTO ROCK" label — reflects actual penetration
         doc.setFontSize(5.5);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(brandFont, 'bold');
         doc.setTextColor(220, 180, 50);
         const rockMid = bedrockY + postRockH / 2 + 1.5;
         const rpFt = Math.floor(actualRockPenetration / 12);
@@ -977,7 +999,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
         doc.triangle(arrowX - 1, groundY + 1.5, arrowX + 1, groundY + 1.5, arrowX, groundY, 'F');
 
         doc.setFontSize(8);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(brandFont, 'bold');
         doc.setTextColor(180, 60, 40);
         const midArrow = (groundY + bedrockY) / 2;
         doc.text(depthLabel, arrowX + 3, midArrow + 1);
@@ -998,17 +1020,17 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
         const totalIn = totalPostDepthIn % 12;
         const totalLabel = totalFt > 0 ? `${totalFt}' ${totalIn > 0 ? totalIn + '"' : ''}`.trim() : `${totalPostDepthIn}"`;
         doc.setFontSize(7);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(brandFont, 'bold');
         doc.setTextColor(70, 70, 70);
         const mid2 = (groundY + postBottomY) / 2;
         doc.text(`${totalLabel} total`, arrow2X + 3, mid2 - 1);
         doc.setFontSize(6);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(brandFont, 'normal');
         doc.text('post depth', arrow2X + 3, mid2 + 2.5);
 
         // ── Labels ──
         doc.setFontSize(7);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(brandFont, 'bold');
 
         // "GROUND LEVEL"
         doc.setTextColor(80, 120, 50);
@@ -1032,7 +1054,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
         // "ANCHORED IN ROCK" label near the rock portion
         doc.setTextColor(220, 180, 50);
         doc.setFontSize(5.5);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(brandFont, 'bold');
         doc.text('ANCHORED IN ROCK', postX + postW + 2, bedrockY + postRockH / 2 + 1);
 
         // ── Severity indicator badge ──
@@ -1044,13 +1066,13 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
         const badgeY = y + vizH - 3;
         doc.roundedRect(badgeX, badgeY, badgeW + 2, 5, 1, 1, 'F');
         doc.setFontSize(6.5);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(brandFont, 'bold');
         doc.setTextColor(255, 255, 255);
         doc.text(severity, badgeX + 1 + badgeW / 2, badgeY + 3.5, { align: 'center' });
 
         // Standard post depth reference
         doc.setFontSize(6);
-        doc.setFont('helvetica', 'italic');
+        doc.setFont(brandFont, 'italic');
         doc.setTextColor(120, 120, 120);
         doc.text('Standard post depth: 30–36"', vizX + vizW - 2, badgeY + 3.5, { align: 'right' });
 
@@ -1058,7 +1080,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       }
 
       doc.setFontSize(8.5);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(brandFont, 'normal');
       doc.setTextColor(55, 55, 60);
 
       const subParts: string[] = [];
@@ -1094,12 +1116,12 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       y = ensureSpace(doc, y, 25);
       doc.setTextColor(27, 38, 54);
       doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.text('Terrain, Drainage & Water', mx, y);
       y += 5;
 
       doc.setFontSize(8.5);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(brandFont, 'normal');
       doc.setTextColor(55, 55, 60);
 
       const tdParts: string[] = [];
@@ -1147,12 +1169,12 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       y = ensureSpace(doc, y, 30);
       doc.setTextColor(27, 38, 54);
       doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.text('What This Means for Your Fence & Pricing', mx, y);
       y += 5;
 
       doc.setFontSize(8.5);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(brandFont, 'normal');
       doc.setTextColor(55, 55, 60);
       const introText = 'Based on our property research, we identified the following site conditions that directly affect installation approach and pricing. We believe in transparent pricing — you should know exactly WHY your bid is what it is.';
       const introLines = doc.splitTextToSize(introText, cw);
@@ -1179,19 +1201,19 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
 
         // Title
         doc.setFontSize(8.5);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(brandFont, 'bold');
         doc.setTextColor(27, 38, 54);
         doc.text(adj.label, mx + 8, y + 2);
 
         // Data point badge
         doc.setFontSize(7);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(brandFont, 'normal');
         doc.setTextColor(140, 90, 30);
         doc.text(adj.dataPoint, mx + 8, y + 6);
 
         // Impact text
         doc.setFontSize(8);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(brandFont, 'normal');
         doc.setTextColor(60, 60, 65);
         for (let i = 0; i < cardLines.length; i++) {
           doc.text(cardLines[i], mx + 8, y + 10 + i * 3.5);
@@ -1242,11 +1264,11 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       doc.rect(mx, y, cw, 2.5, 'F');
 
       doc.setFontSize(8.5);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.setTextColor(27, 38, 54);
       doc.text('Our Material Selection — Tailored to Your Property', mx + 4, y + 7);
 
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(brandFont, 'normal');
       doc.setFontSize(8);
       doc.setTextColor(50, 60, 55);
       doc.text(closerLines, mx + 4, y + 11);
@@ -1261,7 +1283,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     y = ensureSpace(doc, y, 40);
     doc.setTextColor(27, 38, 54);
     doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.text('MATERIAL SPECIFICATIONS', mx, y);
     y += 6;
 
@@ -1278,7 +1300,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     ];
 
     doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     doc.setTextColor(60, 60, 60);
     for (const line of specLines) {
       y = ensureSpace(doc, y, 5);
@@ -1292,7 +1314,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   y = ensureSpace(doc, y, 60);
   doc.setTextColor(27, 38, 54);
   doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.text('INVESTMENT SUMMARY', mx, y);
   y += 8;
 
@@ -1301,7 +1323,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   doc.rect(mx, y - 4, cw, 8, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.text('Section', mx + 3, y);
   doc.text('Linear Feet', mx + cw * 0.55, y);
   doc.text('Total', mx + cw - 3, y, { align: 'right' });
@@ -1310,7 +1332,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   // Section rows
   let totalLinearFeet = 0;
   doc.setTextColor(50, 50, 50);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(brandFont, 'normal');
 
   for (let i = 0; i < data.sections.length; i++) {
     const sec = data.sections[i];
@@ -1343,7 +1365,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   y = ensureSpace(doc, y, 8);
   doc.setFillColor(230, 235, 240);
   doc.rect(mx, y - 4, cw, 8, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setFontSize(9);
   doc.setTextColor(27, 38, 54);
   doc.text(`Total Linear Feet: ${totalLinearFeet.toLocaleString()}`, mx + 3, y);
@@ -1360,14 +1382,14 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     if (acc.concreteFillBraces > 0) accRows.push([`Concrete Fill — Braces (${acc.concreteFillBraces})`, acc.concreteFillBraces * 12]);
     if (accRows.length > 0) {
       y = ensureSpace(doc, y, 8 + accRows.length * 7);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.setFontSize(9);
       doc.setTextColor(27, 38, 54);
       doc.text('Accessories', mx + 3, y);
       y += 7;
       for (const [label, cost] of accRows) {
         y = ensureSpace(doc, y, 7);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(brandFont, 'normal');
         doc.setFontSize(8);
         doc.setTextColor(80, 80, 80);
         doc.text(`  ${label}`, mx + 3, y);
@@ -1380,7 +1402,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   // Painting add-on (if selected)
   if (data.painting) {
     y = ensureSpace(doc, y, 22);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.setFontSize(9);
     doc.setTextColor(27, 38, 54);
     doc.text('Painting', mx + 3, y);
@@ -1391,7 +1413,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     ];
     for (const [label, cost] of paintLines) {
       y = ensureSpace(doc, y, 7);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(brandFont, 'normal');
       doc.setFontSize(8);
       doc.setTextColor(80, 80, 80);
       doc.text(`  ${label}`, mx + 3, y);
@@ -1405,7 +1427,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     y = ensureSpace(doc, y, 10);
     doc.setFillColor(255, 240, 240);
     doc.rect(mx, y - 4, cw, 8, 'F');
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.setFontSize(9);
     doc.setTextColor(180, 40, 40);
     const steepTotal = data.steepFootage * data.steepSurchargePerFoot;
@@ -1419,7 +1441,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   doc.rect(mx, y - 4, cw, 10, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.text('PROJECT TOTAL', mx + 3, y + 1);
   doc.text(`$${data.projectTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y + 1, { align: 'right' });
   y += 12;
@@ -1448,7 +1470,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     doc.rect(mx, y, boxW, 2.5, 'F');
 
     doc.setFontSize(7);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.setTextColor(34, 139, 84);
     doc.text('THIS FENCE', mx + 4, y + 7);
 
@@ -1457,7 +1479,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     doc.text(`$${costPerFtPerYear.toFixed(2)}/ft/yr`, mx + 4, y + 14);
 
     doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     doc.setTextColor(80, 80, 80);
     doc.text(`$${costPerFt.toFixed(2)}/ft  ×  ${lifespan} year lifespan`, mx + 4, y + 19);
 
@@ -1469,7 +1491,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     doc.rect(rx, y, boxW, 2.5, 'F');
 
     doc.setFontSize(7);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.setTextColor(180, 60, 40);
     doc.text('STANDARD BARBED WIRE', rx + 4, y + 7);
 
@@ -1478,7 +1500,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     doc.text(`$${altCostPerFtPerYear.toFixed(2)}/ft/yr`, rx + 4, y + 14);
 
     doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     doc.setTextColor(80, 80, 80);
     doc.text(`$${altCostPerFt.toFixed(2)}/ft  ×  ${altLifespan} year lifespan`, rx + 4, y + 19);
 
@@ -1489,7 +1511,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       const savings = altCostPerFtPerYear - costPerFtPerYear;
       const pctSavings = Math.round((savings / altCostPerFtPerYear) * 100);
       doc.setFontSize(7.5);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.setTextColor(34, 139, 84);
       doc.text(`Your fence costs ${pctSavings}% less per year than a standard barbed wire installation that needs replacing in ${altLifespan} years.`, mx, y);
       y += 5;
@@ -1499,7 +1521,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     if (data.enclosedAcreage && data.enclosedAcreage > 0) {
       const costPerAcre = data.projectTotal / data.enclosedAcreage;
       doc.setFontSize(7.5);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(brandFont, 'normal');
       doc.setTextColor(60, 60, 60);
       doc.text(`Enclosing ${data.enclosedAcreage.toFixed(1)} acres  —  $${costPerAcre.toLocaleString(undefined, { maximumFractionDigits: 0 })}/acre  —  $${(costPerAcre / lifespan).toFixed(0)}/acre/year over the fence lifetime.`, mx, y);
       y += 5;
@@ -1519,12 +1541,12 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     doc.roundedRect(mx, y - 2, cw, 12, 2, 2, 'S');
 
     doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.setTextColor(130, 90, 10);
     doc.text(`Book before ${data.seasonalPricingDeadline} and lock in current material pricing.`, mx + 5, y + 4);
 
     doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     doc.setTextColor(100, 80, 30);
     doc.text('Material costs are subject to change after this date. See Terms & Conditions for details.', mx + 5, y + 8);
 
@@ -1535,7 +1557,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   y = ensureSpace(doc, y, 40);
   doc.setTextColor(27, 38, 54);
   doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.text('PAYMENT SCHEDULE', mx, y);
   y += 8;
 
@@ -1551,7 +1573,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       doc.setFillColor(245, 247, 250);
       doc.rect(mx, y - 4, cw, 7, 'F');
     }
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     doc.setFontSize(9);
     doc.setTextColor(50, 50, 50);
     doc.text(payRows[i][0], mx + 3, y);
@@ -1564,7 +1586,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   doc.rect(mx, y - 4, cw, 8, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.text('PROJECT TOTAL', mx + 3, y);
   doc.text(`$${data.projectTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y, { align: 'right' });
   y += 14;
@@ -1579,13 +1601,13 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     doc.rect(mx, y - 3, cw, 9, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.text('PROJECT TIMELINE', mx + 4, y + 3);
     y += 14;
 
     // Summary line
     doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     doc.setTextColor(60, 60, 60);
     const rangeHigh = le.workDays + Math.ceil(le.workDays * 0.25);
     doc.text(`Estimated Duration: ${le.workDays} to ${rangeHigh} working days  •  ${le.workDayHours}-hour work days  •  ${Math.round(le.totalHours * 10) / 10} total crew-hours`, mx, y);
@@ -1667,16 +1689,16 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       doc.circle(mx + 4, y + 1.5, 3.5, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(7);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.text(phase.icon, mx + 4, y + 2.5, { align: 'center' });
 
       // Phase name & duration
       doc.setTextColor(27, 38, 54);
       doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.text(phase.name, mx + 12, y + 2);
 
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(brandFont, 'normal');
       doc.setFontSize(8);
       doc.setTextColor(100, 100, 100);
       doc.text(`${Math.round(phase.hours * 10) / 10} hrs (~${phaseDays} day${phaseDays !== 1 ? 's' : ''})`, mx + cw - 3, y + 2, { align: 'right' });
@@ -1691,7 +1713,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
 
       // Phase detail items
       doc.setFontSize(7);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(brandFont, 'normal');
       doc.setTextColor(120, 120, 120);
       for (const item of phase.items.slice(0, 2)) {
         const trimmed = item.length > 80 ? item.slice(0, 77) + '...' : item;
@@ -1707,7 +1729,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     doc.rect(mx, y - 3, cw, 8, 'F');
     doc.setTextColor(27, 38, 54);
     doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.text('ESTIMATED COMPLETION', mx + 3, y + 1);
     doc.text(`${le.workDays} – ${rangeHigh} working days`, mx + cw - 3, y + 1, { align: 'right' });
     y += 14;
@@ -1717,7 +1739,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   y = ensureSpace(doc, y, 30);
   doc.setTextColor(27, 38, 54);
   doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.text('DETAILED FENCE SECTIONS', mx, y);
   y += 10;
 
@@ -1728,7 +1750,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     doc.setFillColor(240, 243, 248);
     doc.rect(mx, y - 4, cw, 8, 'F');
     doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.setTextColor(27, 38, 54);
     doc.text(`${sec.name} — ${sec.linearFeet.toLocaleString()} Linear Feet`, mx + 3, y);
     y += 10;
@@ -1739,7 +1761,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       doc.rect(mx + 4, y - 4, cw - 8, 7, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(8);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.text('Material', mx + 7, y);
       doc.text('Quantity', mx + cw - 11, y, { align: 'right' });
       y += 6;
@@ -1749,7 +1771,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       const lineH = 3.2; // line height per wrapped line
 
       doc.setTextColor(50, 50, 50);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(brandFont, 'normal');
       doc.setFontSize(7.5);
       for (let i = 0; i < sec.materials.length; i++) {
         const nameLines = doc.splitTextToSize(sec.materials[i].name, nameColW);
@@ -1766,7 +1788,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
         }
 
         // Material name (wrapped, left-aligned)
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(brandFont, 'normal');
         doc.setFontSize(7.5);
         doc.setTextColor(50, 50, 50);
         for (let ln = 0; ln < nameLines.length; ln++) {
@@ -1774,7 +1796,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
         }
 
         // Quantity (wrapped, right-aligned)
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(brandFont, 'bold');
         doc.setFontSize(7.5);
         doc.setTextColor(30, 30, 30);
         for (let ln = 0; ln < qtyLines.length; ln++) {
@@ -1898,12 +1920,12 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       doc.rect(mx, y - 3, cw, 9, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.text('MATERIALS ORDER SUMMARY', mx + 4, y + 3);
       y += 12;
 
       doc.setFontSize(7.5);
-      doc.setFont('helvetica', 'italic');
+      doc.setFont(brandFont, 'italic');
       doc.setTextColor(100, 100, 100);
       doc.text(`Total project: ${totalLinearFeet.toLocaleString()} linear feet across ${data.sections.length} section${data.sections.length > 1 ? 's' : ''}`, mx, y);
       y += 5;
@@ -1912,7 +1934,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       doc.setFillColor(240, 243, 248);
       doc.rect(mx, y - 3, cw, 7, 'F');
       doc.setFontSize(8);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.setTextColor(27, 38, 54);
       doc.text('Material', mx + 3, y + 1);
       doc.text('Quantity', mx + cw - 3, y + 1, { align: 'right' });
@@ -1936,12 +1958,12 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
           doc.rect(mx, y - 3, cw, rowH, 'F');
         }
 
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(brandFont, 'normal');
         doc.setFontSize(8);
         doc.setTextColor(40, 40, 40);
         doc.text(nameLines, mx + 3, y);
 
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(brandFont, 'bold');
         doc.setFontSize(7.5);
         doc.setTextColor(27, 38, 54);
         doc.text(qtyLines, mx + cw - 3, y, { align: 'right' });
@@ -1959,11 +1981,11 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
 
         for (const acc of accItems) {
           y = ensureSpace(doc, y, 6);
-          doc.setFont('helvetica', 'normal');
+          doc.setFont(brandFont, 'normal');
           doc.setFontSize(8);
           doc.setTextColor(40, 40, 40);
           doc.text(acc.name, mx + 3, y);
-          doc.setFont('helvetica', 'bold');
+          doc.setFont(brandFont, 'bold');
           doc.text(String(acc.qty), mx + cw - 3, y, { align: 'right' });
           y += 5;
         }
@@ -1972,12 +1994,12 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       // Gates
       if (data.gates && data.gates.length > 0) {
         y = ensureSpace(doc, y, 6);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(brandFont, 'normal');
         doc.setFontSize(8);
         doc.setTextColor(40, 40, 40);
         for (const gate of data.gates) {
           doc.text(gate.type, mx + 3, y);
-          doc.setFont('helvetica', 'bold');
+          doc.setFont(brandFont, 'bold');
           doc.text('1', mx + cw - 3, y, { align: 'right' });
           y += 5;
         }
@@ -1986,11 +2008,11 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       // Painting
       if (data.painting) {
         y = ensureSpace(doc, y, 6);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(brandFont, 'normal');
         doc.setFontSize(8);
         doc.setTextColor(40, 40, 40);
         doc.text(`Paint — ${data.painting.color}`, mx + 3, y);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(brandFont, 'bold');
         doc.text(`${data.painting.gallons} gal`, mx + cw - 3, y, { align: 'right' });
         y += 5;
       }
@@ -2007,7 +2029,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     doc.rect(mx, y - 3, cw, 9, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.text('PERMIT & PROPERTY COMPLIANCE CHECK', mx + 4, y + 3);
     y += 14;
 
@@ -2049,19 +2071,19 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       doc.setFillColor(...item.statusColor);
       doc.circle(mx + 4, y, 2, 'F');
       doc.setFontSize(6);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.setTextColor(255, 255, 255);
       doc.text('\u2713', mx + 4, y + 0.8, { align: 'center' });
 
       // Label
       doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.setTextColor(27, 38, 54);
       doc.text(item.label, mx + 10, y + 1);
 
       // Status on its own line below the label
       doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(brandFont, 'normal');
       doc.setTextColor(...item.statusColor);
       doc.text(item.status, mx + 14, y + 6);
 
@@ -2069,7 +2091,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     }
 
     doc.setFontSize(7);
-    doc.setFont('helvetica', 'italic');
+    doc.setFont(brandFont, 'italic');
     doc.setTextColor(120, 120, 120);
     doc.text('This check is informational only. Customer is responsible for verifying all permit, HOA, and deed restriction requirements before work begins.', mx, y);
     y += 8;
@@ -2085,26 +2107,26 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     doc.rect(mx, y - 2, cw, 2.5, 'F');
 
     doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.setTextColor(27, 38, 54);
     doc.text('ANNUAL MAINTENANCE PLAN \u2014 OPTIONAL UPGRADE', mx + 5, y + 6);
 
     doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.setTextColor(59, 130, 246);
     doc.text(`$${data.maintenancePlan.annualPrice}/year`, mx + cw - 5, y + 6, { align: 'right' });
 
     y += 12;
 
     doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     doc.setTextColor(60, 60, 60);
     doc.text('Keep your fence in peak condition with an annual service visit. Includes:', mx + 5, y);
     y += 5;
 
     for (const svc of data.maintenancePlan.services) {
       doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(brandFont, 'normal');
       doc.setTextColor(50, 50, 50);
       doc.text(`\u2022  ${svc}`, mx + 8, y);
       y += 4;
@@ -2112,7 +2134,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
 
     y += 2;
     doc.setFontSize(7);
-    doc.setFont('helvetica', 'italic');
+    doc.setFont(brandFont, 'italic');
     doc.setTextColor(100, 100, 100);
     doc.text('Ask your representative to add the maintenance plan at signing. First visit scheduled 12 months after installation.', mx + 5, y);
     y += 10;
@@ -2129,12 +2151,12 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     doc.roundedRect(mx, y - 2, cw, 16, 2, 2, 'S');
 
     doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.setTextColor(180, 90, 20);
     doc.text(`Fencing a shared property line? Save ${data.referralDiscount}%`, mx + 5, y + 4);
 
     doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     doc.setTextColor(80, 60, 30);
     doc.text(`We offer a ${data.referralDiscount}% discount when adjacent landowners book together. Split the cost on shared fence lines and both save.`, mx + 5, y + 10);
 
@@ -2147,7 +2169,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
 
   doc.setTextColor(27, 38, 54);
   doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.text('TERMS AND CONDITIONS', mx, y);
   y += 10;
 
@@ -2169,7 +2191,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   );
 
   doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(brandFont, 'normal');
   doc.setTextColor(50, 50, 50);
 
   for (let i = 0; i < processedTerms.length; i++) {
@@ -2188,12 +2210,12 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
 
   doc.setTextColor(27, 38, 54);
   doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.text('ACCEPTANCE', mx, y);
   y += 8;
 
   doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(brandFont, 'normal');
   doc.setTextColor(50, 50, 50);
   const acceptText = `I/We have read, understood, and agree to all terms and conditions stated in this proposal. I/We authorize Hayden Ranch Services to proceed with the work as described. I/We acknowledge that the ${data.depositPercent}% deposit ($${data.depositAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}) is non-refundable and earned upon receipt. I/We warrant that I/we have authority to enter into this agreement and authorize work on the property.`;
   const acceptLines = doc.splitTextToSize(acceptText, cw);
@@ -2225,17 +2247,17 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
         doc.setFillColor(59, 130, 246);
         doc.circle(bx + 6, y + 5, 3.5, 'F');
         doc.setFontSize(6);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(brandFont, 'bold');
         doc.setTextColor(255, 255, 255);
         doc.text('\u2713', bx + 6, y + 6.2, { align: 'center' });
 
         doc.setFontSize(7.5);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(brandFont, 'bold');
         doc.setTextColor(27, 38, 54);
         doc.text(badges[b].label, bx + 12, y + 3);
 
         doc.setFontSize(6.5);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(brandFont, 'normal');
         doc.setTextColor(80, 80, 80);
         doc.text(badges[b].detail, bx + 12, y + 8);
       }
@@ -2282,7 +2304,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   doc.setTextColor(100, 100, 100);
   doc.text(`Questions? Contact us at ${COMPANY.phone} or ${COMPANY.email}`, pw / 2, y, { align: 'center' });
   y += 5;
-  doc.setFont('helvetica', 'italic');
+  doc.setFont(brandFont, 'italic');
   doc.text('Thank you for considering Hayden Ranch Services for your fence installation project!', pw / 2, y, { align: 'center' });
 
   // Add page numbers
@@ -2291,7 +2313,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     doc.setPage(i);
     doc.setFontSize(7);
     doc.setTextColor(150, 150, 150);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     doc.text(`Page ${i} of ${totalPages}`, pw / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' });
   }
 

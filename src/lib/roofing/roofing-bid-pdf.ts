@@ -96,7 +96,7 @@ function fmt(n: number): string {
 }
 
 // Draw roof diagram in PDF
-function drawRoofDiagram(doc: jsPDF, data: RoofBidData, startX: number, startY: number, width: number, height: number): void {
+function drawRoofDiagram(doc: jsPDF, data: RoofBidData, startX: number, startY: number, width: number, height: number, brandFont: string): void {
   const facets = data.sketchFacets;
   if (!facets || facets.length === 0) return;
 
@@ -189,18 +189,18 @@ function drawRoofDiagram(doc: jsPDF, data: RoofBidData, startX: number, startY: 
     const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
     const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
     doc.setFontSize(7);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.setTextColor(rgb[0], rgb[1], rgb[2]);
     doc.text(facet.name, cx, cy - 1.5, { align: 'center' });
     doc.setFontSize(6);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     doc.setTextColor(100, 116, 139);
     doc.text(`${facet.areaSqFt.toLocaleString()} sf \u2022 ${facet.pitch}`, cx, cy + 2.5, { align: 'center' });
   }
 
   // Title
   doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(30, 41, 59);
   doc.text('ROOF DIAGRAM', startX + width / 2, startY + height - 3, { align: 'center' });
 }
@@ -219,6 +219,24 @@ async function loadLogoDataUrl(): Promise<string | null> {
       reader.readAsDataURL(blob);
     });
   } catch { return null; }
+}
+
+// Register Michroma font with jsPDF (matches website branding)
+async function registerMichromaFont(doc: jsPDF): Promise<boolean> {
+  try {
+    const resp = await fetch('/fonts/Michroma-Regular.ttf');
+    if (!resp.ok) return false;
+    const buf = await resp.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const base64 = btoa(binary);
+    doc.addFileToVFS('Michroma-Regular.ttf', base64);
+    doc.addFont('Michroma-Regular.ttf', 'Michroma', 'normal');
+    doc.addFont('Michroma-Regular.ttf', 'Michroma', 'bold');
+    doc.addFont('Michroma-Regular.ttf', 'Michroma', 'italic');
+    return true;
+  } catch { return false; }
 }
 
 export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
@@ -242,6 +260,10 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   // Load logo
   const logoDataUrl = await loadLogoDataUrl();
 
+  // Register brand font (falls back to helvetica if unavailable)
+  const hasMichroma = await registerMichromaFont(doc);
+  const brandFont = hasMichroma ? 'Michroma' : 'helvetica';
+
   // Header
   doc.setFillColor(30, 41, 59);
   doc.rect(0, 0, PW, 38, 'F');
@@ -253,11 +275,11 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   }
 
   doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(255, 255, 255);
   doc.text(COMPANY.name, ML + textOffsetX, 16);
   doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(brandFont, 'normal');
   doc.setTextColor(203, 213, 225);
   doc.text(COMPANY.address, ML + textOffsetX, 24);
   doc.text(COMPANY.phone + '  |  ' + COMPANY.email, ML + textOffsetX, 30);
@@ -265,12 +287,12 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
 
   // Title
   doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(30, 41, 59);
   doc.text(data.roofType + ' Roofing Installation Proposal', PW / 2, y, { align: 'center' });
   y += 8;
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(brandFont, 'normal');
   doc.setTextColor(100, 116, 139);
   doc.text('Prepared for: ' + data.clientName, PW / 2, y, { align: 'center' });
   y += 5;
@@ -283,12 +305,12 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
 
   // Project Overview
   doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(30, 41, 59);
   doc.text('PROJECT OVERVIEW', ML, y);
   y += 6;
   doc.setFontSize(9.5);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(brandFont, 'normal');
   doc.setTextColor(51, 65, 85);
   const overviewLines = doc.splitTextToSize(data.projectOverview, CW);
   doc.text(overviewLines, ML, y);
@@ -298,7 +320,7 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   if (data.mapImage) {
     checkPage(80);
     doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.setTextColor(30, 41, 59);
     doc.text('PROPERTY OVERVIEW', ML, y);
     y += 4;
@@ -313,19 +335,19 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   // Roof Diagram
   if (data.sketchFacets && data.sketchFacets.length > 0) {
     checkPage(70);
-    drawRoofDiagram(doc, data, ML, y, CW, 60);
+    drawRoofDiagram(doc, data, ML, y, CW, 60, brandFont);
     y += 64;
   }
 
   // Specifications
   checkPage(30);
   doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(30, 41, 59);
   doc.text('SPECIFICATIONS', ML, y);
   y += 6;
   doc.setFontSize(9.5);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(brandFont, 'normal');
   const specs = [
     ['Panel Profile', data.panelProfile],
     ['Gauge', data.gauge + ' gauge'],
@@ -334,10 +356,10 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
     ['Warranty', data.warrantyYears + ' year workmanship'],
   ];
   specs.forEach(([label, val]) => {
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.setTextColor(30, 41, 59);
     doc.text(label + ':', ML, y);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     doc.setTextColor(71, 85, 105);
     doc.text(String(val), ML + 45, y);
     y += 5;
@@ -348,7 +370,7 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   if (data.materialCosts) {
     checkPage(45);
     doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.setTextColor(30, 41, 59);
     doc.text('COST BREAKDOWN', ML, y);
     y += 6;
@@ -370,13 +392,13 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
     doc.setFillColor(30, 41, 59);
     doc.rect(ML, y - 4, CW, 8, 'F');
     doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.setTextColor(255, 255, 255);
     doc.text('Item', ML + 3, y);
     doc.text('Cost', ML + CW - 3, y, { align: 'right' });
     y += 6;
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     breakdownItems.forEach(([label, val], i) => {
       if (i % 2 === 0) {
         doc.setFillColor(248, 250, 252);
@@ -384,9 +406,9 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
       }
       doc.setTextColor(51, 65, 85);
       doc.text(label, ML + 3, y);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(brandFont, 'bold');
       doc.text('$' + val, ML + CW - 3, y, { align: 'right' });
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(brandFont, 'normal');
       y += 7;
     });
     y += 4;
@@ -395,7 +417,7 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   // Investment Summary
   checkPage(60);
   doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(30, 41, 59);
   doc.text('INVESTMENT SUMMARY', ML, y);
   y += 6;
@@ -403,7 +425,7 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   doc.setFillColor(30, 41, 59);
   doc.rect(ML, y - 4, CW, 8, 'F');
   doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(255, 255, 255);
   doc.text('Section', ML + 3, y);
   doc.text('Area (sq ft)', ML + CW * 0.45, y);
@@ -411,7 +433,7 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   doc.text('Total', ML + CW - 3, y, { align: 'right' });
   y += 6;
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(brandFont, 'normal');
   data.sections.forEach((sec, i) => {
     checkPage(8);
     if (i % 2 === 0) {
@@ -422,9 +444,9 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
     doc.text(sec.name + (sec.pitch ? ' (' + sec.pitch + ')' : ''), ML + 3, y);
     doc.text(sec.areaSqFt.toLocaleString(), ML + CW * 0.45, y);
     doc.text('$' + sec.ratePerSqFt.toFixed(2) + '/sqft', ML + CW * 0.65, y);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.text('$' + fmt(sec.total), ML + CW - 3, y, { align: 'right' });
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     y += 7;
   });
 
@@ -432,9 +454,9 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
     checkPage(8);
     doc.setTextColor(51, 65, 85);
     doc.text(ex.name, ML + 3, y);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.text('$' + fmt(ex.cost), ML + CW - 3, y, { align: 'right' });
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     y += 7;
   });
 
@@ -443,7 +465,7 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   doc.line(ML, y - 2, ML + CW, y - 2);
   y += 3;
   doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(30, 41, 59);
   const totalSqFt = data.sections.reduce((s, c) => s + c.areaSqFt, 0);
   doc.text('Total: ' + totalSqFt.toLocaleString() + ' sq ft', ML + 3, y);
@@ -455,12 +477,12 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   doc.setFillColor(255, 251, 235);
   doc.roundedRect(ML, y - 4, CW, 26, 2, 2, 'F');
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(146, 64, 14);
   doc.text('PAYMENT SCHEDULE', ML + 4, y);
   y += 6;
   doc.setFontSize(9.5);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(brandFont, 'normal');
   doc.setTextColor(120, 53, 15);
   doc.text('Deposit (' + data.depositPercent + '% - due at signing)', ML + 4, y);
   doc.text('$' + fmt(data.depositAmount), ML + CW - 6, y, { align: 'right' });
@@ -468,7 +490,7 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   doc.text('Balance (due at completion)', ML + 4, y);
   doc.text('$' + fmt(data.balanceAmount), ML + CW - 6, y, { align: 'right' });
   y += 6;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.text('Project Total', ML + 4, y);
   doc.setFontSize(11);
   doc.text('$' + fmt(data.projectTotal), ML + CW - 6, y, { align: 'right' });
@@ -477,11 +499,11 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   // Timeline
   checkPage(12);
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(30, 41, 59);
   doc.text('ESTIMATED TIMELINE', ML, y);
   y += 5;
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(brandFont, 'normal');
   doc.setFontSize(9.5);
   doc.setTextColor(71, 85, 105);
   doc.text(data.workingDays + ' to ' + Math.ceil(data.workingDays * 1.25) + ' working days (approx. ' + data.timelineWeeks + ' weeks), weather permitting.', ML, y);
@@ -492,7 +514,7 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   pageNum++;
   y = 20;
   doc.setFontSize(13);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(30, 41, 59);
   doc.text('Terms & Conditions', PW / 2, y, { align: 'center' });
   y += 10;
@@ -507,10 +529,10 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
       .replace(/{workingDays}/g, String(data.workingDays))
       .replace(/{roofType}/g, data.roofType);
     doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(brandFont, 'bold');
     doc.setTextColor(30, 41, 59);
     doc.text((i + 1) + '.', ML, y);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(brandFont, 'normal');
     doc.setTextColor(71, 85, 105);
     const wrapped = doc.splitTextToSize(t, CW - 10);
     doc.text(wrapped, ML + 8, y);
@@ -521,12 +543,12 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   y += 6;
   checkPage(50);
   doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(brandFont, 'bold');
   doc.setTextColor(30, 41, 59);
   doc.text('ACCEPTANCE', PW / 2, y, { align: 'center' });
   y += 8;
   doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(brandFont, 'normal');
   doc.setTextColor(71, 85, 105);
   const acceptText = 'By signing below, you accept this proposal and agree to the terms and conditions outlined above. You authorize Hayden Ranch Services to proceed with the described work.';
   const aLines = doc.splitTextToSize(acceptText, CW);
