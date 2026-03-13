@@ -2,19 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // ============================================================
 // POST /api/site-analysis
-// Generates a unique, professional site analysis narrative
-// using Claude (Anthropic) or GPT (OpenAI) based on real
-// soil, terrain, and property data.
+// Generates structured bid narrative sections using Claude
+// (Anthropic) or GPT (OpenAI) based on real soil, terrain,
+// property data, AND the user's selected materials/quantities.
+// Called at PDF download time so the user can finish configuring.
 // ============================================================
 
 interface SiteAnalysisRequest {
+  // Project & client context
+  clientName?: string;
+  projectName?: string;
+  projectOverview?: string;
   propertyAddress: string;
+  // Soil & terrain
   soilType: string | null;
   soilComponents: { name: string; percent: number; drainage?: string; hydric?: string }[];
   drainage: string | null;
   hydric: string | null;
   elevationChange: number;
   suggestedDifficulty: string;
+  // Fence configuration
   fenceType: string;
   fenceHeight: string;
   totalLinearFeet: number;
@@ -32,9 +39,39 @@ interface SiteAnalysisRequest {
   clayPct?: number | null;
   rockFragmentPct?: number | null;
   pH?: number | null;
+  // Pricing & labor context
+  projectTotal?: number;
+  workingDays?: number;
+  enclosedAcreage?: number;
+  gateDetails?: { type: string; width: number }[];
+  sectionDetails?: { name: string; linearFeet: number; terrain: string }[];
+  painting?: { color: string; gallons: number };
+  steepFootage?: number;
+  // Materials & quantities (passed at PDF download time)
+  materials?: {
+    linePostCount: number;
+    tPostCount: number;
+    hBraces: number;
+    cornerBraces: number;
+    doubleHBraces: number;
+    totalBraces: number;
+    wireRolls: number;
+    concreteBags: number;
+    waterGapCount: number;
+    gateCount: number;
+    postCaps: number;
+    tensioners: number;
+    springIndicators: number;
+    stayTuffModel?: string;
+    stayTuffDescription?: string;
+    topWireType: string;
+    tPostSpacing: number;
+    linePostSpacing: number;
+    wireHeightInches?: number;
+  };
 }
 
-const SYSTEM_PROMPT = `You are writing as the owner of Hayden Ranch Services, a small fencing company in the Texas Hill Country. This is the "Understanding Your Land" section of a fence bid you're handing to a ranch or property owner. It should read like YOU wrote it — a real contractor who knows dirt, rock, and fence posts, not a consultant or engineer.
+const SYSTEM_PROMPT = `You are writing as the owner of Hayden Ranch Services, a small fencing company in the Texas Hill Country. You are writing 5 sections of a fence bid proposal that you're handing to a ranch or property owner. It should read like YOU wrote it — a real contractor who knows dirt, rock, and fence posts.
 
 Voice & tone rules:
 - First person plural: "we," "our," "our crew." This is YOUR bid.
@@ -43,58 +80,71 @@ Voice & tone rules:
 - Be direct — say what you found, what it means for the fence, and what you're going to do about it.
 - A little personality is fine: "That's the good news," or "We've seen worse," or "This is the kind of ground that eats auger bits for breakfast." Don't overdo it.
 
-Structure (4-5 short paragraphs, 300-500 words):
+You MUST return valid JSON with exactly these 5 keys. Each value is a string of flowing paragraphs (NO bullet points, headers, bold, markdown, or any formatting). Separate paragraphs with \\n\\n.
 
-1. WHAT WE FOUND: Open with what the soil data says. Name the soil type and where the data came from. Keep it to 2-3 sentences.
-
-2. WHAT'S IN THE GROUND: Rock, clay, texture — whatever matters for digging post holes. If rock fragments are high, say it plainly (e.g., "about every third shovelful is rock"). If clay is high (>35%), mention it swells when wet and cracks when dry. Skip anything that wasn't provided.
-
-3. BEDROCK & DEPTH: If bedrock data exists, say how deep it is and what that means. "A standard fence post goes 30 to 36 inches deep. Your rock is at 18 inches, so every hole on this job gets drilled." Mention your equipment briefly — don't write a sales pitch about it.
-
-4. WATER & DRAINAGE: Quick take on how water moves through the soil and what that means for concrete and post life.
-
-5. CLOSING: One or two sentences tying it together — your materials and spacing are based on what's actually in this ground, not a generic formula.
+{
+  "understandingYourLand": "2-3 paragraphs, 150-250 words. Open with what the soil survey says — name the soil type, where the data came from, what it means plain and simple. Explain how understanding the ground drives every decision in the build. Reference your equipment (80-horse tractor with Beltech, skid steer auger) if relevant.",
+  "soilProfile": "2-3 paragraphs, 150-250 words. Scientific classification in human terms. If taxonomy data exists, explain what the soil order means for fence posts (Mollisols = rich grassland soil, settling risk; Vertisols = shrink-swell clay; Alfisols = clay subsoil anchoring; etc). Describe soil components and percentages. Skip if no taxonomy data — write 'null' as the value.",
+  "belowTheSurface": "2-3 paragraphs, 150-250 words. Bedrock depth vs. the 30-36 inch post requirement. Rock fragment percentages and what that means for augering. Equipment you'll bring. If bedrock is shallow (<24\\"), explain every hole gets drilled and that rock-anchored posts are actually the strongest installation. Skip if no bedrock data — write 'null'.",
+  "terrainDrainageWater": "1-2 paragraphs, 100-200 words. Elevation change expressed as slope percentage over the fence length. Drainage classification and what it means for concrete curing and post longevity. Hydric indicators if present. Runoff class. Skip if minimal data — write 'null'.",
+  "materialSelection": "2-3 paragraphs, 200-300 words. THIS IS THE KEY SECTION. You have the exact materials and quantities being used. Name every material: the specific post type and diameter, the wire model, the spacing, number of braces, concrete bags, accessories. Explain WHY each was chosen for THIS property's soil and terrain — tie each material decision back to a specific finding from the soil/terrain data. End with a confidence statement that this is not a generic bid."
+}
 
 Hard rules:
-- NO bullet points, headers, bold, markdown, or any formatting. Flowing paragraphs only.
-- NO pricing or dollar amounts.
+- Return ONLY the JSON object. No text before or after.
+- NO pricing or dollar amounts anywhere.
 - NO invented data — only reference what is provided in the input.
-- NO comparing elevation to building stories. Express elevation as slope percentage over the fence length.
-- Always name the EXACT post material the customer selected (e.g., "2-3/8 inch drill stem" or "3 inch square tube 11ga").
-- If data is sparse, just say what you know and that you'll confirm the rest on site.
-Write like a contractor who knows his business, not like a salesman.`;
+- NO comparing elevation to building stories. Express elevation as slope percentage.
+- Always name the EXACT post material (e.g., "2-3/8 inch drill stem" not "steel posts").
+- Always reference EXACT quantities from the materials data when available.
+- If a section has insufficient data, set its value to null.
+- The materialSelection section should ALWAYS be written if materials data is provided.`;
 
 export async function POST(req: NextRequest) {
   try {
     const body: SiteAnalysisRequest = await req.json();
-
-    // Build the user prompt from actual data
     const userPrompt = buildUserPrompt(body);
 
-    // Try Anthropic (Claude) first, then OpenAI
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
 
+    let raw: string | null = null;
+    let provider: 'claude' | 'openai' | 'none' = 'none';
+
     if (anthropicKey && anthropicKey !== 'your_anthropic_api_key_here') {
-      const narrative = await callClaude(anthropicKey, userPrompt);
-      return NextResponse.json({ narrative, provider: 'claude' });
+      raw = await callClaude(anthropicKey, userPrompt);
+      provider = 'claude';
+    } else if (openaiKey && openaiKey !== 'your_openai_api_key_here') {
+      raw = await callOpenAI(openaiKey, userPrompt);
+      provider = 'openai';
     }
 
-    if (openaiKey && openaiKey !== 'your_openai_api_key_here') {
-      const narrative = await callOpenAI(openaiKey, userPrompt);
-      return NextResponse.json({ narrative, provider: 'openai' });
+    if (!raw) {
+      return NextResponse.json({ sections: null, narrative: null, provider: 'none' });
     }
 
-    // No valid API key — fall back to template narrative
-    return NextResponse.json({
-      narrative: null,
-      provider: 'none',
-      message: 'No AI API key configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY in .env.local.',
-    });
+    // Parse structured JSON from the AI response
+    try {
+      // Strip markdown code fences if present
+      const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      const sections = JSON.parse(cleaned);
+      // Build a combined narrative for backward compat
+      const narrative = [
+        sections.understandingYourLand,
+        sections.soilProfile,
+        sections.belowTheSurface,
+        sections.terrainDrainageWater,
+        sections.materialSelection,
+      ].filter(Boolean).join('\n\n');
+      return NextResponse.json({ sections, narrative, provider });
+    } catch {
+      // AI didn't return valid JSON — treat entire response as the old single-narrative format
+      return NextResponse.json({ sections: null, narrative: raw, provider });
+    }
   } catch (err) {
     console.error('Site analysis error:', err);
     return NextResponse.json(
-      { error: 'Failed to generate site analysis', narrative: null },
+      { error: 'Failed to generate site analysis', sections: null, narrative: null },
       { status: 500 },
     );
   }
@@ -105,8 +155,14 @@ function buildUserPrompt(data: SiteAnalysisRequest): string {
   const totalFeet = Number(data.totalLinearFeet) || 0;
   const elevChange = Number(data.elevationChange) || 0;
 
-  parts.push(`Property: ${data.propertyAddress || 'Texas Hill Country property'}`);
+  // ── Client & project context ──
+  if (data.clientName) parts.push(`Customer: ${data.clientName}`);
+  if (data.projectName) parts.push(`Project name: ${data.projectName}`);
+  parts.push(`Property location: ${data.propertyAddress || 'Texas Hill Country property'}`);
   parts.push(`Fence project: ${totalFeet > 0 ? totalFeet.toLocaleString() : 'TBD'} linear feet of ${data.fenceType || 'fencing'} at ${data.fenceHeight || 'standard'} height`);
+  if (data.enclosedAcreage) parts.push(`Estimated enclosed area: ~${data.enclosedAcreage} acres`);
+  if (data.workingDays) parts.push(`Estimated timeline: ${data.workingDays} working days`);
+  if (data.projectOverview) parts.push(`Project scope: ${data.projectOverview}`);
   // Describe the actual selected post material
   let postDesc = data.postMaterialLabel || data.postMaterial;
   if (data.squareTubeGauge) postDesc += ` ${data.squareTubeGauge}`;
@@ -147,7 +203,53 @@ function buildUserPrompt(data: SiteAnalysisRequest): string {
   if (data.taxonomy) parts.push(`Soil taxonomy: ${data.taxonomy}`);
 
   if (elevChange > 0) parts.push(`\nElevation change across fence line: approximately ${Math.round(elevChange)} feet`);
+  if (data.steepFootage && data.steepFootage > 0) parts.push(`Steep grade footage (>15% slope): ${data.steepFootage} feet`);
   parts.push(`Terrain difficulty classification: ${data.suggestedDifficulty || 'moderate'}`);
+
+  // ── Fence line sections ──
+  if (data.sectionDetails && data.sectionDetails.length > 0) {
+    parts.push('\n=== FENCE LINE SECTIONS ===');
+    for (const sec of data.sectionDetails) {
+      parts.push(`${sec.name}: ${sec.linearFeet.toLocaleString()} linear feet (${sec.terrain} terrain)`);
+    }
+  }
+
+  // ── Gates ──
+  if (data.gateDetails && data.gateDetails.length > 0) {
+    parts.push('\n=== GATES ===');
+    for (const g of data.gateDetails) {
+      parts.push(`${g.type} (${g.width}' wide)`);
+    }
+  }
+
+  // ── Painting ──
+  if (data.painting) {
+    parts.push(`\nPost painting: ${data.painting.color}, ${data.painting.gallons} gallons`);
+  }
+
+  // ── Materials & quantities (from user selections) ──
+  if (data.materials) {
+    const m = data.materials;
+    parts.push('\n=== SELECTED MATERIALS & QUANTITIES ===');
+    parts.push(`Wire: ${m.stayTuffModel ? `Stay-Tuff ${m.stayTuffModel}` : data.fenceType}${m.stayTuffDescription ? ` — ${m.stayTuffDescription}` : ''}`);
+    if (m.wireHeightInches) parts.push(`Wire height: ${m.wireHeightInches}" (${(m.wireHeightInches / 12).toFixed(1)} ft)`);
+    parts.push(`Wire rolls needed: ${m.wireRolls}`);
+    parts.push(`Top wire: ${m.topWireType === 'barbed_double' ? 'double barbed wire' : m.topWireType === 'barbed' ? 'single barbed wire' : 'smooth high-tensile wire'}`);
+    let postDesc2 = data.postMaterialLabel || data.postMaterial;
+    if (data.squareTubeGauge) postDesc2 += ` ${data.squareTubeGauge}`;
+    parts.push(`Line posts: ${m.linePostCount} × ${postDesc2} (spaced every ${m.linePostSpacing}')`);
+    parts.push(`T-posts: ${m.tPostCount} (spaced every ${m.tPostSpacing}' between line posts)`);
+    parts.push(`H-brace assemblies: ${m.hBraces}`);
+    parts.push(`Corner brace assemblies: ${m.cornerBraces}`);
+    if (m.doubleHBraces > 0) parts.push(`Double H-brace assemblies: ${m.doubleHBraces}`);
+    parts.push(`Total brace assemblies: ${m.totalBraces}`);
+    parts.push(`Concrete bags (80 lb): ${m.concreteBags}`);
+    if (m.gateCount > 0) parts.push(`Gates: ${m.gateCount}`);
+    if (m.waterGapCount > 0) parts.push(`Water gap cable kits: ${m.waterGapCount}`);
+    if (m.postCaps > 0) parts.push(`Post caps: ${m.postCaps}`);
+    if (m.tensioners > 0) parts.push(`Inline tensioners: ${m.tensioners}`);
+    if (m.springIndicators > 0) parts.push(`Spring tension indicators: ${m.springIndicators}`);
+  }
 
   return parts.join('\n');
 }
@@ -162,7 +264,7 @@ async function callClaude(apiKey: string, userPrompt: string): Promise<string> {
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1800,
+      max_tokens: 4096,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }],
     }),
@@ -186,7 +288,7 @@ async function callOpenAI(apiKey: string, userPrompt: string): Promise<string> {
     },
     body: JSON.stringify({
       model: 'gpt-4o',
-      max_tokens: 1800,
+      max_tokens: 4096,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userPrompt },
