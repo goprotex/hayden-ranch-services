@@ -400,7 +400,7 @@ function ensureSpace(doc: jsPDF, y: number, needed: number, marginTop: number = 
 // Helper to load logo image as data URL for PDF embedding
 async function loadLogoDataUrl(): Promise<string | null> {
   try {
-    const resp = await fetch('/images/HaydenLogo.png');
+    const resp = await fetch('/images/hayden-logo.png');
     if (!resp.ok) return null;
     const blob = await resp.blob();
     return new Promise((resolve) => {
