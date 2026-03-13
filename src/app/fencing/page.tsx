@@ -139,6 +139,7 @@ export default function FencingPage() {
   // AI-generated site analysis narrative (Claude/GPT)
   const [aiNarrative, setAiNarrative] = useState<string | null>(null);
   const [generatingNarrative, setGeneratingNarrative] = useState(false);
+  const [generatingPDF, setGeneratingPDF] = useState(false);
 
   // Map captures for PDF (supports multiple screenshots)
   const [mapImages, setMapImages] = useState<string[]>([]);
@@ -673,6 +674,8 @@ export default function FencingPage() {
   }, [terrainSuggestion, postMaterial, sections]);
 
   const handleDownloadPDF = useCallback(async () => {
+    setGeneratingPDF(true);
+    try {
     const now = new Date();
     const valid = new Date(now); valid.setDate(valid.getDate() + 30);
     const ftLabel = FENCE_TYPES[fenceType] || fenceType;
@@ -812,6 +815,9 @@ export default function FencingPage() {
       })(),
     };
     await generateFenceBidPDF(data);
+    } finally {
+      setGeneratingPDF(false);
+    }
   }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, laborEstimate, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory, paintEst, paintColor]);
 
   const handleSaveBid = useCallback(() => {
@@ -847,9 +853,18 @@ export default function FencingPage() {
                 <button onClick={() => setMapImages([])} className="text-red-400 hover:text-red-300 underline">clear</button>
               </span>
             )}
-            <button onClick={handleDownloadPDF} className="text-xs uppercase tracking-wider bg-tan-400 text-black px-5 py-2 hover:bg-tan-300 transition font-semibold flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-              Download PDF
+            <button onClick={handleDownloadPDF} disabled={generatingPDF} className="text-xs uppercase tracking-wider bg-tan-400 text-black px-5 py-2 hover:bg-tan-300 transition font-semibold flex items-center gap-2 disabled:opacity-60 disabled:cursor-wait">
+              {generatingPDF ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                  Generating PDF&hellip;
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                  Download PDF
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -1473,9 +1488,16 @@ export default function FencingPage() {
 
                   <p className="text-sm text-steel-400"><strong>Timeline:</strong> {timelineDays} to {timelineDays + Math.ceil(timelineDays * 0.25)} working days</p>
 
-                  <button onClick={handleDownloadPDF}
-                    className="w-full bg-tan-400 text-black font-bold py-3 px-4 rounded-lg hover:bg-tan-300 transition text-sm">
-                    Download Complete Bid PDF (with Terms &amp; Signature Block)
+                  <button onClick={handleDownloadPDF} disabled={generatingPDF}
+                    className="w-full bg-tan-400 text-black font-bold py-3 px-4 rounded-lg hover:bg-tan-300 transition text-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-wait">
+                    {generatingPDF ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                        Generating PDF&hellip;
+                      </>
+                    ) : (
+                      'Download Complete Bid PDF (with Terms & Signature Block)'
+                    )}
                   </button>
                 </div>
               </div>
