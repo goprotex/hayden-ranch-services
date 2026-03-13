@@ -411,6 +411,13 @@ async function loadLogoDataUrl(): Promise<string | null> {
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
     ctx.drawImage(bitmap, 0, 0);
+    // Invert to white for dark banner background
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] > 0) { d[i] = 255; d[i + 1] = 255; d[i + 2] = 255; }
+    }
+    ctx.putImageData(imgData, 0, 0);
     return canvas.toDataURL('image/png');
   } catch (e) { console.warn('Logo load error:', e); return null; }
 }
@@ -458,29 +465,35 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   doc.setFillColor(27, 38, 54);
   doc.rect(0, 0, pw, 44, 'F');
 
-  // Logo (left side)
-  const textOffsetX = logoDataUrl ? 30 : 0;
+  // Logo (white, full width of left half) — ratio ~3.43:1
   if (logoDataUrl) {
-    try { doc.addImage(logoDataUrl, 'PNG', mx, y - 6, 24, 24); } catch (e) { console.warn('Logo addImage error:', e); }
+    const logoH = 16; // mm tall
+    const logoW = logoH * 3.43; // ~55mm wide
+    try { doc.addImage(logoDataUrl, 'PNG', mx, 6, logoW, logoH); } catch (e) { console.warn('Logo addImage error:', e); }
+    // Contact info below logo
+    sz(7);
+    doc.setFont(brandFont, 'normal');
+    doc.setTextColor(200, 210, 220);
+    doc.text(COMPANY.address, mx, 28);
+    doc.text(`${COMPANY.phone}  •  ${COMPANY.email}`, mx, 33);
+  } else {
+    // Fallback: company name as text
+    doc.setTextColor(255, 255, 255);
+    sz(22);
+    doc.setFont(brandFont, 'bold');
+    doc.text(COMPANY.name, mx, y + 3);
+    sz(8);
+    doc.setFont(brandFont, 'normal');
+    doc.setTextColor(200, 210, 220);
+    doc.text(COMPANY.address, mx, y + 11);
+    doc.text(`${COMPANY.phone}  •  ${COMPANY.email}`, mx, y + 16);
   }
 
-  // Company name & contact
-  doc.setTextColor(255, 255, 255);
-  sz(22);
-  doc.setFont(brandFont, 'bold');
-  doc.text(COMPANY.name, mx + textOffsetX, y + 3);
-
-  sz(8);
-  doc.setFont(brandFont, 'normal');
-  doc.setTextColor(200, 210, 220);
-  doc.text(COMPANY.address, mx + textOffsetX, y + 11);
-  doc.text(`${COMPANY.phone}  •  ${COMPANY.email}`, mx + textOffsetX, y + 16);
-
-  // Proposal number & dates (right)
+  // Proposal dates (right side)
   sz(8);
   doc.setTextColor(200, 210, 220);
-  doc.text(`Proposal Date: ${data.date}`, pw - mx, y + 3, { align: 'right' });
-  doc.text(`Valid Through: ${data.validUntil}`, pw - mx, y + 9, { align: 'right' });
+  doc.text(`Proposal Date: ${data.date}`, pw - mx, 28, { align: 'right' });
+  doc.text(`Valid Through: ${data.validUntil}`, pw - mx, 33, { align: 'right' });
 
   // Thin accent line at bottom of header
   doc.setFillColor(196, 164, 105); // coyote tan accent

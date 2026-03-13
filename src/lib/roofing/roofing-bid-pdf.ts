@@ -220,6 +220,13 @@ async function loadLogoDataUrl(): Promise<string | null> {
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
     ctx.drawImage(bitmap, 0, 0);
+    // Invert to white for dark banner background
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] > 0) { d[i] = 255; d[i + 1] = 255; d[i + 2] = 255; }
+    }
+    ctx.putImageData(imgData, 0, 0);
     return canvas.toDataURL('image/png');
   } catch (e) { console.warn('Logo load error:', e); return null; }
 }
@@ -273,21 +280,27 @@ export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   doc.setFillColor(30, 41, 59);
   doc.rect(0, 0, PW, 38, 'F');
 
-  // Logo (left side)
-  const textOffsetX = logoDataUrl ? 28 : 0;
+  // Logo (white, wide) — ratio ~3.43:1
   if (logoDataUrl) {
-    try { doc.addImage(logoDataUrl, 'PNG', ML, 5, 22, 22); } catch (e) { console.warn('Logo addImage error:', e); }
+    const logoH = 14;
+    const logoW = logoH * 3.43; // ~48mm
+    try { doc.addImage(logoDataUrl, 'PNG', ML, 5, logoW, logoH); } catch (e) { console.warn('Logo addImage error:', e); }
+    sz(7);
+    doc.setFont(brandFont, 'normal');
+    doc.setTextColor(203, 213, 225);
+    doc.text(COMPANY.address, ML, 24);
+    doc.text(COMPANY.phone + '  |  ' + COMPANY.email, ML, 30);
+  } else {
+    sz(18);
+    doc.setFont(brandFont, 'bold');
+    doc.setTextColor(255, 255, 255);
+    doc.text(COMPANY.name, ML, 16);
+    sz(9);
+    doc.setFont(brandFont, 'normal');
+    doc.setTextColor(203, 213, 225);
+    doc.text(COMPANY.address, ML, 24);
+    doc.text(COMPANY.phone + '  |  ' + COMPANY.email, ML, 30);
   }
-
-  sz(18);
-  doc.setFont(brandFont, 'bold');
-  doc.setTextColor(255, 255, 255);
-  doc.text(COMPANY.name, ML + textOffsetX, 16);
-  sz(9);
-  doc.setFont(brandFont, 'normal');
-  doc.setTextColor(203, 213, 225);
-  doc.text(COMPANY.address, ML + textOffsetX, 24);
-  doc.text(COMPANY.phone + '  |  ' + COMPANY.email, ML + textOffsetX, 30);
   y = 46;
 
   // Title
