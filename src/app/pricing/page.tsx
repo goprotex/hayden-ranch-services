@@ -28,7 +28,7 @@ export default function PricingPage() {
   }, [loadSharedPrices]);
 
   const processAIResult = useCallback(
-    (data: Record<string, unknown>) => {
+    async (data: Record<string, unknown>) => {
       const receipt: Receipt = {
         id: crypto.randomUUID(),
         supplier: (data.supplier as string) || supplierName || 'Unknown',
@@ -57,7 +57,7 @@ export default function PricingPage() {
       const result = syncReceiptPrices();
       setSyncResult(result);
       // Persist current prices to server for all users / browsers
-      saveSharedPricesToServer();
+      await saveSharedPricesToServer();
       setActiveReceipt(receipt);
       setSupplierName('');
     },
@@ -93,7 +93,7 @@ export default function PricingPage() {
     const result = syncReceiptPrices();
     setSyncResult(result);
     // Persist current prices to server for all users / browsers
-    saveSharedPricesToServer();
+    await saveSharedPricesToServer();
     setActiveReceipt(receipt);
     setReceiptText('');
     setSupplierName('');

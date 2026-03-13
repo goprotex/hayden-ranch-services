@@ -33,18 +33,20 @@ export async function fetchSharedPrices(): Promise<MaterialPrice[] | null> {
  */
 export async function saveSharedPrices(prices: MaterialPrice[]): Promise<boolean> {
   try {
+    console.log('[SharedPricing] Saving', prices.length, 'prices to server...');
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prices }),
     });
     if (!res.ok) {
-      console.warn('[SharedPricing] Failed to save shared prices:', res.status);
+      console.warn('[SharedPricing] Failed to save shared prices:', res.status, await res.text());
       return false;
     }
+    console.log('[SharedPricing] Prices saved successfully');
     return true;
-  } catch {
-    console.warn('[SharedPricing] Failed to save shared prices — network error');
+  } catch (err) {
+    console.warn('[SharedPricing] Failed to save shared prices — network error', err);
     return false;
   }
 }
