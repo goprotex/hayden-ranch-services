@@ -383,7 +383,28 @@ export default function FencingPage() {
   const gateTotal = useMemo(() => gates.reduce((s, g) => s + g.cost, 0), [gates]);
 
   const materialCalc = useMemo(() => {
-    const linePostCount = Math.max(2, Math.ceil(totalFeet / linePostSpacing));
+    // Base line posts from regular spacing
+    const baseLinePostCount = Math.max(2, Math.ceil(totalFeet / linePostSpacing));
+
+    // Grade-transition posts: add a line post at the top, middle, and bottom
+    // of every steep grade run (>15% slope), regardless of normal spacing.
+    // Walk elevation segments and group consecutive steep segments into runs.
+    let gradeTransitionPosts = 0;
+    const segs = terrainSuggestion?.elevationSegments;
+    if (segs && segs.length > 0) {
+      let inSteep = false;
+      for (let i = 0; i < segs.length; i++) {
+        if (segs[i].steep && !inSteep) {
+          // Start of a steep run — 3 posts: top, middle, bottom
+          gradeTransitionPosts += 3;
+          inSteep = true;
+        } else if (!segs[i].steep && inSteep) {
+          inSteep = false;
+        }
+      }
+    }
+
+    const linePostCount = baseLinePostCount + gradeTransitionPosts;
     // T-posts go between each pair of line posts
     const spans = Math.max(0, linePostCount - 1);
     const tPostsPerSpan = Math.max(0, Math.floor(linePostSpacing / tPostSpacing) - 1);
@@ -422,6 +443,7 @@ export default function FencingPage() {
 
     return {
       linePostCount,
+      gradeTransitionPosts,
       tPostCount: Math.max(0, tPostCount),
       hBraces, cornerBraces, totalBraces,
       wireRolls, concreteBags,
@@ -429,7 +451,7 @@ export default function FencingPage() {
       concreteFillPostsQty, concreteFillBracesQty,
       horizStrands,
     };
-  }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations, fenceType, selectedStayTuff, materialCostPerFoot, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, postMaterial]);
+  }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations, fenceType, selectedStayTuff, materialCostPerFoot, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, postMaterial, terrainSuggestion]);
 
   // Auto-calculate timeline from labor estimate
   const tiesPerLinePost = tiePattern === 'every_strand' ? materialCalc.horizStrands
@@ -960,7 +982,7 @@ export default function FencingPage() {
                 <DSlider label="T-Post Spacing" value={tPostSpacing} min={7} max={15} step={0.5}
                   display={`${tPostSpacing} ft`} onChange={setTPostSpacing} minLabel="7 ft" maxLabel="15 ft" />
                 <div className="bg-black rounded-lg p-3 text-xs text-steel-400">
-                  <div className="flex justify-between"><span>Line Posts (est):</span><span className="text-steel-200 font-semibold">{materialCalc.linePostCount}</span></div>
+                  <div className="flex justify-between"><span>Line Posts (est):</span><span className="text-steel-200 font-semibold">{materialCalc.linePostCount}{materialCalc.gradeTransitionPosts > 0 ? ` (incl. ${materialCalc.gradeTransitionPosts} grade posts)` : ''}</span></div>
                   <div className="flex justify-between mt-1"><span>T-Posts ({tPostRec.label}):</span><span className="text-steel-200 font-semibold">{materialCalc.tPostCount}</span></div>
                 </div>
               </div>
