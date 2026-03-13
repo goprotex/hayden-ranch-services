@@ -15,7 +15,7 @@ const BLOB_TOKEN = process.env.Price_update_READ_WRITE_TOKEN || '';
 const IS_VERCEL = !!BLOB_TOKEN;
 
 // ── Local filesystem fallback (dev only) ──────────────────
-async function readLocal(): Promise<MaterialPrice[]> {
+async function readLocal(): Promise<MaterialPrice[] | null> {
   const fs = await import('fs');
   const path = await import('path');
   const filePath = path.join(process.cwd(), 'data', 'shared-prices.json');
@@ -30,7 +30,7 @@ async function readLocal(): Promise<MaterialPrice[]> {
       }
     }
   } catch { /* corrupted or missing */ }
-  return [...DEFAULT_MATERIAL_PRICES];
+  return null;
 }
 
 async function writeLocal(prices: MaterialPrice[]): Promise<void> {
@@ -43,15 +43,15 @@ async function writeLocal(prices: MaterialPrice[]): Promise<void> {
 }
 
 // ── Vercel Blob storage (production) ──────────────────────
-async function readBlob(): Promise<MaterialPrice[]> {
+async function readBlob(): Promise<MaterialPrice[] | null> {
   const { list, head } = await import('@vercel/blob');
   try {
     // Find the blob by listing with prefix
     const { blobs } = await list({ prefix: BLOB_NAME, limit: 1, token: BLOB_TOKEN });
-    if (blobs.length === 0) return [...DEFAULT_MATERIAL_PRICES];
+    if (blobs.length === 0) return null;
     const blobMeta = await head(blobs[0].url, { token: BLOB_TOKEN });
-    const res = await fetch(blobMeta.url);
-    if (!res.ok) return [...DEFAULT_MATERIAL_PRICES];
+    const res = await fetch(blobMeta.url, { cache: 'no-store' });
+    if (!res.ok) return null;
     const data = await res.json() as { prices: MaterialPrice[] };
     if (Array.isArray(data.prices) && data.prices.length > 0) {
       const savedIds = new Set(data.prices.map(p => p.id));
@@ -61,7 +61,7 @@ async function readBlob(): Promise<MaterialPrice[]> {
   } catch (err) {
     console.error('[SharedPricing] Blob read error:', err);
   }
-  return [...DEFAULT_MATERIAL_PRICES];
+  return null;
 }
 
 async function writeBlob(prices: MaterialPrice[]): Promise<void> {
@@ -73,11 +73,19 @@ async function writeBlob(prices: MaterialPrice[]): Promise<void> {
 // ── Route handlers ────────────────────────────────────────
 export async function GET() {
   try {
-    const prices = IS_VERCEL ? await readBlob() : await readLocal();
+    const saved = IS_VERCEL ? await readBlob() : await readLocal();
+    if (saved) {
+      return NextResponse.json({
+        prices: saved,
+        count: saved.length,
+        source: 'saved',
+      });
+    }
+    // No saved prices — return defaults but mark source so client knows
     return NextResponse.json({
-      prices,
-      count: prices.length,
-      source: 'shared',
+      prices: DEFAULT_MATERIAL_PRICES,
+      count: DEFAULT_MATERIAL_PRICES.length,
+      source: 'defaults',
     });
   } catch (err) {
     console.error('Failed to read shared prices:', err);

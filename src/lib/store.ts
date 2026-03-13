@@ -139,20 +139,29 @@ export const useAppStore = create<AppState>()(
       },
 
       // Shared pricing — persist to server so all users get the same prices
+      _lastPriceSaveAt: 0,
       loadSharedPrices: async () => {
-        const shared = await fetchSharedPrices();
-        if (shared && shared.length > 0) {
+        // Skip loading if we just saved (cooldown prevents stale server data
+        // from overwriting freshly-synced receipt prices)
+        const elapsed = Date.now() - (get() as unknown as { _lastPriceSaveAt: number })._lastPriceSaveAt;
+        if (elapsed < 60_000) return;
+
+        const result = await fetchSharedPrices();
+        // Only overwrite local state with actually-saved server data,
+        // never with defaults (which would erase receipt-synced prices)
+        if (result && result.source === 'saved') {
           set((state) => {
-            // Server prices win — merge with any new defaults not on server
-            const serverIds = new Set(shared.map(p => p.id));
+            const serverIds = new Set(result.prices.map(p => p.id));
             const localOnly = state.materialPrices.filter(p => !serverIds.has(p.id));
-            return { materialPrices: [...shared, ...localOnly] };
+            return { materialPrices: [...result.prices, ...localOnly] };
           });
         }
       },
       saveSharedPricesToServer: async (): Promise<boolean> => {
         const prices = get().materialPrices;
-        return saveSharedPrices(prices);
+        const ok = await saveSharedPrices(prices);
+        if (ok) set(() => ({ _lastPriceSaveAt: Date.now() } as unknown as Partial<AppState>));
+        return ok;
       },
 
       // Shared receipts — persist receipt history to server

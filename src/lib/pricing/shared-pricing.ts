@@ -14,13 +14,13 @@ const RECEIPTS_API_URL = '/api/shared-receipts';
  * Fetch the shared material prices from the server.
  * Returns the prices array, or null if the fetch fails.
  */
-export async function fetchSharedPrices(): Promise<MaterialPrice[] | null> {
+export async function fetchSharedPrices(): Promise<{ prices: MaterialPrice[]; source: string } | null> {
   try {
     const res = await fetch(API_URL, { cache: 'no-store' });
     if (!res.ok) return null;
     const data = await res.json();
     if (Array.isArray(data.prices) && data.prices.length > 0) {
-      return data.prices as MaterialPrice[];
+      return { prices: data.prices as MaterialPrice[], source: data.source || 'unknown' };
     }
     return null;
   } catch {
