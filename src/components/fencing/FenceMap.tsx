@@ -334,10 +334,12 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
       const overrideType = pointOverrides.get(key);
       const activeType = overrideType ?? brace.type;
       const opt = POINT_TYPE_OPTIONS.find(o => o.value === activeType);
+      const isSmall = activeType === 'line_post' || activeType === 'kicker';
+      const sz = isSmall ? '12px' : '20px';
 
       const el = document.createElement('div');
-      el.style.width = '20px';
-      el.style.height = '20px';
+      el.style.width = sz;
+      el.style.height = sz;
       el.style.borderRadius = activeType === 'gate' ? '4px' : '50%';
       el.style.border = '2px solid #fff';
       el.style.cursor = 'pointer';
@@ -485,11 +487,13 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
 
     for (const pt of addedPoints) {
       const opt = POINT_TYPE_OPTIONS.find(o => o.value === pt.type);
+      const isSmall = pt.type === 'line_post' || pt.type === 'kicker';
+      const sz = isSmall ? '10px' : '18px';
       const el = document.createElement('div');
-      el.style.width = '18px';
-      el.style.height = '18px';
+      el.style.width = sz;
+      el.style.height = sz;
       el.style.borderRadius = pt.type === 'gate' ? '4px' : '50%';
-      el.style.border = '2px solid #fff';
+      el.style.border = isSmall ? '1px solid #fff' : '2px solid #fff';
       el.style.backgroundColor = opt?.color ?? '#16a34a';
       el.style.cursor = 'pointer';
       el.style.boxShadow = '0 0 6px rgba(0,0,0,0.5)';
@@ -543,11 +547,15 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
       const dpr = window.devicePixelRatio || 1;
 
       // Draw brace markers (colored circles with white border)
+      const coordKey = (c: [number, number]) => `${c[0].toFixed(8)},${c[1].toFixed(8)}`;
       for (const brace of braceMarkers) {
         const pt = map.project(brace.coordinate);
         const x = pt.x * dpr;
         const y = pt.y * dpr;
-        const r = 10 * dpr;
+        const activeType = pointOverrides.get(coordKey(brace.coordinate)) ?? brace.type;
+        const opt = POINT_TYPE_OPTIONS.find(o => o.value === activeType);
+        const isSmall = activeType === 'line_post' || activeType === 'kicker';
+        const r = (isSmall ? 6 : 10) * dpr;
 
         // White border
         ctx.beginPath();
@@ -558,9 +566,7 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
         // Colored fill
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
-        if (brace.type === 'double_h') ctx.fillStyle = '#dc2626';       // red — end posts
-        else if (brace.type === 'corner_brace') ctx.fillStyle = '#2563eb'; // blue — corners
-        else ctx.fillStyle = '#16a34a';                                    // green — H-braces
+        ctx.fillStyle = opt?.color ?? '#16a34a';
         ctx.fill();
       }
 
@@ -591,7 +597,8 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
         const projected = map.project(pt.coordinate);
         const x = projected.x * dpr;
         const y = projected.y * dpr;
-        const r = 9 * dpr;
+        const isSmall = pt.type === 'line_post' || pt.type === 'kicker';
+        const r = (isSmall ? 5 : 9) * dpr;
         const opt = POINT_TYPE_OPTIONS.find(o => o.value === pt.type);
 
         ctx.beginPath();
@@ -663,7 +670,7 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
     } catch (err) {
       console.error('Map capture error:', err);
     }
-  }, [onMapCapture, braceMarkers, placedGates, addedPoints]);
+  }, [onMapCapture, braceMarkers, placedGates, addedPoints, pointOverrides]);
 
   // captureOverview: fit all fence lines, capture, then restore previous view
   const captureOverview = useCallback((): Promise<string | null> => {
@@ -715,20 +722,22 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
           const dpr = window.devicePixelRatio || 1;
 
           // Composite brace markers
+          const coordKey = (c: [number, number]) => `${c[0].toFixed(8)},${c[1].toFixed(8)}`;
           for (const brace of braceMarkers) {
             const pt = map.project(brace.coordinate);
             const x = pt.x * dpr;
             const y = pt.y * dpr;
-            const r = 10 * dpr;
+            const activeType = pointOverrides.get(coordKey(brace.coordinate)) ?? brace.type;
+            const opt = POINT_TYPE_OPTIONS.find(o => o.value === activeType);
+            const isSmall = activeType === 'line_post' || activeType === 'kicker';
+            const r = (isSmall ? 6 : 10) * dpr;
             ctx.beginPath();
             ctx.arc(x, y, r + 2 * dpr, 0, Math.PI * 2);
             ctx.fillStyle = '#ffffff';
             ctx.fill();
             ctx.beginPath();
             ctx.arc(x, y, r, 0, Math.PI * 2);
-            if (brace.type === 'double_h') ctx.fillStyle = '#dc2626';
-            else if (brace.type === 'corner_brace') ctx.fillStyle = '#2563eb';
-            else ctx.fillStyle = '#16a34a';
+            ctx.fillStyle = opt?.color ?? '#16a34a';
             ctx.fill();
           }
 
@@ -755,7 +764,8 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
             const projected = map.project(pt.coordinate);
             const x = projected.x * dpr;
             const y = projected.y * dpr;
-            const r = 9 * dpr;
+            const isSmall = pt.type === 'line_post' || pt.type === 'kicker';
+            const r = (isSmall ? 5 : 9) * dpr;
             const opt = POINT_TYPE_OPTIONS.find(o => o.value === pt.type);
             ctx.beginPath();
             ctx.arc(x, y, r + 2 * dpr, 0, Math.PI * 2);
@@ -799,7 +809,7 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
         doCapture();
       }, 1500);
     });
-  }, [braceMarkers, placedGates, addedPoints]);
+  }, [braceMarkers, placedGates, addedPoints, pointOverrides]);
 
   // Expose captureOverview to parent via ref
   useImperativeHandle(ref, () => ({
