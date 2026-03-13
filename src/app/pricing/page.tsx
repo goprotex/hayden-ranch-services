@@ -58,7 +58,7 @@ export default function PricingPage() {
       const entries = receiptToPriceEntries(receipt);
       addPriceEntries(entries);
       // Auto-sync receipt prices to fencing material prices
-      const result = syncReceiptPrices();
+      const result = await syncReceiptPrices();
       setSyncResult(result);
       // Persist current prices to server for all users / browsers
       await saveSharedPricesToServer();
@@ -95,7 +95,7 @@ export default function PricingPage() {
     const entries = receiptToPriceEntries(receipt);
     addPriceEntries(entries);
     // Auto-sync receipt prices to fencing material prices
-    const result = syncReceiptPrices();
+    const result = await syncReceiptPrices();
     setSyncResult(result);
     // Persist current prices to server for all users / browsers
     await saveSharedPricesToServer();
@@ -196,8 +196,8 @@ export default function PricingPage() {
                 {priceDatabase.length} receipt prices available &mdash; sync them to your fencing material prices for accurate bids.
               </p>
             </div>
-            <button onClick={() => {
-              const result = syncReceiptPrices();
+            <button onClick={async () => {
+              const result = await syncReceiptPrices();
               setSyncResult(result);
               if (result.updated > 0) saveSharedPricesToServer();
             }} className="text-xs bg-tan-400/10 text-tan-300 px-4 py-2 rounded-lg font-semibold hover:bg-white/20 transition whitespace-nowrap">

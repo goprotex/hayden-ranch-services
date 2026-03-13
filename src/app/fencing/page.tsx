@@ -1430,8 +1430,8 @@ export default function FencingPage() {
                         <span className="text-lg">&#x1f4cb;</span>
                         <h3 className="text-sm font-bold text-steel-200">Receipt Price Sync</h3>
                       </div>
-                      <button onClick={() => {
-                        const result = syncReceiptPrices();
+                      <button onClick={async () => {
+                        const result = await syncReceiptPrices();
                         setReceiptSyncResult(result);
                         saveSharedPricesToServer();
                       }} className="text-xs bg-tan-400/10 text-tan-300 px-3 py-1.5 rounded-lg font-semibold hover:bg-white/20 transition">

@@ -10,7 +10,7 @@ import {
   FenceBid,
 } from '@/types';
 import { DEFAULT_MATERIAL_PRICES, MaterialPrice } from '@/lib/fencing/fence-materials';
-import { matchReceiptToMaterial } from '@/lib/pricing/receipt-matcher';
+import { matchReceiptsToCatalog } from '@/lib/pricing/receipt-matcher';
 import { fetchSharedPrices, saveSharedPrices, fetchSharedReceipts, saveSharedReceipts } from '@/lib/pricing/shared-pricing';
 
 interface AppState {
@@ -45,7 +45,7 @@ interface AppState {
   materialPrices: MaterialPrice[];
   updateMaterialPrice: (id: string, price: number) => void;
   resetMaterialPrices: () => void;
-  syncReceiptPrices: () => { matched: number; updated: number };
+  syncReceiptPrices: () => Promise<{ matched: number; updated: number }>;
 
   // Shared pricing — persist across all users via server API
   loadSharedPrices: () => Promise<void>;
@@ -117,24 +117,24 @@ export const useAppStore = create<AppState>()(
         })),
       resetMaterialPrices: () =>
         set({ materialPrices: [...DEFAULT_MATERIAL_PRICES] }),
-      syncReceiptPrices: () => {
-        let matched = 0;
+      syncReceiptPrices: async () => {
+        const state = get();
+        const { matches } = await matchReceiptsToCatalog(state.priceDatabase, state.materialPrices);
+        let matched = matches.length;
         let updated = 0;
-        set((state) => {
-          const newPrices = [...state.materialPrices];
-          for (const entry of state.priceDatabase) {
-            const match = matchReceiptToMaterial(entry, newPrices);
-            if (match) {
-              matched++;
+        if (matches.length > 0) {
+          set((s) => {
+            const newPrices = [...s.materialPrices];
+            for (const match of matches) {
               const idx = newPrices.findIndex(m => m.id === match.id);
               if (idx >= 0 && newPrices[idx].price !== match.newPrice) {
                 newPrices[idx] = { ...newPrices[idx], price: match.newPrice };
                 updated++;
               }
             }
-          }
-          return { materialPrices: newPrices };
-        });
+            return { materialPrices: newPrices };
+          });
+        }
         return { matched, updated };
       },
 
