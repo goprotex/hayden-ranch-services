@@ -397,10 +397,25 @@ function ensureSpace(doc: jsPDF, y: number, needed: number, marginTop: number = 
 }
 
 // ============================================================
+// Helper to load logo image as data URL for PDF embedding
+async function loadLogoDataUrl(): Promise<string | null> {
+  try {
+    const resp = await fetch('/images/HaydenLogo.png');
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
 // Main PDF generator
 // ============================================================
 
-export function generateFenceBidPDF(data: FenceBidData): void {
+export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   const doc = new jsPDF('p', 'mm', 'letter');
   const pw = doc.internal.pageSize.getWidth();  // 215.9
   const mx = 18; // margins
@@ -408,22 +423,31 @@ export function generateFenceBidPDF(data: FenceBidData): void {
 
   let y = 18;
 
+  // Load logo
+  const logoDataUrl = await loadLogoDataUrl();
+
   // ── Page 1: Header ──
   // Dark navy banner
   doc.setFillColor(27, 38, 54);
   doc.rect(0, 0, pw, 44, 'F');
 
-  // Company name & contact (left)
+  // Logo (left side)
+  const textOffsetX = logoDataUrl ? 30 : 0;
+  if (logoDataUrl) {
+    try { doc.addImage(logoDataUrl, 'PNG', mx, y - 6, 24, 24); } catch { /* skip */ }
+  }
+
+  // Company name & contact
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
-  doc.text(COMPANY.name, mx, y + 3);
+  doc.text(COMPANY.name, mx + textOffsetX, y + 3);
 
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(200, 210, 220);
-  doc.text(COMPANY.address, mx, y + 11);
-  doc.text(`${COMPANY.phone}  •  ${COMPANY.email}`, mx, y + 16);
+  doc.text(COMPANY.address, mx + textOffsetX, y + 11);
+  doc.text(`${COMPANY.phone}  •  ${COMPANY.email}`, mx + textOffsetX, y + 16);
 
   // Proposal number & dates (right)
   doc.setFontSize(8);

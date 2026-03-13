@@ -304,7 +304,7 @@ export default function RoofingPage() {
 
   const rmBidExtra = useCallback((id: string) => { setBidExtras(p => p.filter(e => e.id !== id)); }, []);
 
-  const handleDownloadBidPDF = useCallback(() => {
+  const handleDownloadBidPDF = useCallback(async () => {
     const now = new Date();
     const valid = new Date(now); valid.setDate(valid.getDate() + 30);
 
@@ -373,7 +373,7 @@ export default function RoofingPage() {
       sketchFacets: sketchFacets.length > 0 ? sketchFacets : undefined,
       mapImage,
     };
-    generateRoofBidPDF(data);
+    await generateRoofBidPDF(data);
   }, [bidComputed, bidExtras, bidProjectName, bidClientName, bidAddress, roofType, selectedPanelProfile, selectedGauge, pitchIdx, bidProjTotal, bidDepositPercent, bidDeposit, bidBalance, bidTimelineDays, bidOverview, includesTearOff, roofLayers, warrantyYears, panelCost, underlaymentCost, trimCost, fastenerCost, laborCost, profitMargin, overheadPct, mapPolygons]);
 
   // Render

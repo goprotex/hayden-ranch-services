@@ -378,26 +378,29 @@ function calculateSuggestedDifficulty(
 ): 'easy' | 'moderate' | 'difficult' | 'very_difficult' {
   let score = 0;
 
-  // Slope scoring (0-40 points)
-  if (avgSlope < 5) score += 5;
-  else if (avgSlope < 10) score += 15;
-  else if (avgSlope < 20) score += 25;
-  else score += 40;
+  // Average grade scoring (0-50 points) — primary difficulty driver
+  if (avgSlope < 3) score += 0;
+  else if (avgSlope < 5) score += 8;
+  else if (avgSlope < 8) score += 16;
+  else if (avgSlope < 12) score += 25;
+  else if (avgSlope < 20) score += 35;
+  else score += 50;
 
-  // Max slope scoring (0-20 points)
-  if (maxSlope > 30) score += 20;
-  else if (maxSlope > 20) score += 12;
-  else if (maxSlope > 10) score += 6;
+  // Max grade scoring (0-25 points) — steep sections matter
+  if (maxSlope > 30) score += 25;
+  else if (maxSlope > 20) score += 16;
+  else if (maxSlope > 12) score += 8;
+  else if (maxSlope > 5) score += 3;
 
-  // Soil scoring (0-25 points)
-  if (soilDifficulty === 'very_hard') score += 25;
-  else if (soilDifficulty === 'hard') score += 15;
-  else if (soilDifficulty === 'moderate') score += 8;
+  // Soil scoring (0-20 points)
+  if (soilDifficulty === 'very_hard') score += 20;
+  else if (soilDifficulty === 'hard') score += 12;
+  else if (soilDifficulty === 'moderate') score += 6;
 
-  // Elevation change scoring (0-15 points)
-  if (elevationChange > 200) score += 15;
-  else if (elevationChange > 100) score += 10;
-  else if (elevationChange > 50) score += 5;
+  // Elevation change scoring (0-5 points) — minor factor
+  if (elevationChange > 200) score += 5;
+  else if (elevationChange > 100) score += 3;
+  else if (elevationChange > 50) score += 1;
 
   if (score < 15) return 'easy';
   if (score < 35) return 'moderate';

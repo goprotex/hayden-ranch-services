@@ -16,7 +16,7 @@ import {
 } from '@/lib/fencing/fence-materials';
 import { generateFenceBidPDF, calculateSectionMaterials, calculateLaborEstimate, buildSiteAdjustments, type FenceBidSection, type BidGate, type FenceBidData, type TopWireType } from '@/lib/fencing/fence-bid-pdf';
 import { loadProductPhotos } from '@/lib/fencing/product-photos';
-import type { DrawnLine, VertexAngle, TerrainSuggestion, ElevationSegment, FenceMapHandle } from '@/components/fencing/FenceMap';
+import type { DrawnLine, VertexAngle, TerrainSuggestion, ElevationSegment, FenceMapHandle, MapGate } from '@/components/fencing/FenceMap';
 import type { FenceType, FenceHeight } from '@/types';
 
 const FenceMap = dynamic(() => import('@/components/fencing/FenceMap'), {
@@ -493,6 +493,28 @@ export default function FencingPage() {
   }, []);
   const updGate = useCallback((id: string, u: Partial<BidGate>) => { setGates(p => p.map(g => g.id === id ? { ...g, ...u } : g)); }, []);
   const rmGate = useCallback((id: string) => { setGates(p => p.filter(g => g.id !== id)); }, []);
+
+  // Track which BidGate IDs came from the map so we can sync adds/removes
+  const mapGateIdsRef = useRef<Set<string>>(new Set());
+  const handleGatesPlaced = useCallback((mapGates: MapGate[]) => {
+    const newIds = new Set(mapGates.map(g => g.id));
+    const prevIds = mapGateIdsRef.current;
+    const defaultSpec = GATE_SPECS.find(s => s.size === '10ft') || GATE_SPECS[3];
+    // Add newly placed gates
+    for (const mg of mapGates) {
+      if (!prevIds.has(mg.id)) {
+        setGates(p => [...p, {
+          id: mg.id, type: defaultSpec.label, width: defaultSpec.widthFeet,
+          cost: defaultSpec.defaultPrice + defaultSpec.defaultInstallCost,
+        }]);
+      }
+    }
+    // Remove undone gates
+    for (const id of prevIds) {
+      if (!newIds.has(id)) setGates(p => p.filter(g => g.id !== id));
+    }
+    mapGateIdsRef.current = newIds;
+  }, []);
   /** Build a comprehensive, educational soil/terrain narrative for the PDF bid (fallback when AI is unavailable) */
   const buildSoilNarrative = useCallback((): string | undefined => {
     if (!terrainSuggestion) return undefined;
@@ -756,7 +778,7 @@ export default function FencingPage() {
         return `${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
       })(),
     };
-    generateFenceBidPDF(data);
+    await generateFenceBidPDF(data);
   }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, laborEstimate, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory, paintEst, paintColor]);
 
   const handleSaveBid = useCallback(() => {
@@ -810,9 +832,11 @@ export default function FencingPage() {
               </div>
               <FenceMap
                 ref={fenceMapRef}
+                linePostSpacing={linePostSpacing}
                 onFenceLinesChange={handleFenceLinesChange}
                 onTerrainAnalyzed={handleTerrainAnalyzed}
                 onMapCapture={(dataUrl) => { setMapImages(prev => [...prev, dataUrl]); }}
+                onGatesPlaced={handleGatesPlaced}
                 onAddPointOnLine={(coord, type, lineId) => {
                   if (type === 'h_brace' || type === 'n_brace' || type === 'corner_brace') {
                     const spec = BRACE_SPECS.find(b => b.id === type) || BRACE_SPECS[0];
@@ -821,6 +845,12 @@ export default function FencingPage() {
                       label: spec.label,
                       angleDegrees: type === 'corner_brace' ? 90 : 180,
                       spec,
+                    }]);
+                  } else if (type === 'gate') {
+                    const defaultSpec = GATE_SPECS.find(s => s.size === '10ft') || GATE_SPECS[3];
+                    setGates(p => [...p, {
+                      id: uid(), type: defaultSpec.label, width: defaultSpec.widthFeet,
+                      cost: defaultSpec.defaultPrice + defaultSpec.defaultInstallCost,
                     }]);
                   }
                 }}

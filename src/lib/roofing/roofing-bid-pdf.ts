@@ -206,7 +206,22 @@ function drawRoofDiagram(doc: jsPDF, data: RoofBidData, startX: number, startY: 
 }
 
 // PDF Generator
-export function generateRoofBidPDF(data: RoofBidData): void {
+// Helper to load logo image as data URL for PDF embedding
+async function loadLogoDataUrl(): Promise<string | null> {
+  try {
+    const resp = await fetch('/images/HaydenLogo.png');
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
+export async function generateRoofBidPDF(data: RoofBidData): Promise<void> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   const PW = 215.9;
   const PH = 279.4;
@@ -224,18 +239,28 @@ export function generateRoofBidPDF(data: RoofBidData): void {
     }
   }
 
+  // Load logo
+  const logoDataUrl = await loadLogoDataUrl();
+
   // Header
   doc.setFillColor(30, 41, 59);
   doc.rect(0, 0, PW, 38, 'F');
+
+  // Logo (left side)
+  const textOffsetX = logoDataUrl ? 28 : 0;
+  if (logoDataUrl) {
+    try { doc.addImage(logoDataUrl, 'PNG', ML, 5, 22, 22); } catch { /* skip */ }
+  }
+
   doc.setFontSize(18);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(255, 255, 255);
-  doc.text(COMPANY.name, ML, 16);
+  doc.text(COMPANY.name, ML + textOffsetX, 16);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(203, 213, 225);
-  doc.text(COMPANY.address, ML, 24);
-  doc.text(COMPANY.phone + '  |  ' + COMPANY.email, ML, 30);
+  doc.text(COMPANY.address, ML + textOffsetX, 24);
+  doc.text(COMPANY.phone + '  |  ' + COMPANY.email, ML + textOffsetX, 30);
   y = 46;
 
   // Title

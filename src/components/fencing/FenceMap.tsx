@@ -25,6 +25,8 @@ interface FenceMapProps {
   onPointTypeChange?: (coordinate: [number, number], type: FencePointType) => void;
   /** Called when a new point is added along a fence line (for gates, braces, etc.) */
   onAddPointOnLine?: (coordinate: [number, number], type: FencePointType, nearestLineId: string) => void;
+  /** Spacing (ft) between line posts — used to show post markers on the map */
+  linePostSpacing?: number;
   center?: [number, number];
   zoom?: number;
 }
@@ -118,6 +120,7 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
   onGatesPlaced,
   onPointTypeChange,
   onAddPointOnLine,
+  linePostSpacing,
   center = [-98.23, 30.75],
   zoom = 16,
 }, ref) {
@@ -508,6 +511,53 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
       });
     }
   }, [addedPoints, mapLoaded]);
+
+  // Render line-post markers via GeoJSON circle layer (very performant)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded || !linePostSpacing || linePostSpacing <= 0) return;
+    const lines = drawnLinesRef.current;
+
+    // Interpolate points along each line at linePostSpacing intervals
+    const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
+    for (const line of lines) {
+      const coords = line.coordinates;
+      if (coords.length < 2) continue;
+      let accumulated = 0;
+      let nextPost = linePostSpacing; // first post after start
+      for (let i = 1; i < coords.length; i++) {
+        const segLen = calcLineLengthFeet([coords[i - 1], coords[i]]);
+        while (accumulated + segLen >= nextPost) {
+          const frac = (nextPost - accumulated) / segLen;
+          const lng = coords[i - 1][0] + frac * (coords[i][0] - coords[i - 1][0]);
+          const lat = coords[i - 1][1] + frac * (coords[i][1] - coords[i - 1][1]);
+          features.push({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [lng, lat] } });
+          nextPost += linePostSpacing;
+        }
+        accumulated += segLen;
+      }
+    }
+
+    const data: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+    const src = map.getSource('line-posts') as mapboxgl.GeoJSONSource | undefined;
+    if (src) {
+      src.setData(data);
+    } else {
+      map.addSource('line-posts', { type: 'geojson', data });
+      map.addLayer({
+        id: 'line-posts',
+        type: 'circle',
+        source: 'line-posts',
+        paint: {
+          'circle-radius': 3,
+          'circle-color': '#9ca3af',
+          'circle-stroke-width': 1,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.85,
+        },
+      });
+    }
+  }, [mapLoaded, linePostSpacing, totalLength, calcLineLengthFeet]);
 
   // Wire up map click for gate placement
   useEffect(() => {
