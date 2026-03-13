@@ -65,7 +65,9 @@ export default function FencingPage() {
 
   // Fence config
   const [fenceType, setFenceType] = useState<FenceType>('stay_tuff_fixed_knot');
-  const [selectedStayTuff, setSelectedStayTuff] = useState<StayTuffOption>(STAY_TUFF_CATALOG[0]);
+  const [selectedStayTuff, setSelectedStayTuff] = useState<StayTuffOption>(
+    STAY_TUFF_CATALOG.find(c => c.category === 'cattle') || STAY_TUFF_CATALOG[0]
+  );
   const [wireCategory, setWireCategory] = useState<WireCategory>('cattle');
   const [postMaterial, setPostMaterial] = useState<PostMaterial>('drill_stem_238');
   const [squareTubeGauge, setSquareTubeGauge] = useState<SquareTubeGauge>('14ga');
