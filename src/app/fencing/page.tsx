@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Reveal, StaggerReveal } from '@/components/animations';
@@ -16,7 +16,7 @@ import {
 } from '@/lib/fencing/fence-materials';
 import { generateFenceBidPDF, calculateSectionMaterials, calculateLaborEstimate, buildSiteAdjustments, type FenceBidSection, type BidGate, type FenceBidData, type TopWireType } from '@/lib/fencing/fence-bid-pdf';
 import { loadProductPhotos } from '@/lib/fencing/product-photos';
-import type { DrawnLine, VertexAngle, TerrainSuggestion, ElevationSegment } from '@/components/fencing/FenceMap';
+import type { DrawnLine, VertexAngle, TerrainSuggestion, ElevationSegment, FenceMapHandle } from '@/components/fencing/FenceMap';
 import type { FenceType, FenceHeight } from '@/types';
 
 const FenceMap = dynamic(() => import('@/components/fencing/FenceMap'), {
@@ -138,6 +138,7 @@ export default function FencingPage() {
 
   // Map captures for PDF (supports multiple screenshots)
   const [mapImages, setMapImages] = useState<string[]>([]);
+  const fenceMapRef = useRef<FenceMapHandle>(null);
 
   // UI
   const [activeTab, setActiveTab] = useState<'config' | 'preview' | 'pricing'>('config');
@@ -586,6 +587,15 @@ export default function FencingPage() {
       ? await loadProductPhotos(wireCategory)
       : [];
 
+    // Auto-capture zoomed-out overview of all fence lines
+    let pdfMapImages = [...mapImages];
+    if (fenceMapRef.current) {
+      const overview = await fenceMapRef.current.captureOverview();
+      if (overview) {
+        pdfMapImages = [overview, ...pdfMapImages];
+      }
+    }
+
     const secs = computed.map(sec => ({
       ...sec, materials: calculateSectionMaterials(
         sec.linearFeet, ftLabel, fenceHeight, stModel,
@@ -655,7 +665,7 @@ export default function FencingPage() {
         squareTubeGauge,
         fenceType: ftLabel,
       }) : undefined,
-      mapImages: mapImages.length > 0 ? mapImages : undefined,
+      mapImages: pdfMapImages.length > 0 ? pdfMapImages : undefined,
       accessories: {
         postCaps: materialCalc.postCapsQty,
         tensioners: materialCalc.tensionersQty,
@@ -667,6 +677,36 @@ export default function FencingPage() {
       steepSurchargePerFoot: steepFootage > 0 ? 2 : undefined,
       wireCategory: fenceType.startsWith('stay_tuff') ? wireCategory : undefined,
       productImages: productImages.length > 0 ? productImages : undefined,
+      fenceLifespanYears: 25,
+      alternativeCostPerFoot: 6,
+      alternativeLifespanYears: 8,
+      enclosedAcreage: totalFeet > 0 ? parseFloat(((totalFeet / 4) * (totalFeet / 4) / 43560).toFixed(1)) : undefined,
+      permitInfo: {
+        hoaFound: false,
+        permitRequired: false,
+        permitNote: 'Agricultural fencing exempt from county building permit in most Texas counties',
+      },
+      credentials: {
+        txAdjusterLicense: 'TX PA License #3378204',
+        bondAmount: '$50,000 Surety Bond',
+        liabilityInsurance: '$1M General Liability',
+        workersComp: 'Full Coverage',
+      },
+      maintenancePlan: {
+        annualPrice: 350,
+        services: [
+          'Full fence line walk & tension check',
+          'Tighten or replace loose clips & fasteners',
+          'Inspect and maintain all gates',
+          'Photo report of fence condition',
+        ],
+      },
+      referralDiscount: 5,
+      seasonalPricingDeadline: (() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 14);
+        return `${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+      })(),
     };
     generateFenceBidPDF(data);
   }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, laborEstimate, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory]);
@@ -721,6 +761,7 @@ export default function FencingPage() {
                 <p className="text-[11px] text-steel-400 mb-2">Click on the map to draw your fence lines. The map will analyze terrain, soil, and elevation automatically.</p>
               </div>
               <FenceMap
+                ref={fenceMapRef}
                 onFenceLinesChange={handleFenceLinesChange}
                 onTerrainAnalyzed={handleTerrainAnalyzed}
                 onMapCapture={(dataUrl) => { setMapImages(prev => [...prev, dataUrl]); }}

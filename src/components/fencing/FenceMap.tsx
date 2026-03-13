@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 import { calculateVertexAngle, determineBraceType } from '@/lib/fencing/fence-materials';
@@ -27,6 +27,11 @@ interface FenceMapProps {
   onAddPointOnLine?: (coordinate: [number, number], type: FencePointType, nearestLineId: string) => void;
   center?: [number, number];
   zoom?: number;
+}
+
+export interface FenceMapHandle {
+  /** Fit all drawn fence lines in view, capture a screenshot, and restore the previous view. */
+  captureOverview: () => Promise<string | null>;
 }
 
 export interface DrawnLine {
@@ -106,7 +111,7 @@ function snapToSegment(p: [number, number], a: [number, number], b: [number, num
   return [a[0] + t * dx, a[1] + t * dy];
 }
 
-export default function FenceMap({
+const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
   onFenceLinesChange,
   onTerrainAnalyzed,
   onMapCapture,
@@ -115,7 +120,7 @@ export default function FenceMap({
   onAddPointOnLine,
   center = [-98.23, 30.75],
   zoom = 16,
-}: FenceMapProps) {
+}, ref) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
@@ -660,6 +665,147 @@ export default function FenceMap({
     }
   }, [onMapCapture, braceMarkers, placedGates, addedPoints]);
 
+  // captureOverview: fit all fence lines, capture, then restore previous view
+  const captureOverview = useCallback((): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const map = mapRef.current;
+      if (!map) { resolve(null); return; }
+
+      const lines = drawnLinesRef.current;
+      if (lines.length === 0) { resolve(null); return; }
+
+      // Collect all coordinates from all drawn lines
+      const allCoords = lines.flatMap(l => l.coordinates);
+      if (allCoords.length === 0) { resolve(null); return; }
+
+      // Compute bounding box
+      let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+      for (const [lng, lat] of allCoords) {
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+      }
+
+      // Save current view
+      const prevCenter = map.getCenter();
+      const prevZoom = map.getZoom();
+      const prevBearing = map.getBearing();
+      const prevPitch = map.getPitch();
+
+      // Fit bounds with padding
+      map.fitBounds(
+        [[minLng, minLat], [maxLng, maxLat]],
+        { padding: 80, duration: 0, bearing: 0, pitch: 0 }
+      );
+
+      // Wait for render then capture
+      const doCapture = () => {
+        try {
+          const srcCanvas = map.getCanvas();
+          const w = srcCanvas.width;
+          const h = srcCanvas.height;
+          const offscreen = document.createElement('canvas');
+          offscreen.width = w;
+          offscreen.height = h;
+          const ctx = offscreen.getContext('2d');
+          if (!ctx) { resolve(srcCanvas.toDataURL('image/png')); return; }
+          ctx.drawImage(srcCanvas, 0, 0);
+
+          const dpr = window.devicePixelRatio || 1;
+
+          // Composite brace markers
+          for (const brace of braceMarkers) {
+            const pt = map.project(brace.coordinate);
+            const x = pt.x * dpr;
+            const y = pt.y * dpr;
+            const r = 10 * dpr;
+            ctx.beginPath();
+            ctx.arc(x, y, r + 2 * dpr, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            if (brace.type === 'double_h') ctx.fillStyle = '#dc2626';
+            else if (brace.type === 'corner_brace') ctx.fillStyle = '#2563eb';
+            else ctx.fillStyle = '#16a34a';
+            ctx.fill();
+          }
+
+          // Composite gate markers
+          for (const gate of placedGates) {
+            const pt = map.project(gate.coordinate);
+            const x = pt.x * dpr;
+            const y = pt.y * dpr;
+            const sz = 13 * dpr;
+            ctx.fillStyle = '#f59e0b';
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 2 * dpr;
+            ctx.fillRect(x - sz, y - sz, sz * 2, sz * 2);
+            ctx.strokeRect(x - sz, y - sz, sz * 2, sz * 2);
+            ctx.fillStyle = '#1b2636';
+            ctx.font = `bold ${12 * dpr}px Arial, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('G', x, y);
+          }
+
+          // Composite added-point markers
+          for (const pt of addedPoints) {
+            const projected = map.project(pt.coordinate);
+            const x = projected.x * dpr;
+            const y = projected.y * dpr;
+            const r = 9 * dpr;
+            const opt = POINT_TYPE_OPTIONS.find(o => o.value === pt.type);
+            ctx.beginPath();
+            ctx.arc(x, y, r + 2 * dpr, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fillStyle = opt?.color ?? '#16a34a';
+            ctx.fill();
+          }
+
+          // "OVERVIEW" label in top-left
+          ctx.fillStyle = 'rgba(27, 38, 54, 0.75)';
+          ctx.fillRect(0, 0, 180 * dpr, 28 * dpr);
+          ctx.font = `bold ${12 * dpr}px Arial, sans-serif`;
+          ctx.fillStyle = '#d1d5db';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('FULL FENCE OVERVIEW', 10 * dpr, 14 * dpr);
+
+          const dataUrl = offscreen.toDataURL('image/png');
+
+          // Restore previous view
+          map.jumpTo({ center: prevCenter, zoom: prevZoom, bearing: prevBearing, pitch: prevPitch });
+
+          resolve(dataUrl);
+        } catch {
+          resolve(null);
+        }
+      };
+
+      // Use idle event (fires after all rendering) or fall back to timeout
+      const onIdle = () => {
+        map.off('idle', onIdle);
+        doCapture();
+      };
+      map.on('idle', onIdle);
+      // Safety timeout in case idle never fires
+      setTimeout(() => {
+        map.off('idle', onIdle);
+        doCapture();
+      }, 1500);
+    });
+  }, [braceMarkers, placedGates, addedPoints]);
+
+  // Expose captureOverview to parent via ref
+  useImperativeHandle(ref, () => ({
+    captureOverview,
+  }), [captureOverview]);
+
   const handleGeocode = useCallback(async () => {
     if (!address.trim() || !token || !mapRef.current) return;
     try {
@@ -948,4 +1094,6 @@ export default function FenceMap({
       )}
     </div>
   );
-}
+});
+
+export default FenceMap;

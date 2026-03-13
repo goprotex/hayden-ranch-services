@@ -154,6 +154,46 @@ export interface FenceBidData {
 
   // Pre-loaded product images as base64 data URLs
   productImages?: { label: string; dataUrl: string }[];
+
+  // ── New bid enhancements ──
+
+  // Cost-per-year comparison (long-term value framing)
+  fenceLifespanYears?: number;           // e.g. 25
+  alternativeCostPerFoot?: number;       // e.g. 6 (cheap barbed)
+  alternativeLifespanYears?: number;     // e.g. 8
+
+  // Acreage framing (anchors customer on enclosed area, not price)
+  enclosedAcreage?: number;              // e.g. 12.4
+
+  // Permit / HOA check
+  permitInfo?: {
+    hoaFound: boolean;
+    hoaName?: string;
+    permitRequired: boolean;
+    permitNote?: string;                 // e.g. "No county permit required for agricultural fencing in Kerr County"
+    deedRestrictions?: string;
+  };
+
+  // Insurance & license badges
+  credentials?: {
+    txAdjusterLicense?: string;          // e.g. "TX PA #3378204"
+    liabilityInsurance?: string;         // e.g. "$1M General Liability"
+    workersComp?: string;                // e.g. "Full Coverage"
+    bondAmount?: string;                 // e.g. "$50,000 Surety Bond"
+    otherBadges?: string[];              // e.g. ["BBB Accredited", "NFBA Member"]
+  };
+
+  // Annual maintenance plan
+  maintenancePlan?: {
+    annualPrice: number;                 // e.g. 250
+    services: string[];                  // e.g. ["Re-tensioning", "Clip inspection", ...]
+  };
+
+  // Neighbor referral discount
+  referralDiscount?: number;             // percent, e.g. 5
+
+  // Seasonal pricing deadline
+  seasonalPricingDeadline?: string;      // e.g. "April 15, 2026"
 }
 
 // ============================================================
@@ -485,7 +525,11 @@ export function generateFenceBidPDF(data: FenceBidData): void {
           doc.setFontSize(7);
           doc.setFont('helvetica', 'italic');
           doc.setTextColor(100, 100, 100);
-          doc.text('Satellite view showing fence line placement, gate locations, and brace positions. Orange = fence line, Red = end posts, Blue = corner braces, Green = H-braces, Yellow = gates.', mx, y);
+          let legend = 'Satellite view showing fence line placement, gate locations, and brace positions. Orange = fence line, Red = end posts, Blue = corner braces, Green = H-braces, Yellow = gates.';
+          if (data.enclosedAcreage && data.enclosedAcreage > 0) {
+            legend += ` Enclosed area: approximately ${data.enclosedAcreage.toFixed(1)} acres.`;
+          }
+          doc.text(legend, mx, y);
           y += 8;
         } else {
           y += 4;
@@ -1316,7 +1360,114 @@ export function generateFenceBidPDF(data: FenceBidData): void {
   doc.setFont('helvetica', 'bold');
   doc.text('PROJECT TOTAL', mx + 3, y + 1);
   doc.text(`$${data.projectTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y + 1, { align: 'right' });
-  y += 16;
+  y += 12;
+
+  // ── Cost-Per-Year Value Comparison ──
+  {
+    const totalLinFt = data.sections.reduce((s, sec) => s + sec.linearFeet, 0);
+    const costPerFt = totalLinFt > 0 ? data.projectTotal / totalLinFt : 0;
+    const lifespan = data.fenceLifespanYears ?? 25;
+    const costPerFtPerYear = lifespan > 0 ? costPerFt / lifespan : 0;
+
+    const altCostPerFt = data.alternativeCostPerFoot ?? 6;
+    const altLifespan = data.alternativeLifespanYears ?? 8;
+    const altCostPerFtPerYear = altLifespan > 0 ? altCostPerFt / altLifespan : 0;
+
+    y = ensureSpace(doc, y, 32);
+
+    // Two-column comparison boxes
+    const boxW = (cw - 6) / 2;
+    const boxH = 24;
+
+    // Left box — This fence
+    doc.setFillColor(240, 250, 245);
+    doc.roundedRect(mx, y, boxW, boxH, 2, 2, 'F');
+    doc.setFillColor(34, 139, 84);
+    doc.rect(mx, y, boxW, 2.5, 'F');
+
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(34, 139, 84);
+    doc.text('THIS FENCE', mx + 4, y + 7);
+
+    doc.setFontSize(14);
+    doc.setTextColor(27, 38, 54);
+    doc.text(`$${costPerFtPerYear.toFixed(2)}/ft/yr`, mx + 4, y + 14);
+
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(80, 80, 80);
+    doc.text(`$${costPerFt.toFixed(2)}/ft  ×  ${lifespan} year lifespan`, mx + 4, y + 19);
+
+    // Right box — Standard barbed alternative
+    const rx = mx + boxW + 6;
+    doc.setFillColor(255, 245, 245);
+    doc.roundedRect(rx, y, boxW, boxH, 2, 2, 'F');
+    doc.setFillColor(180, 60, 40);
+    doc.rect(rx, y, boxW, 2.5, 'F');
+
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(180, 60, 40);
+    doc.text('STANDARD BARBED WIRE', rx + 4, y + 7);
+
+    doc.setFontSize(14);
+    doc.setTextColor(27, 38, 54);
+    doc.text(`$${altCostPerFtPerYear.toFixed(2)}/ft/yr`, rx + 4, y + 14);
+
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(80, 80, 80);
+    doc.text(`$${altCostPerFt.toFixed(2)}/ft  ×  ${altLifespan} year lifespan`, rx + 4, y + 19);
+
+    y += boxH + 4;
+
+    // Savings note
+    if (costPerFtPerYear < altCostPerFtPerYear) {
+      const savings = altCostPerFtPerYear - costPerFtPerYear;
+      const pctSavings = Math.round((savings / altCostPerFtPerYear) * 100);
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(34, 139, 84);
+      doc.text(`Your fence costs ${pctSavings}% less per year than a standard barbed wire installation that needs replacing in ${altLifespan} years.`, mx, y);
+      y += 5;
+    }
+
+    // Acreage framing (if provided)
+    if (data.enclosedAcreage && data.enclosedAcreage > 0) {
+      const costPerAcre = data.projectTotal / data.enclosedAcreage;
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(60, 60, 60);
+      doc.text(`Enclosing ${data.enclosedAcreage.toFixed(1)} acres  —  $${costPerAcre.toLocaleString(undefined, { maximumFractionDigits: 0 })}/acre  —  $${(costPerAcre / lifespan).toFixed(0)}/acre/year over the fence lifetime.`, mx, y);
+      y += 5;
+    }
+
+    y += 4;
+  }
+
+  // ── Seasonal Pricing Indicator ──
+  if (data.seasonalPricingDeadline) {
+    y = ensureSpace(doc, y, 14);
+
+    doc.setFillColor(255, 251, 235);
+    doc.roundedRect(mx, y - 2, cw, 12, 2, 2, 'F');
+    doc.setDrawColor(217, 170, 56);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(mx, y - 2, cw, 12, 2, 2, 'S');
+
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(130, 90, 10);
+    doc.text(`Book before ${data.seasonalPricingDeadline} and lock in current material pricing.`, mx + 5, y + 4);
+
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 80, 30);
+    doc.text('Material costs are subject to change after this date. See Terms & Conditions for details.', mx + 5, y + 8);
+
+    y += 16;
+  }
 
   // ── Payment Schedule ──
   y = ensureSpace(doc, y, 40);
@@ -1774,6 +1925,148 @@ export function generateFenceBidPDF(data: FenceBidData): void {
     }
   }
 
+  // ── Permit & HOA Check ──
+  if (data.permitInfo) {
+    y = ensureSpace(doc, y, 40);
+
+    doc.setFillColor(27, 38, 54);
+    doc.rect(mx, y - 3, cw, 9, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('PERMIT & PROPERTY COMPLIANCE CHECK', mx + 4, y + 3);
+    y += 14;
+
+    const pi = data.permitInfo;
+    const checkItems: { label: string; status: string; statusColor: [number, number, number] }[] = [];
+
+    checkItems.push({
+      label: 'HOA / Property Owner Association',
+      status: pi.hoaFound ? `Found: ${pi.hoaName || 'HOA on file'}` : 'No HOA found',
+      statusColor: pi.hoaFound ? [200, 140, 40] : [34, 139, 84],
+    });
+
+    checkItems.push({
+      label: 'County Building Permit',
+      status: pi.permitRequired
+        ? (pi.permitNote || 'Permit may be required — verify with local jurisdiction')
+        : (pi.permitNote || 'No county permit required for agricultural fencing'),
+      statusColor: pi.permitRequired ? [200, 140, 40] : [34, 139, 84],
+    });
+
+    if (pi.deedRestrictions) {
+      checkItems.push({
+        label: 'Deed Restrictions',
+        status: pi.deedRestrictions,
+        statusColor: [200, 140, 40],
+      });
+    } else {
+      checkItems.push({
+        label: 'Deed Restrictions',
+        status: 'None found on record',
+        statusColor: [34, 139, 84],
+      });
+    }
+
+    for (const item of checkItems) {
+      y = ensureSpace(doc, y, 10);
+
+      // Check circle
+      doc.setFillColor(...item.statusColor);
+      doc.circle(mx + 4, y, 2, 'F');
+      doc.setFontSize(6);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text('\u2713', mx + 4, y + 0.8, { align: 'center' });
+
+      // Label
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(27, 38, 54);
+      doc.text(item.label, mx + 10, y + 1);
+
+      // Status
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...item.statusColor);
+      doc.text(item.status, mx + 10 + doc.getTextWidth(item.label) + 5, y + 1);
+
+      y += 8;
+    }
+
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(120, 120, 120);
+    doc.text('This check is informational only. Customer is responsible for verifying all permit, HOA, and deed restriction requirements before work begins.', mx, y);
+    y += 8;
+  }
+
+  // ── Annual Maintenance Plan ──
+  if (data.maintenancePlan) {
+    y = ensureSpace(doc, y, 50);
+
+    doc.setFillColor(244, 247, 252);
+    doc.roundedRect(mx, y - 2, cw, 42, 2, 2, 'F');
+    doc.setFillColor(59, 130, 246);
+    doc.rect(mx, y - 2, cw, 2.5, 'F');
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(27, 38, 54);
+    doc.text('ANNUAL MAINTENANCE PLAN', mx + 5, y + 6);
+
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(59, 130, 246);
+    doc.text(`$${data.maintenancePlan.annualPrice}/year`, mx + cw - 5, y + 6, { align: 'right' });
+
+    y += 12;
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(60, 60, 60);
+    doc.text('Keep your fence in peak condition with an annual service visit. Includes:', mx + 5, y);
+    y += 5;
+
+    for (const svc of data.maintenancePlan.services) {
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(50, 50, 50);
+      doc.text(`\u2022  ${svc}`, mx + 8, y);
+      y += 4;
+    }
+
+    y += 2;
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(100, 100, 100);
+    doc.text('Ask your representative to add the maintenance plan at signing. First visit scheduled 12 months after installation.', mx + 5, y);
+    y += 10;
+  }
+
+  // ── Neighbor Referral ──
+  if (data.referralDiscount && data.referralDiscount > 0) {
+    y = ensureSpace(doc, y, 20);
+
+    doc.setFillColor(254, 249, 243);
+    doc.roundedRect(mx, y - 2, cw, 16, 2, 2, 'F');
+    doc.setDrawColor(234, 138, 45);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(mx, y - 2, cw, 16, 2, 2, 'S');
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(180, 90, 20);
+    doc.text(`Fencing a shared property line? Save ${data.referralDiscount}%`, mx + 5, y + 4);
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(80, 60, 30);
+    doc.text(`We offer a ${data.referralDiscount}% discount when adjacent landowners book together. Split the cost on shared fence lines and both save.`, mx + 5, y + 10);
+
+    y += 20;
+  }
+
   // ── Terms and Conditions ──
   doc.addPage();
   y = 20;
@@ -1832,6 +2125,50 @@ export function generateFenceBidPDF(data: FenceBidData): void {
   const acceptLines = doc.splitTextToSize(acceptText, cw);
   doc.text(acceptLines, mx, y);
   y += acceptLines.length * 3.5 + 12;
+
+  // ── Insurance & License Badges ──
+  if (data.credentials) {
+    const creds = data.credentials;
+    const badges: { label: string; detail: string }[] = [];
+    if (creds.txAdjusterLicense) badges.push({ label: 'TX Public Adjuster', detail: creds.txAdjusterLicense });
+    if (creds.bondAmount) badges.push({ label: 'Surety Bonded', detail: creds.bondAmount });
+    if (creds.liabilityInsurance) badges.push({ label: 'General Liability', detail: creds.liabilityInsurance });
+    if (creds.workersComp) badges.push({ label: "Workers' Comp", detail: creds.workersComp });
+
+    if (badges.length > 0) {
+      y = ensureSpace(doc, y, 18);
+
+      const badgeW = (cw - (badges.length - 1) * 4) / badges.length;
+      for (let b = 0; b < badges.length; b++) {
+        const bx = mx + b * (badgeW + 4);
+        doc.setFillColor(240, 245, 250);
+        doc.roundedRect(bx, y - 2, badgeW, 14, 1.5, 1.5, 'F');
+        doc.setDrawColor(59, 130, 246);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(bx, y - 2, badgeW, 14, 1.5, 1.5, 'S');
+
+        // Shield icon placeholder
+        doc.setFillColor(59, 130, 246);
+        doc.circle(bx + 6, y + 5, 3.5, 'F');
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text('\u2713', bx + 6, y + 6.2, { align: 'center' });
+
+        doc.setFontSize(7.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(27, 38, 54);
+        doc.text(badges[b].label, bx + 12, y + 3);
+
+        doc.setFontSize(6.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(80, 80, 80);
+        doc.text(badges[b].detail, bx + 12, y + 8);
+      }
+
+      y += 18;
+    }
+  }
 
   // Signature lines
   const sigMid = pw / 2;
