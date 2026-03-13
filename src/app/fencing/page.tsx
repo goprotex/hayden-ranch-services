@@ -169,9 +169,11 @@ export default function FencingPage() {
     if (analysis.steepFootage != null) setSteepFootage(analysis.steepFootage);
   }, []);
 
-  // Load shared material prices from server on mount
+  // Load shared material prices from server on mount + poll every 30s for real-time sync
   useEffect(() => {
     loadSharedPrices();
+    const interval = setInterval(loadSharedPrices, 30_000);
+    return () => clearInterval(interval);
   }, [loadSharedPrices]);
 
   // Generate AI site analysis when terrain data arrives
@@ -380,7 +382,10 @@ export default function FencingPage() {
 
   const materialCalc = useMemo(() => {
     const linePostCount = Math.max(2, Math.ceil(totalFeet / linePostSpacing));
-    const tPostCount = Math.ceil(totalFeet / tPostSpacing) - linePostCount;
+    // T-posts go between each pair of line posts
+    const spans = Math.max(0, linePostCount - 1);
+    const tPostsPerSpan = Math.max(0, Math.floor(linePostSpacing / tPostSpacing) - 1);
+    const tPostCount = spans * tPostsPerSpan;
     const hBraces = braceRecommendations.filter(b => b.type === 'h_brace' || b.type === 'n_brace').length + 2;
     const cornerBraces = braceRecommendations.filter(b => b.type === 'corner_brace').length;
     const totalBraces = hBraces + cornerBraces;
@@ -397,14 +402,16 @@ export default function FencingPage() {
     const postCapsQty = includePostCaps ? linePostCount + (totalBraces * 2) : 0;
 
     // Brace/termination points where tensioners & indicators are installed
-    const midRunSplices = Math.max(0, Math.floor(totalFeet / 660) - 1);
-    const tensionerLocations = totalBraces + midRunSplices;
+    const tensionerRuns = Math.max(1, Math.ceil(totalFeet / 660));
+    // Barbed/smooth top & bottom strands
+    const wireHeightIn = fenceType.startsWith('stay_tuff') ? selectedStayTuff.height : 60;
+    const barbedStrands = wireHeightIn >= 72 ? 2 : 1;
 
-    // Tensioners: 1 per horizontal strand per brace/termination point
-    const tensionersQty = includeTensioners ? horizStrands * tensionerLocations : 0;
+    // Tensioners: (mesh horizontal wires + barbed strands) per 660ft run
+    const tensionersQty = includeTensioners ? tensionerRuns * (horizStrands + barbedStrands) : 0;
 
-    // Spring tension indicators: 1 per horizontal strand per brace point
-    const springIndicatorsQty = includeSpringIndicators ? horizStrands * tensionerLocations : 0;
+    // Spring tension indicators: same formula
+    const springIndicatorsQty = includeSpringIndicators ? tensionerRuns * (horizStrands + barbedStrands) : 0;
 
     // Concrete fill (inside tube posts): only for square tube posts
     const postSpec = POST_MATERIALS.find(p => p.id === postMaterial);

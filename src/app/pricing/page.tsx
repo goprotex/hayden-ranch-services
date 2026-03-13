@@ -20,9 +20,11 @@ export default function PricingPage() {
 
   const [syncResult, setSyncResult] = useState<{ matched: number; updated: number } | null>(null);
 
-  // Load shared prices from server on mount
+  // Load shared prices from server on mount + poll every 30s for real-time sync
   useEffect(() => {
     loadSharedPrices();
+    const interval = setInterval(loadSharedPrices, 30_000);
+    return () => clearInterval(interval);
   }, [loadSharedPrices]);
 
   const processAIResult = useCallback(
