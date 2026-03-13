@@ -432,6 +432,9 @@ export default function FencingPage() {
   }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations, fenceType, selectedStayTuff, materialCostPerFoot, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, postMaterial]);
 
   // Auto-calculate timeline from labor estimate
+  const tiesPerLinePost = tiePattern === 'every_strand' ? materialCalc.horizStrands
+    : tiePattern === 'every_other' ? Math.ceil(materialCalc.horizStrands / 2)
+    : 4; // four_per_post
   const laborEstimate = useMemo(() => calculateLaborEstimate({
     totalLinearFeet: totalFeet,
     linePostCount: materialCalc.linePostCount,
@@ -439,7 +442,9 @@ export default function FencingPage() {
     hBraceCount: materialCalc.hBraces,
     cornerBraceCount: materialCalc.cornerBraces,
     gateCount: gates.length,
-  }), [totalFeet, materialCalc, gates.length]);
+    clipsPerTPost: 4,
+    tiesPerLinePost,
+  }), [totalFeet, materialCalc, gates.length, tiesPerLinePost]);
   const timelineDays = laborEstimate.workDays;
 
   const paintEst = useMemo(() => {

@@ -19,7 +19,8 @@ export interface LaborEstimate {
   drillingHours: number;       // time to drill all post holes
   postSettingHours: number;    // time to set posts in concrete
   tPostHours: number;          // time to drive T-posts
-  wireHours: number;           // estimated wire stringing time
+  wireHours: number;           // wire unrolling & tensioning time
+  clippingHours: number;       // time to clip/tie wire to every post
   braceAssemblyHours: number;  // time to build H-brace & corner brace assemblies
   gateHours: number;           // gate installation
   totalHours: number;
@@ -835,7 +836,9 @@ export function generateFenceBidPDF(data: FenceBidData): void {
         const depthLabel = ft > 0 ? `${ft}' ${inches > 0 ? inches + '"' : ''}`.trim() : `${depth}"`;
 
         const rockAnchorIn = 12; // always set at least 1' into bedrock
-        const totalPostDepthIn = depth + rockAnchorIn; // soil + rock anchor
+        const minPostDepthIn = 36; // every post must be at least 3' deep
+        const totalPostDepthIn = Math.max(minPostDepthIn, depth + rockAnchorIn); // at least 3' deep AND 1' into bedrock
+        const actualRockPenetration = totalPostDepthIn - depth; // how far post goes into bedrock
 
         // Scale: map 0 to max depth to the visual height
         const maxScaleIn = Math.max(60, totalPostDepthIn + 6);
@@ -848,7 +851,7 @@ export function generateFenceBidPDF(data: FenceBidData): void {
         const postW = 5;
         const postX = vizX + vizW * 0.35;
         const postSoilH = soilZoneH; // post through entire soil zone
-        const postRockH = (rockAnchorIn / maxScaleIn) * (vizH - 8); // 12" into bedrock
+        const postRockH = (actualRockPenetration / maxScaleIn) * (vizH - 8); // actual penetration into bedrock
         const postTotalH = postSoilH + postRockH;
         const postAboveH = 12; // above-ground portion
 
@@ -922,13 +925,16 @@ export function generateFenceBidPDF(data: FenceBidData): void {
         doc.line(bracketX, bedrockY, bracketX, bedrockY + postRockH); // vertical
         doc.line(bracketX, bedrockY, bracketX + 1.5, bedrockY); // top tick
         doc.line(bracketX, bedrockY + postRockH, bracketX + 1.5, bedrockY + postRockH); // bottom tick
-        // "1' INTO ROCK" label
+        // "X' INTO ROCK" label — reflects actual penetration
         doc.setFontSize(5.5);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(220, 180, 50);
         const rockMid = bedrockY + postRockH / 2 + 1.5;
+        const rpFt = Math.floor(actualRockPenetration / 12);
+        const rpIn = actualRockPenetration % 12;
+        const rpLabel = rpFt > 0 ? `${rpFt}'${rpIn > 0 ? ` ${rpIn}"` : ''} ROCK SET` : `${actualRockPenetration}" ROCK SET`;
         // Rotate label vertically alongside bracket
-        doc.text('1\' ROCK SET', bracketX - 1.5, rockMid, { angle: 90 });
+        doc.text(rpLabel, bracketX - 1.5, rockMid, { angle: 90 });
 
         // ── Ground surface accent ──
         doc.setDrawColor(80, 120, 50); // green grass line
@@ -1037,7 +1043,7 @@ export function generateFenceBidPDF(data: FenceBidData): void {
         const ft = Math.floor(depth / 12);
         const inches = depth % 12;
         const depthStr = ft > 0 ? `${ft} feet${inches > 0 ? ' ' + inches + ' inches' : ''}` : `${depth} inches`;
-        subParts.push(`According to USDA subsurface data, ${site.restrictionType || 'bedrock'} exists at approximately ${depthStr} below the surface on your property. For context, a standard fence post needs to be set 30 to 36 inches deep for proper stability. ${depth <= 18 ? 'At this depth, every single post hole will hit solid rock — there is no way around it. We use a rock auger that can bore through limestone and bedrock to set posts directly into the rock shelf. This is actually the strongest possible installation — a post anchored in solid rock is not going anywhere.' : depth <= 30 ? 'At this depth, most post holes will encounter rock before reaching the ideal 36-inch depth. We bring rock augering equipment to finish these holes and ensure each post reaches maximum achievable depth.' : 'At this depth, our deeper post holes (particularly corner and end posts) may encounter rock. We keep augering equipment on-site as standard practice for Hill Country installations.'}`);
+        subParts.push(`According to USDA subsurface data, ${site.restrictionType || 'bedrock'} exists at approximately ${depthStr} below the surface on your property. Every fence post must be set at least 3 feet deep and anchored at least 1 foot into bedrock — whichever requires the deeper hole. ${depth <= 18 ? `At this depth, every single post hole will hit solid rock well before 3 feet. We use a rock auger to bore through the bedrock and set each post at least ${Math.ceil((36 - depth + 12) / 12)} feet into solid rock. This is actually the strongest possible installation — a post anchored in solid rock is not going anywhere.` : depth <= 30 ? 'At this depth, most post holes will encounter rock before reaching the 3-foot minimum. We bring rock augering equipment to finish these holes and ensure each post reaches full depth with proper rock anchorage.' : 'At this depth, our deeper post holes (particularly corner and end posts) may encounter rock. We keep augering equipment on-site as standard practice for Hill Country installations.'}`);
       }
       if (site.rockFragmentPct != null && site.rockFragmentPct > 10) {
         if (site.rockFragmentPct >= 50) {
@@ -2013,7 +2019,7 @@ export function generateFenceBidPDF(data: FenceBidData): void {
     }
 
     for (const item of checkItems) {
-      y = ensureSpace(doc, y, 10);
+      y = ensureSpace(doc, y, 14);
 
       // Check circle
       doc.setFillColor(...item.statusColor);
@@ -2029,13 +2035,13 @@ export function generateFenceBidPDF(data: FenceBidData): void {
       doc.setTextColor(27, 38, 54);
       doc.text(item.label, mx + 10, y + 1);
 
-      // Status
+      // Status on its own line below the label
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(...item.statusColor);
-      doc.text(item.status, mx + 10 + doc.getTextWidth(item.label) + 5, y + 1);
+      doc.text(item.status, mx + 14, y + 6);
 
-      y += 8;
+      y += 12;
     }
 
     doc.setFontSize(7);
@@ -2057,7 +2063,7 @@ export function generateFenceBidPDF(data: FenceBidData): void {
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(27, 38, 54);
-    doc.text('ANNUAL MAINTENANCE PLAN', mx + 5, y + 6);
+    doc.text('ANNUAL MAINTENANCE PLAN \u2014 OPTIONAL UPGRADE', mx + 5, y + 6);
 
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
@@ -2215,6 +2221,8 @@ export function generateFenceBidPDF(data: FenceBidData): void {
   }
 
   // Signature lines
+  y = ensureSpace(doc, y, 60);
+  y += 12; // extra space above signature block
   const sigMid = pw / 2;
 
   // Customer signature
@@ -2549,7 +2557,9 @@ export function calculateLaborEstimate(params: {
   hBraceCount: number;
   cornerBraceCount: number;
   gateCount: number;
-  workDayHours?: number; // default 9.5
+  clipsPerTPost?: number;      // clips per T-post (default 4)
+  tiesPerLinePost?: number;    // wire ties per line post (default 4)
+  workDayHours?: number;       // default 9.5
 }): LaborEstimate {
   const {
     totalLinearFeet,
@@ -2558,6 +2568,8 @@ export function calculateLaborEstimate(params: {
     hBraceCount,
     cornerBraceCount,
     gateCount,
+    clipsPerTPost = 4,
+    tiesPerLinePost = 4,
     workDayHours = 9.5,
   } = params;
 
@@ -2624,12 +2636,21 @@ export function calculateLaborEstimate(params: {
     });
   }
 
-  // ── Wire stringing (~300 ft/hr for crew: unroll, tension, tie) ──
+  // ── Wire stringing (~300 ft/hr for unrolling & tensioning) ──
   const wireHrs = totalLinearFeet / 300;
   breakdown.push({
-    task: 'String & tension wire',
+    task: 'Unroll & tension wire',
     hours: wireHrs,
-    detail: `${totalLinearFeet.toLocaleString()} ft @ ~300 ft/hr (unroll, stretch, clip)`,
+    detail: `${totalLinearFeet.toLocaleString()} ft @ ~300 ft/hr (unroll, stretch, tension)`,
+  });
+
+  // ── Clipping wire to posts (~1 min per clip/tie) ──
+  const totalClips = (tPostCount * clipsPerTPost) + (linePostCount * tiesPerLinePost);
+  const clippingHrs = totalClips / 60; // 1 minute per clip
+  breakdown.push({
+    task: 'Clip & tie wire to posts',
+    hours: clippingHrs,
+    detail: `${totalClips.toLocaleString()} clips/ties @ ~1 min each (${tPostCount} T-posts × ${clipsPerTPost} + ${linePostCount} line posts × ${tiesPerLinePost})`,
   });
 
   // ── Gates (avg 1.5 hrs per gate install including welding frame) ──
@@ -2653,6 +2674,7 @@ export function calculateLaborEstimate(params: {
     postSettingHours: Math.round(postSettingHours * 10) / 10,
     tPostHours: Math.round(tPostHrs * 10) / 10,
     wireHours: Math.round(wireHrs * 10) / 10,
+    clippingHours: Math.round(clippingHrs * 10) / 10,
     braceAssemblyHours: Math.round(braceAssemblyHours * 10) / 10,
     gateHours: Math.round(gateHrs * 10) / 10,
     totalHours: Math.round(totalHours * 10) / 10,
