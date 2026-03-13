@@ -199,7 +199,7 @@ export default function PricingPage() {
             <button onClick={async () => {
               const result = await syncReceiptPrices();
               setSyncResult(result);
-              if (result.updated > 0) saveSharedPricesToServer();
+              if (result.updated > 0) await saveSharedPricesToServer();
             }} className="text-xs bg-tan-400/10 text-tan-300 px-4 py-2 rounded-lg font-semibold hover:bg-white/20 transition whitespace-nowrap">
               &#x26a1; Sync to Fencing Prices
             </button>
