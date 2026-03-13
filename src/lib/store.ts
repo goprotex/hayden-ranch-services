@@ -11,7 +11,7 @@ import {
 } from '@/types';
 import { DEFAULT_MATERIAL_PRICES, MaterialPrice } from '@/lib/fencing/fence-materials';
 import { matchReceiptToMaterial } from '@/lib/pricing/receipt-matcher';
-import { fetchSharedPrices, saveSharedPrices } from '@/lib/pricing/shared-pricing';
+import { fetchSharedPrices, saveSharedPrices, fetchSharedReceipts, saveSharedReceipts } from '@/lib/pricing/shared-pricing';
 
 interface AppState {
   // Projects
@@ -50,6 +50,10 @@ interface AppState {
   // Shared pricing — persist across all users via server API
   loadSharedPrices: () => Promise<void>;
   saveSharedPricesToServer: () => Promise<boolean>;
+
+  // Shared receipts — persist receipt history across browsers
+  loadSharedReceipts: () => Promise<void>;
+  saveSharedReceiptsToServer: () => Promise<boolean>;
 
   // UI state
   selectedPanelProfile: PanelProfile;
@@ -151,6 +155,29 @@ export const useAppStore = create<AppState>()(
         return saveSharedPrices(prices);
       },
 
+      // Shared receipts — persist receipt history to server
+      loadSharedReceipts: async () => {
+        const data = await fetchSharedReceipts();
+        if (data && data.receipts.length > 0) {
+          set((state) => {
+            // Merge: server receipts win, keep any local-only by id
+            const serverIds = new Set(data.receipts.map(r => r.id));
+            const localOnly = state.receipts.filter(r => !serverIds.has(r.id));
+            const mergedReceipts = [...data.receipts, ...localOnly];
+
+            const serverPriceIds = new Set(data.priceDatabase.map(p => p.id));
+            const localOnlyPrices = state.priceDatabase.filter(p => !serverPriceIds.has(p.id));
+            const mergedPriceDb = [...data.priceDatabase, ...localOnlyPrices];
+
+            return { receipts: mergedReceipts, priceDatabase: mergedPriceDb };
+          });
+        }
+      },
+      saveSharedReceiptsToServer: async (): Promise<boolean> => {
+        const { receipts, priceDatabase } = get();
+        return saveSharedReceipts(receipts, priceDatabase);
+      },
+
       // UI state
       selectedPanelProfile: 'standing_seam_snap_lock_16',
       selectedGauge: 26,
@@ -163,10 +190,11 @@ export const useAppStore = create<AppState>()(
       version: 2,
       onRehydrateStorage: () => {
         return (state, error) => {
-          // After hydrating from localStorage, always fetch latest prices from server
-          // so every browser gets up-to-date receipt-synced prices
+          // After hydrating from localStorage, always fetch latest from server
+          // so every browser gets up-to-date data
           if (!error && state) {
             state.loadSharedPrices();
+            state.loadSharedReceipts();
           }
         };
       },

@@ -5,8 +5,10 @@
 // ============================================================
 
 import { MaterialPrice } from '@/lib/fencing/fence-materials';
+import { Receipt, PriceEntry } from '@/types';
 
 const API_URL = '/api/material-prices';
+const RECEIPTS_API_URL = '/api/shared-receipts';
 
 /**
  * Fetch the shared material prices from the server.
@@ -47,6 +49,46 @@ export async function saveSharedPrices(prices: MaterialPrice[]): Promise<boolean
     return true;
   } catch (err) {
     console.warn('[SharedPricing] Failed to save shared prices — network error', err);
+    return false;
+  }
+}
+
+// ── Receipt & PriceDatabase sync ──────────────────────────
+
+export async function fetchSharedReceipts(): Promise<{ receipts: Receipt[]; priceDatabase: PriceEntry[] } | null> {
+  try {
+    const res = await fetch(RECEIPTS_API_URL, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (Array.isArray(data.receipts)) {
+      return {
+        receipts: data.receipts as Receipt[],
+        priceDatabase: (data.priceDatabase ?? []) as PriceEntry[],
+      };
+    }
+    return null;
+  } catch {
+    console.warn('[SharedPricing] Failed to fetch shared receipts');
+    return null;
+  }
+}
+
+export async function saveSharedReceipts(receipts: Receipt[], priceDatabase: PriceEntry[]): Promise<boolean> {
+  try {
+    console.log('[SharedPricing] Saving', receipts.length, 'receipts +', priceDatabase.length, 'price entries to server...');
+    const res = await fetch(RECEIPTS_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ receipts, priceDatabase }),
+    });
+    if (!res.ok) {
+      console.warn('[SharedPricing] Failed to save shared receipts:', res.status);
+      return false;
+    }
+    console.log('[SharedPricing] Receipts saved successfully');
+    return true;
+  } catch (err) {
+    console.warn('[SharedPricing] Failed to save shared receipts — network error', err);
     return false;
   }
 }

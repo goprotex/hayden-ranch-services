@@ -9,7 +9,7 @@ import { Receipt, PriceEntry, ReceiptItem } from '@/types';
 type UploadStatus = 'idle' | 'uploading' | 'processing' | 'done' | 'error';
 
 export default function PricingPage() {
-  const { receipts, priceDatabase, addReceipt, addPriceEntries, syncReceiptPrices, materialPrices, loadSharedPrices, saveSharedPricesToServer } = useAppStore();
+  const { receipts, priceDatabase, addReceipt, addPriceEntries, syncReceiptPrices, materialPrices, loadSharedPrices, saveSharedPricesToServer, loadSharedReceipts, saveSharedReceiptsToServer } = useAppStore();
   const [receiptText, setReceiptText] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [activeReceipt, setActiveReceipt] = useState<Receipt | null>(null);
@@ -20,12 +20,16 @@ export default function PricingPage() {
 
   const [syncResult, setSyncResult] = useState<{ matched: number; updated: number } | null>(null);
 
-  // Load shared prices from server on mount + poll every 30s for real-time sync
+  // Load shared prices + receipts from server on mount + poll every 30s
   useEffect(() => {
     loadSharedPrices();
-    const interval = setInterval(loadSharedPrices, 30_000);
+    loadSharedReceipts();
+    const interval = setInterval(() => {
+      loadSharedPrices();
+      loadSharedReceipts();
+    }, 30_000);
     return () => clearInterval(interval);
-  }, [loadSharedPrices]);
+  }, [loadSharedPrices, loadSharedReceipts]);
 
   const processAIResult = useCallback(
     async (data: Record<string, unknown>) => {
@@ -58,10 +62,11 @@ export default function PricingPage() {
       setSyncResult(result);
       // Persist current prices to server for all users / browsers
       await saveSharedPricesToServer();
+      await saveSharedReceiptsToServer();
       setActiveReceipt(receipt);
       setSupplierName('');
     },
-    [supplierName, addReceipt, addPriceEntries, syncReceiptPrices, saveSharedPricesToServer]
+    [supplierName, addReceipt, addPriceEntries, syncReceiptPrices, saveSharedPricesToServer, saveSharedReceiptsToServer]
   );
 
   const handleParseReceipt = useCallback(async () => {
@@ -94,12 +99,13 @@ export default function PricingPage() {
     setSyncResult(result);
     // Persist current prices to server for all users / browsers
     await saveSharedPricesToServer();
+    await saveSharedReceiptsToServer();
     setActiveReceipt(receipt);
     setReceiptText('');
     setSupplierName('');
     setUploadStatus('done');
     setTimeout(() => setUploadStatus('idle'), 2000);
-  }, [receiptText, supplierName, addReceipt, addPriceEntries, processAIResult, syncReceiptPrices, saveSharedPricesToServer]);
+  }, [receiptText, supplierName, addReceipt, addPriceEntries, processAIResult, syncReceiptPrices, saveSharedPricesToServer, saveSharedReceiptsToServer]);
 
   const handleFileUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -140,6 +146,13 @@ export default function PricingPage() {
     acc[entry.category].push(entry);
     return acc;
   }, {} as Record<string, PriceEntry[]>);
+
+  // Group material prices by category for display
+  const materialsByCategory = materialPrices.reduce((acc, mp) => {
+    if (!acc[mp.category]) acc[mp.category] = [];
+    acc[mp.category].push(mp);
+    return acc;
+  }, {} as Record<string, typeof materialPrices>);
 
   return (
     <div className="min-h-screen bg-black bg-grid">
@@ -343,6 +356,37 @@ export default function PricingPage() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Current Material Prices — synced across all browsers */}
+        <div className="mt-8 card-dark overflow-hidden animate-fade-in">
+          <div className="px-6 py-4 border-b border-white/[0.06] flex items-center justify-between">
+            <div>
+              <h2 className="text-steel-200 font-semibold">Current Material Prices</h2>
+              <p className="text-sm text-steel-500 mt-1">Synced across all browsers &bull; Updated from receipts</p>
+            </div>
+            <span className="text-xs text-steel-500 bg-steel-900 px-3 py-1 rounded-full">
+              {materialPrices.length} items
+            </span>
+          </div>
+          {Object.entries(materialsByCategory).map(([category, items]) => (
+            <div key={category}>
+              <div className="px-6 py-2 bg-steel-900 border-b border-white/[0.06]">
+                <p className="text-xs font-bold text-white uppercase tracking-wider">{category.replace(/_/g, ' ')}</p>
+              </div>
+              <table className="w-full text-sm">
+                <tbody>
+                  {items.map((mp) => (
+                    <tr key={mp.id} className="border-b border-steel-700/10 hover:bg-steel-900/50">
+                      <td className="px-6 py-2 text-steel-300">{mp.name}</td>
+                      <td className="px-6 py-2 text-right text-steel-500 text-xs">{mp.unit}</td>
+                      <td className="px-6 py-2 text-right font-medium text-white w-28">${mp.price.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
         </div>
       </main>
     </div>
