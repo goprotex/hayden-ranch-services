@@ -682,6 +682,13 @@ export default function FencingPage() {
         concreteFillPosts: materialCalc.concreteFillPostsQty,
         concreteFillBraces: materialCalc.concreteFillBracesQty,
       },
+      painting: paintEst ? {
+        color: paintColor,
+        gallons: paintEst.gallonsNeeded,
+        materialCost: paintEst.materialCost,
+        laborCost: paintEst.laborCost,
+        totalCost: paintEst.totalCost,
+      } : undefined,
       steepFootage: steepFootage > 0 ? steepFootage : undefined,
       steepSurchargePerFoot: steepFootage > 0 ? 2 : undefined,
       wireCategory: fenceType.startsWith('stay_tuff') ? wireCategory : undefined,
@@ -718,7 +725,7 @@ export default function FencingPage() {
       })(),
     };
     generateFenceBidPDF(data);
-  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, laborEstimate, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory]);
+  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, laborEstimate, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory, paintEst, paintColor]);
 
   const handleSaveBid = useCallback(() => {
     addFenceBid({

@@ -142,6 +142,15 @@ export interface FenceBidData {
     concreteFillBraces: number;
   };
 
+  // Painting estimate (optional add-on)
+  painting?: {
+    color: string;
+    gallons: number;
+    materialCost: number;
+    laborCost: number;
+    totalCost: number;
+  };
+
   // Steep grade info
   steepFootage?: number;
   steepSurchargePerFoot?: number;
@@ -227,26 +236,26 @@ export function buildSiteAdjustments(
     const depthStr = ft > 0 ? `${ft}' ${inches > 0 ? inches + '"' : ''}`.trim() : `${site.bedrockDepthIn}"`;
     if (site.bedrockDepthIn <= 18) {
       adj.push({
-        label: 'Shallow Bedrock — Rock Drilling Required',
+        label: 'Shallow Bedrock — Rock Augering Required',
         reason: `USDA data shows ${site.restrictionType || 'bedrock'} at ${depthStr} below grade`,
         dataPoint: `Bedrock depth: ${depthStr}`,
-        impact: '80-horse tractor with Beltech rock drill required for every post hole. Standard auger cannot penetrate this depth. Each post must be anchored directly into the rock shelf.',
-        costNote: 'Core drilling included in project pricing — no surprise charges',
+        impact: 'Rock auger required for every post hole. Standard auger cannot penetrate this depth. Each post must be anchored directly into the rock shelf.',
+        costNote: 'Rock augering included in project pricing — no surprise charges',
       });
     } else if (site.bedrockDepthIn <= 30) {
       adj.push({
-        label: 'Moderate Bedrock — Partial Rock Drilling',
+        label: 'Moderate Bedrock — Partial Rock Augering',
         reason: `${site.restrictionType || 'Bedrock'} at ${depthStr} — standard post depth is 30-36"`,
         dataPoint: `Bedrock depth: ${depthStr}`,
-        impact: 'Many post holes will bottom out on rock. Crew will arrive with 80-horse tractor with Beltech and skid steer mounted auger, setting posts at maximum achievable depth with epoxy anchoring where needed.',
-        costNote: 'Rock drilling equipment mobilization included in pricing',
+        impact: 'Many post holes will bottom out on rock. Crew will arrive with rock auger and skid steer, setting posts at maximum achievable depth with epoxy anchoring where needed.',
+        costNote: 'Rock augering equipment mobilization included in pricing',
       });
     } else {
       adj.push({
         label: 'Subsurface Rock Possible',
         reason: `${site.restrictionType || 'Bedrock'} detected at ${depthStr} depth`,
         dataPoint: `Bedrock depth: ${depthStr}`,
-        impact: 'Some deeper posts may encounter rock. Skid steer mounted auger and Beltech drill will be on-site as a precaution.',
+        impact: 'Some deeper posts may encounter rock. Rock auger will be on-site as a precaution.',
       });
     }
   }
@@ -356,7 +365,7 @@ const DEFAULT_TERMS: string[] = [
   `Cancellation Policy: Customer may cancel within 3 business days of signing with full deposit refund. After 3 business days, deposit is non-refundable and earned.`,
   `Site Access and Conditions: Customer warrants they have legal right to authorize work on the property. Customer is responsible for marking all underground utilities by calling 811 at least 3 business days before work begins. Customer grants contractor access to property and right to cross property as needed to complete work. Customer is responsible for securing all animals during work. Contractor is not liable for livestock escape due to temporary fence access during installation.`,
   `Material Pricing: Material costs subject to change if proposal not accepted within 30 days. If material costs increase more than 10% before work begins, contractor reserves right to adjust pricing or cancel contract with deposit refunded. All materials ordered are non-returnable. Customer is responsible for deposit even if customer cancels after materials are ordered.`,
-  `Rock and Subsurface Conditions: Pricing assumes standard rock conditions manageable with our skid steer mounted auger and 80-horse tractor with Beltech drill. If solid limestone, caliche, or bedrock requiring core drilling is encountered on more than 10% of posts, additional drilling will be billed at $15 per post not to exceed $750 without written customer approval. If subsurface conditions prevent post installation at specified locations, contractor may relocate posts up to 10 feet to achieve proper installation. Customer will be notified of significant subsurface issues before additional charges are incurred.`,
+  `Rock and Subsurface Conditions: Pricing assumes standard rock conditions manageable with our auger equipment. If solid limestone, caliche, or bedrock requiring specialized equipment is encountered on more than 10% of posts, additional work will be billed at $15 per post not to exceed $750 without written customer approval. If subsurface conditions prevent post installation at specified locations, contractor may relocate posts up to 10 feet to achieve proper installation. Customer will be notified of significant subsurface issues before additional charges are incurred.`,
   `Timeline and Delays: Work begins within 2 weeks of deposit receipt and material delivery, weather permitting. Estimated completion is ${'{workingDays}'} working days. Timeline is an estimate only and not guaranteed. Delays due to weather, material availability, equipment failure, labor shortage, or subsurface conditions do not constitute breach of contract. Contractor will provide reasonable notice of delays. Customer may not withhold payment due to timeline delays.`,
   `Weather and Seasonal Conditions: Concrete work cannot proceed in freezing temperatures (below 32°F), during rain, or when ground is frozen. High tensile fence installation requires dry conditions for proper tensioning. Weather delays do not constitute contractor default. Work may be suspended without penalty during unsuitable conditions. Customer remains responsible for full payment regardless of weather delays.`,
   `Warranty and Limitations: Contractor provides one year warranty on workmanship defects only. Warranty covers structural failure of fence due to installation error. Warranty does not cover damage from livestock, vehicle impact, falling trees, fire, flood, vandalism, or Acts of God. Warranty does not cover fence movement due to soil settling, frost heave, or erosion. Customer must notify contractor in writing within 60 days of discovering defect. Contractor's sole obligation is repair or replacement of defective work. Contractor is not liable for consequential damages including livestock loss, property damage, or lost use.`,
@@ -765,8 +774,8 @@ export function generateFenceBidPDF(data: FenceBidData): void {
             'vertisols': 'Vertisols are heavy clay soils that shrink dramatically when dry and swell when wet, forming deep cracks in summer. This "shrink-swell" action can literally push fence posts out of the ground over time. We combat this with deeper post settings and extra concrete.',
             'alfisols': 'Alfisols are moderately fertile soils with a distinct clay layer at depth. They form under hardwood forests and are common throughout the Hill Country. The clay subsoil provides good anchor for fence posts once you get below the topsoil.',
             'inceptisols': 'Inceptisols are young soils that have just begun to develop distinct layers. In the Hill Country, these often form on steep slopes where erosion prevents deep soil development — which means you may hit rock relatively quickly when digging.',
-            'entisols': 'Entisols are very young soils with minimal development — essentially weathered rock. These are common on steep slopes, floodplains, and rocky ridgelines in the Hill Country. Post installation in Entisols often requires rock drilling because there simply is not much soil depth to work with.',
-            'aridisols': 'Aridisols form in dry climates and often contain calcium carbonate (caliche) layers that are extremely hard. Caliche layers are notorious in Texas for destroying auger bits and requiring specialized drilling equipment.',
+            'entisols': 'Entisols are very young soils with minimal development — essentially weathered rock. These are common on steep slopes, floodplains, and rocky ridgelines in the Hill Country. Post installation in Entisols often requires rock augering because there simply is not much soil depth to work with.',
+            'aridisols': 'Aridisols form in dry climates and often contain calcium carbonate (caliche) layers that are extremely hard. Caliche layers are notorious in Texas for destroying auger bits and requiring specialized augering equipment.',
           };
           const orderKey = site.taxOrder.toLowerCase();
           const orderDesc = orderDescriptions[orderKey];
@@ -997,7 +1006,7 @@ export function generateFenceBidPDF(data: FenceBidData): void {
         doc.text('ANCHORED IN ROCK', postX + postW + 2, bedrockY + postRockH / 2 + 1);
 
         // ── Severity indicator badge ──
-        const severity = depth <= 18 ? 'ROCK DRILL REQUIRED' : depth <= 30 ? 'PARTIAL ROCK DRILLING' : 'POSSIBLE ROCK';
+        const severity = depth <= 18 ? 'ROCK AUGERING REQUIRED' : depth <= 30 ? 'PARTIAL ROCK AUGERING' : 'POSSIBLE ROCK';
         const badgeColor: [number, number, number] = depth <= 18 ? [180, 50, 40] : depth <= 30 ? [200, 140, 40] : [80, 140, 80];
         const badgeW = doc.getTextWidth(severity) + 6;
         doc.setFillColor(...badgeColor);
@@ -1028,7 +1037,7 @@ export function generateFenceBidPDF(data: FenceBidData): void {
         const ft = Math.floor(depth / 12);
         const inches = depth % 12;
         const depthStr = ft > 0 ? `${ft} feet${inches > 0 ? ' ' + inches + ' inches' : ''}` : `${depth} inches`;
-        subParts.push(`According to USDA subsurface data, ${site.restrictionType || 'bedrock'} exists at approximately ${depthStr} below the surface on your property. For context, a standard fence post needs to be set 30 to 36 inches deep for proper stability. ${depth <= 18 ? 'At this depth, every single post hole will hit solid rock — there is no way around it. Our crew will arrive with a truck-mounted hydraulic rock drill that can bore through limestone and bedrock to set posts directly into the rock shelf. This is actually the strongest possible installation — a post anchored in solid rock is not going anywhere.' : depth <= 30 ? 'At this depth, most post holes will encounter rock before reaching the ideal 36-inch depth. We bring rock drilling equipment to finish these holes and ensure each post reaches maximum achievable depth.' : 'At this depth, our deeper post holes (particularly corner and end posts) may encounter rock. We keep drilling equipment on the truck as standard practice for Hill Country installations.'}`);
+        subParts.push(`According to USDA subsurface data, ${site.restrictionType || 'bedrock'} exists at approximately ${depthStr} below the surface on your property. For context, a standard fence post needs to be set 30 to 36 inches deep for proper stability. ${depth <= 18 ? 'At this depth, every single post hole will hit solid rock — there is no way around it. We use a rock auger that can bore through limestone and bedrock to set posts directly into the rock shelf. This is actually the strongest possible installation — a post anchored in solid rock is not going anywhere.' : depth <= 30 ? 'At this depth, most post holes will encounter rock before reaching the ideal 36-inch depth. We bring rock augering equipment to finish these holes and ensure each post reaches maximum achievable depth.' : 'At this depth, our deeper post holes (particularly corner and end posts) may encounter rock. We keep augering equipment on-site as standard practice for Hill Country installations.'}`);
       }
       if (site.rockFragmentPct != null && site.rockFragmentPct > 10) {
         if (site.rockFragmentPct >= 50) {
@@ -1338,6 +1347,29 @@ export function generateFenceBidPDF(data: FenceBidData): void {
     }
   }
 
+  // Painting add-on (if selected)
+  if (data.painting) {
+    y = ensureSpace(doc, y, 22);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(27, 38, 54);
+    doc.text('Painting', mx + 3, y);
+    y += 7;
+    const paintLines: [string, string][] = [
+      [`${data.painting.color} — ${data.painting.gallons} gal paint`, `$${data.painting.materialCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
+      ['Paint labor', `$${data.painting.laborCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
+    ];
+    for (const [label, cost] of paintLines) {
+      y = ensureSpace(doc, y, 7);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(80, 80, 80);
+      doc.text(`  ${label}`, mx + 3, y);
+      doc.text(cost, mx + cw - 3, y, { align: 'right' });
+      y += 7;
+    }
+  }
+
   // Steep grade surcharge (if any)
   if (data.steepFootage && data.steepSurchargePerFoot) {
     y = ensureSpace(doc, y, 10);
@@ -1526,22 +1558,22 @@ export function generateFenceBidPDF(data: FenceBidData): void {
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(60, 60, 60);
     const rangeHigh = le.workDays + Math.ceil(le.workDays * 0.25);
-    doc.text(`Estimated Duration: ${le.workDays} to ${rangeHigh} working days  •  ${le.workDayHours}-hour work days  •  ${le.totalHours} total crew-hours`, mx, y);
+    doc.text(`Estimated Duration: ${le.workDays} to ${rangeHigh} working days  •  ${le.workDayHours}-hour work days  •  ${Math.round(le.totalHours * 10) / 10} total crew-hours`, mx, y);
     y += 8;
 
     // Group breakdown into project phases
     const phases: { name: string; icon: string; hours: number; items: string[] }[] = [];
 
-    // Phase 1: Site Preparation (drilling + post setting)
-    const drillItems = le.breakdown.filter(b => b.task.toLowerCase().includes('drill'));
+    // Phase 1: Site Preparation (augering + post setting)
+    const augerItems = le.breakdown.filter(b => b.task.toLowerCase().includes('auger'));
     const setItems = le.breakdown.filter(b => b.task.toLowerCase().includes('set') && !b.task.toLowerCase().includes('assembly'));
-    const prepHrs = drillItems.reduce((s, b) => s + b.hours, 0) + setItems.reduce((s, b) => s + b.hours, 0);
+    const prepHrs = augerItems.reduce((s, b) => s + b.hours, 0) + setItems.reduce((s, b) => s + b.hours, 0);
     if (prepHrs > 0) {
       phases.push({
         name: 'Site Preparation & Post Setting',
         icon: '1',
-        hours: prepHrs,
-        items: [...drillItems.map(b => b.detail), ...setItems.map(b => b.detail)],
+        hours: Math.round(prepHrs * 10) / 10,
+        items: [...augerItems.map(b => b.detail), ...setItems.map(b => b.detail)],
       });
     }
 
@@ -1552,7 +1584,7 @@ export function generateFenceBidPDF(data: FenceBidData): void {
       phases.push({
         name: 'Bracing & Structural Assembly',
         icon: '2',
-        hours: braceHrs,
+        hours: Math.round(braceHrs * 10) / 10,
         items: braceItems.map(b => b.detail),
       });
     }
@@ -1564,7 +1596,7 @@ export function generateFenceBidPDF(data: FenceBidData): void {
       phases.push({
         name: 'T-Post Installation',
         icon: String(phases.length + 1),
-        hours: tPostHrs,
+        hours: Math.round(tPostHrs * 10) / 10,
         items: tPostItems.map(b => b.detail),
       });
     }
@@ -1576,7 +1608,7 @@ export function generateFenceBidPDF(data: FenceBidData): void {
       phases.push({
         name: 'Wire Stringing & Tensioning',
         icon: String(phases.length + 1),
-        hours: wireHrs,
+        hours: Math.round(wireHrs * 10) / 10,
         items: wireItems.map(b => b.detail),
       });
     }
@@ -1588,7 +1620,7 @@ export function generateFenceBidPDF(data: FenceBidData): void {
       phases.push({
         name: 'Gate Installation & Finishing',
         icon: String(phases.length + 1),
-        hours: gateHrs,
+        hours: Math.round(gateHrs * 10) / 10,
         items: gateItems.map(b => b.detail),
       });
     }
@@ -1617,7 +1649,7 @@ export function generateFenceBidPDF(data: FenceBidData): void {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(100, 100, 100);
-      doc.text(`${phase.hours} hrs (~${phaseDays} day${phaseDays !== 1 ? 's' : ''})`, mx + cw - 3, y + 2, { align: 'right' });
+      doc.text(`${Math.round(phase.hours * 10) / 10} hrs (~${phaseDays} day${phaseDays !== 1 ? 's' : ''})`, mx + cw - 3, y + 2, { align: 'right' });
       y += 6;
 
       // Progress bar
@@ -1919,6 +1951,18 @@ export function generateFenceBidPDF(data: FenceBidData): void {
           doc.text('1', mx + cw - 3, y, { align: 'right' });
           y += 5;
         }
+      }
+
+      // Painting
+      if (data.painting) {
+        y = ensureSpace(doc, y, 6);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(40, 40, 40);
+        doc.text(`Paint — ${data.painting.color}`, mx + 3, y);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${data.painting.gallons} gal`, mx + cw - 3, y, { align: 'right' });
+        y += 5;
       }
 
       y += 6;
@@ -2242,6 +2286,27 @@ function resolveWireHeight(fenceHeight: string, stayTuffModel?: string): number 
   return 60; // fallback 5ft
 }
 
+/** Resolve horizontal wire count from Stay-Tuff model spec or fence type */
+function resolveHorizontalWires(stayTuffModel?: string, fenceType?: string): number {
+  if (stayTuffModel) {
+    // Spec format: "2096-6-330" → first number group gives horizontal wire count
+    // e.g. "949-6-330" → 9 horizontal wires, "2096-6-330" → 20
+    const parts = stayTuffModel.split('/');
+    // Try parsing from spec like "949" or "2096" — first two digits for wires > 99, else first digit(s)
+    const specPart = parts[0] || stayTuffModel;
+    const specDigits = specPart.replace(/\D/g, '');
+    if (specDigits.length >= 3) {
+      // e.g. "949" → 9 wires at 49", "2096" → 20 wires at 96"
+      const wireCount = parseInt(specDigits.slice(0, specDigits.length - 2), 10);
+      if (wireCount > 0 && wireCount <= 30) return wireCount;
+    }
+  }
+  // Defaults by fence type
+  if (fenceType?.toLowerCase().includes('barbed')) return 4;
+  if (fenceType?.toLowerCase().includes('no-climb') || fenceType?.toLowerCase().includes('no_climb')) return 16;
+  return 9; // general field fence default
+}
+
 /** Terrain label for PDF descriptions */
 const TERRAIN_LABELS: Record<string, string> = {
   easy: 'level ground, minimal rock',
@@ -2269,8 +2334,11 @@ export function calculateSectionMaterials(
   const wireRollsDec = (wireWithOverlap / 330).toFixed(1);
 
   // Use user-configured spacings
-  const tPosts = Math.ceil(ft / tPostSpacing);
   const linePostCount = Math.max(2, Math.ceil(ft / linePostSpacing));
+  // T-posts go between each pair of line posts: subtract 1 for each line post position
+  const spans = Math.max(0, linePostCount - 1);
+  const tPostsPerSpan = Math.max(0, Math.floor(linePostSpacing / tPostSpacing) - 1);
+  const tPosts = spans * tPostsPerSpan;
 
   // Correct T-post sizing from fence-materials.ts
   const tPostSpec = recommendedTPostLength(wireHeightIn);
@@ -2294,16 +2362,21 @@ export function calculateSectionMaterials(
   const midRunBraces = Math.max(0, Math.floor(linearFeet / 660) - 1);
   const hBraceCount = endBraces + midRunBraces;
 
-  // Each H-brace assembly: 1 additional brace post + 1 horizontal rail (10') + 1 welded diagonal pipe (~10').
-  // The end/corner post is already counted as a line post.
-  const bracePostCount = hBraceCount;
-  const bracePipePieces = hBraceCount * 2; // horizontal rail + welded diagonal per assembly
+  // Brace geometry: H = above ground (ft), D = below ground (ft), S = brace spacing (ft)
+  const H = postCalc.aboveGroundFeet;
+  const D = postCalc.belowGroundFeet;
+  const S = 8; // standard brace spacing in feet
+  const diag = Math.sqrt(S * S + H * H);
 
-  // Pipe joints: line posts + brace posts + brace rails/diagonals
+  // Single H-brace pipe: 2 posts (H+D each) + 1 horizontal (S) + 1 diagonal
+  const singleHPipe = 2 * (H + D) + S + diag;
+  const bracePostCount = hBraceCount * 2; // 2 vertical posts per H-brace
+  const totalBracePipeFeet = hBraceCount * singleHPipe;
+
+  // Pipe joints: line posts + brace pipe
   const totalPostsFromPipe = linePostCount + bracePostCount;
   const postJointsNeeded = postsPerJoint > 0 ? Math.ceil(totalPostsFromPipe / postsPerJoint) : totalPostsFromPipe;
-  const bracePiecesPerJoint = Math.floor(jointLen / 10);
-  const braceJointsNeeded = bracePiecesPerJoint > 0 ? Math.ceil(bracePipePieces / bracePiecesPerJoint) : bracePipePieces;
+  const braceJointsNeeded = Math.ceil(totalBracePipeFeet / jointLen);
   const jointsNeeded = postJointsNeeded + braceJointsNeeded;
 
   // Post description
@@ -2323,8 +2396,11 @@ export function calculateSectionMaterials(
   // High-tensile top/bottom wire
   const htStrands = wireHeightIn >= 72 ? 2 : 1;
 
-  // Tensioners (1 per 660ft run + 1 per strand)
-  const tensioners = Math.max(2, Math.ceil(ft / 660)) * (htStrands + 1);
+  // Tensioners: (mesh horizontal wires + barbed wire strands) per 660ft run
+  const meshHorizWires = resolveHorizontalWires(stayTuffModel, fenceType);
+  const barbedStrands = htStrands; // top (and bottom for tall fences) barbed/smooth strands
+  const tensionerRuns = Math.max(1, Math.ceil(ft / 660));
+  const tensioners = tensionerRuns * (meshHorizWires + barbedStrands);
 
   const isStayTuff = fenceType.includes('stay_tuff') || fenceType.includes('Stay Tuff') || fenceType.includes('Stay-Tuff');
   const isBarbedWire = fenceType.toLowerCase().includes('barbed');
@@ -2342,110 +2418,102 @@ export function calculateSectionMaterials(
     const strands = 4;
     const barbedRolls = Math.ceil((wireWithOverlap * strands) / 1320);
     materials.push({
-      name: `Barbed Wire — ${strands}-strand, 15.5 gauge, 4-point barbs, 5" spacing (1,320' rolls). Standard ${strands}-strand configuration for livestock containment. Includes 10% overlap allowance for proper tensioning and corner wraps.`,
-      quantity: `${(wireWithOverlap * strands).toLocaleString()} ft total wire (${strands} strands × ${ft.toLocaleString()} ft = ${barbedRolls} rolls)`,
+      name: `Barbed Wire — ${strands}-strand, 15.5 ga, 4-point`,
+      quantity: `${barbedRolls} rolls (1,320' ea)`,
     });
   } else if (isNoClimb) {
     const noClimbRolls = Math.ceil(wireWithOverlap / 200);
     materials.push({
-      name: `No-Climb Horse Fence — ${wireHeightIn}" height, 2" × 4" mesh pattern, 12.5 gauge galvanized wire (200' rolls). Designed with small mesh openings to prevent horses from catching hooves. Safe for all equine and small livestock. Includes 10% overlap allowance.`,
-      quantity: `${wireWithOverlap.toLocaleString()} ft (${(wireWithOverlap / 200).toFixed(1)} rolls = ${noClimbRolls} rolls ordered)`,
+      name: `No-Climb Horse Fence — ${wireHeightIn}" height, 2"×4" mesh`,
+      quantity: `${noClimbRolls} rolls (200' ea)`,
     });
   } else if (isStayTuff && stayTuffModel) {
     materials.push({
-      name: `Stay-Tuff ${stayTuffModel} Fixed Knot Wire — ${wireHeightIn}" height, high-tensile galvanized steel, 330' rolls. Made in USA with 20-year manufacturer warranty against rust and breakage. Fixed-knot design prevents knot slippage under animal pressure and maintains wire spacing over time. Includes 10% overlap for tensioning.`,
-      quantity: `${wireWithOverlap.toLocaleString()} ft (${wireRollsDec} rolls = ${wireRolls} rolls ordered)`,
+      name: `Stay-Tuff ${stayTuffModel} Fixed Knot Wire — ${wireHeightIn}"`,
+      quantity: `${wireRolls} rolls (330' ea)`,
     });
   } else if (isStayTuff) {
     materials.push({
-      name: `Stay-Tuff High-Tensile Field Fence Wire — ${wireHeightIn}" height, 330' rolls. Made in USA, 20-year warranty. Fixed-knot construction for superior strength and longevity. Includes 10% overlap.`,
-      quantity: `${wireWithOverlap.toLocaleString()} ft (${wireRollsDec} rolls = ${wireRolls} rolls ordered)`,
+      name: `Stay-Tuff Fixed Knot Wire — ${wireHeightIn}"`,
+      quantity: `${wireRolls} rolls (330' ea)`,
     });
   } else if (isFieldFence) {
     materials.push({
-      name: `Field Fence Wire — ${wireHeightIn}" height, graduated mesh spacing, 12.5 gauge galvanized, 330' rolls. Standard agricultural field fence suitable for cattle, goats, and general livestock containment. Includes 10% overlap for tensioning.`,
-      quantity: `${wireWithOverlap.toLocaleString()} ft (${wireRollsDec} rolls = ${wireRolls} rolls ordered)`,
+      name: `Field Fence Wire — ${wireHeightIn}"`,
+      quantity: `${wireRolls} rolls (330' ea)`,
     });
   } else {
     materials.push({
-      name: `Fence wire — ${wireHeightIn}" height, 330' rolls. General-purpose galvanized wire for the selected fence configuration. Includes 10% overlap allowance.`,
-      quantity: `${wireWithOverlap.toLocaleString()} ft (${wireRolls} rolls)`,
+      name: `Fence Wire — ${wireHeightIn}"`,
+      quantity: `${wireRolls} rolls (330' ea)`,
     });
   }
 
   // ==============================================================
-  // TOP & BOTTOM WIRE — smooth HT or barbed (user selectable), not used with barbed wire fence type
+  // TOP & BOTTOM WIRE
   // ==============================================================
   if (!isBarbedWire) {
     const useBarbed = topWireType === 'barbed' || topWireType === 'barbed_double';
     const topStrands = topWireType === 'barbed_double' ? 2 : 1;
-    const bottomStrands = wireHeightIn >= 72 ? 1 : 0; // bottom wire only on tall fences
+    const bottomStrands = wireHeightIn >= 72 ? 1 : 0;
     const totalStrands = topStrands + bottomStrands;
 
     if (useBarbed) {
-      // 4-prong high-tensile barbed wire — 1,320' rolls
       const barbedFtNeeded = wireWithOverlap * totalStrands;
       const barbedRolls = Math.ceil(barbedFtNeeded / 1320);
-      const strandDesc = topStrands === 2
-        ? `double barbed top + ${bottomStrands ? '1 barbed bottom' : 'no bottom'}`
-        : `1 barbed top${bottomStrands ? ' + 1 barbed bottom' : ''}`;
       materials.push({
-        name: `High-Tensile 4-Prong Barbed Wire — ${strandDesc}, 15.5 gauge, 4-point barbs, 5" spacing (1,320' rolls). Runs along the top${topStrands === 2 ? ' (double strand)' : ''} ${bottomStrands ? 'and bottom ' : ''}of the fence for livestock deterrent and predator control. ${topStrands === 2 ? 'Double barbed top provides extra deterrent against animals pushing over the fence.' : ''} ${bottomStrands ? 'Bottom strand prevents livestock from pushing under.' : ''} Includes 10% overlap.`,
-        quantity: `${barbedFtNeeded.toLocaleString()} ft (${totalStrands} strand${totalStrands > 1 ? 's' : ''} = ${barbedRolls} rolls × 1,320')`,
+        name: `HT Barbed Wire — ${totalStrands} strand${totalStrands > 1 ? 's' : ''} (top${bottomStrands ? ' & bottom' : ''})`,
+        quantity: `${barbedRolls} rolls (1,320' ea)`,
       });
     } else {
-      // Smooth high-tensile wire — 4,000' rolls (original behavior)
-      const strandLabel = totalStrands === 2 ? 'top & bottom strands' : 'top strand only';
+      const smoothRolls = Math.ceil((wireWithOverlap * totalStrands) / 4000);
       materials.push({
-        name: `12.5 Gauge High-Tensile Smooth Wire — ${strandLabel}, 4,000' rolls. Runs along the top${totalStrands === 2 ? ' and bottom' : ''} of the fence to add rigidity and prevent livestock from pushing over or under. ${totalStrands === 2 ? 'Two strands recommended for fences 72" and taller.' : 'Single top strand for fences under 72".'}`,
-        quantity: `${(wireWithOverlap * totalStrands).toLocaleString()} ft (${totalStrands} strand${totalStrands > 1 ? 's' : ''}, ${((wireWithOverlap * totalStrands) / 4000).toFixed(2)} rolls)`,
+        name: `12.5 ga HT Smooth Wire — ${totalStrands} strand${totalStrands > 1 ? 's' : ''} (top${bottomStrands ? ' & bottom' : ''})`,
+        quantity: `${smoothRolls} rolls (4,000' ea)`,
       });
     }
   }
 
   // ==============================================================
-  // T-POSTS (correctly auto-sized from wire height)
+  // T-POSTS
   // ==============================================================
   if (!isPipeFence) {
     materials.push({
-      name: `${tPostSpec.label} T-Posts (1.33 lb/ft, studded) — Spaced every ${tPostSpacing}' on center. Auto-sized: ${wireHeightIn}" wire height requires ${tPostSpec.lengthFeet}' T-posts to provide adequate above-ground height plus burial depth. T-posts are the intermediate support between line posts on ${terrainLabel}.`,
-      quantity: `${tPosts} posts (${ft.toLocaleString()} ft ÷ ${tPostSpacing}' spacing)`,
+      name: `${tPostSpec.label} T-Posts — studded, ${tPostSpacing}' spacing`,
+      quantity: `${tPosts} posts`,
     });
   }
 
   // ==============================================================
-  // LINE POSTS (user's selected material)
+  // LINE POSTS
   // ==============================================================
   materials.push({
-    name: `${postLabel} Line Posts — Set ${postCalc.belowGroundFeet}' deep in concrete, ${postCalc.aboveGroundFeet.toFixed(1)}' above ground (${postCalc.totalLengthFeet}' total cut length). Spaced every ${linePostSpacing}' on center. ${postMaterial.startsWith('drill_stem') ? 'Heavy-wall oilfield pipe recycled for agricultural use — excellent strength-to-cost ratio, highly resistant to livestock impact and weather.' : `Square tube with ${gaugeSpec ? gaugeSpec.wallThickness : '0.075"'} wall thickness — clean profile with excellent rigidity for straight fence lines.`} Cut from ${jointLen}' joints (${postsPerJoint} posts per joint). Total joints: ${postJointsNeeded} for ${totalPostsFromPipe} posts (${linePostCount} line + ${bracePostCount} brace) + ${braceJointsNeeded} for ${bracePipePieces} brace rails/diagonals.`,
-    quantity: `${totalPostsFromPipe} posts + ${bracePipePieces} brace pipes (${jointsNeeded} joints × ${jointLen}')`,
+    name: `${postLabel} Line Posts — ${postCalc.totalLengthFeet}' cut length, ${linePostSpacing}' spacing`,
+    quantity: `${linePostCount} posts (${jointsNeeded} joints × ${jointLen}')`,
   });
 
   // ==============================================================
-  // BRACE ASSEMBLIES (H-braces at ends + mid-run for long sections)
+  // BRACE ASSEMBLIES
   // ==============================================================
-  const braceBreakdown = midRunBraces > 0
-    ? `${endBraces} at section ends + ${midRunBraces} mid-run (1 per 660' of run)`
-    : `${endBraces} at section ends`;
   materials.push({
-    name: `H-Brace Assemblies — Each assembly: 2 vertical ${postSpecInfo?.label ?? postMaterial} posts + 1 horizontal brace rail (10') + 1 welded pipe diagonal (~10'). The diagonal is welded between the top of one post and the base of the other for maximum rigidity — no brace wire used. Braces anchor the fence line at ends and along long runs to resist wire tension pull (up to 250 lbs per wire strand). Gate braces are calculated separately with each gate.`,
-    quantity: `${hBraceCount} assemblies (${braceBreakdown})`,
+    name: `H-Brace Assemblies — welded pipe`,
+    quantity: `${hBraceCount} assemblies`,
   });
 
   // ==============================================================
   // CONCRETE
   // ==============================================================
   materials.push({
-    name: `Concrete Mix — 80 lb bags, fast-setting. ${concreteBagsPerPost} bags per post (${postCalc.belowGroundFeet}' depth) for both line posts and H-brace posts. Proper concrete setting prevents frost heave, livestock-induced lean, and soil erosion undermining. ${wireHeightIn >= 72 ? '3 bags per post required for taller fences (72"+) to provide adequate lateral support.' : '2 bags per post is standard for fences under 72".'}`,
-    quantity: `${concreteBags} bags — ${linePostCount} line posts + ${bracePostCount} brace posts × ${concreteBagsPerPost} bags each (${(concreteBags * 80).toLocaleString()} lbs total)`,
+    name: `Concrete Mix — 80 lb bags, fast-setting`,
+    quantity: `${concreteBags} bags`,
   });
 
   // ==============================================================
-  // INLINE TENSIONERS (not used with barbed wire or pipe fence)
+  // INLINE TENSIONERS
   // ==============================================================
   if (!isBarbedWire && !isPipeFence) {
     materials.push({
-      name: `Inline Wire Tensioners — Ratchet-style tensioning devices installed at intervals to maintain proper wire tension across long runs. Allows re-tensioning after initial stretch-out period (wire stretches 1-2% in the first 30 days). ${htStrands + 1} tensioners per 660' run (1 per wire strand).`,
+      name: `Inline Wire Tensioners — ratchet-style`,
       quantity: `${tensioners} tensioners`,
     });
   }
@@ -2455,7 +2523,7 @@ export function calculateSectionMaterials(
   // ==============================================================
   if (!isPipeFence) {
     materials.push({
-      name: `Fence Clips — ${clipsPerTPost} clips per T-post, sold in boxes of 500. Galvanized steel clips secure the wire mesh to each T-post at evenly spaced intervals. ${clipsPerTPost === 5 ? '5 clips per post for taller fences (72"+) to prevent wire sag between attachment points.' : '4 clips per post is standard for fences under 72".'}`,
+      name: `Fence Clips — galvanized steel`,
       quantity: `${clips} clips (${clipBoxes} box${clipBoxes > 1 ? 'es' : ''})`,
     });
   }
@@ -2467,11 +2535,11 @@ export function calculateSectionMaterials(
 // Labor Time Estimation
 // ============================================================
 // Based on real-world production rates:
-//   Drilling:       12 post holes per 3 hours (4 holes/hr, 15 min each)
+//   Augering:       12 post holes per 3 hours (4 holes/hr, 15 min each)
 //   Post setting:   30 min per post (concrete pour + plumb + brace)
 //   T-posts:        10-15 per hour (avg 12/hr)
-//   H-brace:        2 posts to drill & set
-//   Corner brace:   5 posts to drill & set
+//   H-brace:        2 posts to auger & set
+//   Corner brace:   5 posts to auger & set
 //   Work day:       9-10 hours
 
 export function calculateLaborEstimate(params: {
@@ -2495,14 +2563,14 @@ export function calculateLaborEstimate(params: {
 
   const breakdown: { task: string; hours: number; detail: string }[] = [];
 
-  // ── Line post holes (drill + set) ──
-  // Drilling: 15 min/hole, Setting: 30 min/post → 45 min total per line post
-  const linePostDrillHrs = linePostCount * (15 / 60);
+  // ── Line post holes (auger + set) ──
+  // Augering: 15 min/hole, Setting: 30 min/post → 45 min total per line post
+  const linePostAugerHrs = linePostCount * (15 / 60);
   const linePostSetHrs = linePostCount * (30 / 60);
   breakdown.push({
-    task: 'Drill line post holes',
-    hours: linePostDrillHrs,
-    detail: `${linePostCount} holes × 15 min each (4 holes/hr)`,
+    task: 'Auger line post holes',
+    hours: linePostAugerHrs,
+    detail: `${linePostCount} holes × 15 min each`,
   });
   breakdown.push({
     task: 'Set line posts in concrete',
@@ -2510,15 +2578,15 @@ export function calculateLaborEstimate(params: {
     detail: `${linePostCount} posts × 30 min each (pour, plumb, brace)`,
   });
 
-  // ── H-brace assembly (2 posts each: drill + set + build assembly) ──
+  // ── H-brace assembly (2 posts each: auger + set + build assembly) ──
   const hBracePostCount = hBraceCount * 2;
-  const hBraceDrillHrs = hBracePostCount * (15 / 60);
+  const hBraceAugerHrs = hBracePostCount * (15 / 60);
   const hBraceSetHrs = hBracePostCount * (30 / 60);
   const hBraceAssemblyHrs = hBraceCount * 0.5; // ~30 min to weld rail + diagonal per assembly
   if (hBraceCount > 0) {
     breakdown.push({
-      task: 'Drill & set H-brace posts',
-      hours: hBraceDrillHrs + hBraceSetHrs,
+      task: 'Auger & set H-brace posts',
+      hours: hBraceAugerHrs + hBraceSetHrs,
       detail: `${hBraceCount} H-braces × 2 posts each = ${hBracePostCount} holes + sets`,
     });
     breakdown.push({
@@ -2530,13 +2598,13 @@ export function calculateLaborEstimate(params: {
 
   // ── Corner brace assembly (5 posts each) ──
   const cornerPostCount = cornerBraceCount * 5;
-  const cornerDrillHrs = cornerPostCount * (15 / 60);
+  const cornerAugerHrs = cornerPostCount * (15 / 60);
   const cornerSetHrs = cornerPostCount * (30 / 60);
   const cornerAssemblyHrs = cornerBraceCount * 1.0; // ~1 hr to build each corner assembly
   if (cornerBraceCount > 0) {
     breakdown.push({
-      task: 'Drill & set corner brace posts',
-      hours: cornerDrillHrs + cornerSetHrs,
+      task: 'Auger & set corner brace posts',
+      hours: cornerAugerHrs + cornerSetHrs,
       detail: `${cornerBraceCount} corner braces × 5 posts each = ${cornerPostCount} holes + sets`,
     });
     breakdown.push({
@@ -2574,14 +2642,14 @@ export function calculateLaborEstimate(params: {
     });
   }
 
-  const drillingHours = linePostDrillHrs + hBraceDrillHrs + cornerDrillHrs;
+  const augerHours = linePostAugerHrs + hBraceAugerHrs + cornerAugerHrs;
   const postSettingHours = linePostSetHrs + hBraceSetHrs + cornerSetHrs;
   const braceAssemblyHours = hBraceAssemblyHrs + cornerAssemblyHrs;
   const totalHours = breakdown.reduce((sum, b) => sum + b.hours, 0);
   const workDays = Math.ceil(totalHours / workDayHours * 10) / 10; // round to 0.1
 
   return {
-    drillingHours: Math.round(drillingHours * 10) / 10,
+    drillingHours: Math.round(augerHours * 10) / 10,
     postSettingHours: Math.round(postSettingHours * 10) / 10,
     tPostHours: Math.round(tPostHrs * 10) / 10,
     wireHours: Math.round(wireHrs * 10) / 10,

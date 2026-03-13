@@ -78,7 +78,7 @@ export interface PostLengthCalc {
 }
 
 export function calculatePostLength(wireHeightInches: number): PostLengthCalc {
-  const aboveGround = (wireHeightInches + 3) / 12;
+  const aboveGround = (wireHeightInches + 6) / 12; // fence height + 6" above ground
   const belowGround = wireHeightInches <= 60 ? 2.5 : wireHeightInches <= 72 ? 3.0 : 3.5;
   const total = Math.ceil((aboveGround + belowGround) * 2) / 2;
   return {
@@ -163,49 +163,49 @@ export const GATE_SPECS: GateSpec[] = [
       { name: "4' gate frame (welded tube)", quantity: 1, defaultUnitPrice: 85 },
       { name: 'Heavy duty hinges (pair)', quantity: 1, defaultUnitPrice: 35 },
       { name: 'Gate latch', quantity: 1, defaultUnitPrice: 22 },
-      { name: "Hinge post (drill stem 8')", quantity: 2, defaultUnitPrice: 30 },
-      { name: 'Concrete (80lb bags)', quantity: 4, defaultUnitPrice: 7 },
-      { name: 'H-brace assembly', quantity: 2, defaultUnitPrice: 45 },
-    ], defaultPrice: 420, defaultInstallCost: 250 },
+      { name: "Gate post 4\" vertical (4\" square tube)", quantity: 2, defaultUnitPrice: 45 },
+      { name: 'Triple H-brace horizontal (2-3/8" drill stem)', quantity: 6, defaultUnitPrice: 25 },
+      { name: 'Concrete (80lb bags)', quantity: 6, defaultUnitPrice: 7 },
+    ], defaultPrice: 480, defaultInstallCost: 300 },
   { size: '6ft', widthFeet: 6, label: "6' Walk Gate", type: 'walk',
     hardware: [
       { name: "6' gate frame (welded tube)", quantity: 1, defaultUnitPrice: 110 },
       { name: 'Heavy duty hinges (pair)', quantity: 1, defaultUnitPrice: 35 },
       { name: 'Gate latch', quantity: 1, defaultUnitPrice: 22 },
       { name: 'Spring closer', quantity: 1, defaultUnitPrice: 18 },
-      { name: "Hinge post (drill stem 8')", quantity: 2, defaultUnitPrice: 30 },
-      { name: 'Concrete (80lb bags)', quantity: 4, defaultUnitPrice: 7 },
-      { name: 'H-brace assembly', quantity: 2, defaultUnitPrice: 45 },
-    ], defaultPrice: 520, defaultInstallCost: 300 },
+      { name: "Gate post 4\" vertical (4\" square tube)", quantity: 2, defaultUnitPrice: 45 },
+      { name: 'Triple H-brace horizontal (2-3/8" drill stem)', quantity: 6, defaultUnitPrice: 25 },
+      { name: 'Concrete (80lb bags)', quantity: 6, defaultUnitPrice: 7 },
+    ], defaultPrice: 580, defaultInstallCost: 350 },
   { size: '8ft', widthFeet: 8, label: "8' Ranch Gate", type: 'ranch',
     hardware: [
       { name: "8' gate frame (welded tube)", quantity: 1, defaultUnitPrice: 165 },
       { name: 'Heavy duty barrel hinges', quantity: 2, defaultUnitPrice: 28 },
       { name: 'Chain latch set', quantity: 1, defaultUnitPrice: 25 },
-      { name: "Hinge post (drill stem 10')", quantity: 2, defaultUnitPrice: 38 },
-      { name: 'Concrete (80lb bags)', quantity: 6, defaultUnitPrice: 7 },
-      { name: 'H-brace assembly', quantity: 2, defaultUnitPrice: 55 },
-    ], defaultPrice: 650, defaultInstallCost: 400 },
+      { name: "Gate post 4\" vertical (4\" square tube)", quantity: 2, defaultUnitPrice: 55 },
+      { name: 'Triple H-brace horizontal (2-3/8" drill stem)', quantity: 6, defaultUnitPrice: 25 },
+      { name: 'Concrete (80lb bags)', quantity: 8, defaultUnitPrice: 7 },
+    ], defaultPrice: 720, defaultInstallCost: 450 },
   { size: '10ft', widthFeet: 10, label: "10' Ranch Gate", type: 'ranch',
     hardware: [
       { name: "10' gate frame (welded tube)", quantity: 1, defaultUnitPrice: 220 },
       { name: 'Heavy duty barrel hinges', quantity: 2, defaultUnitPrice: 28 },
       { name: 'Chain latch set', quantity: 1, defaultUnitPrice: 25 },
       { name: 'Wheel kit', quantity: 1, defaultUnitPrice: 35 },
-      { name: "Hinge post (drill stem 10')", quantity: 2, defaultUnitPrice: 38 },
-      { name: 'Concrete (80lb bags)', quantity: 6, defaultUnitPrice: 7 },
-      { name: 'Double H-brace assembly', quantity: 2, defaultUnitPrice: 85 },
-    ], defaultPrice: 850, defaultInstallCost: 500 },
+      { name: "Gate post 4\" vertical (4\" square tube)", quantity: 2, defaultUnitPrice: 55 },
+      { name: 'Triple H-brace horizontal (2-3/8" drill stem)', quantity: 6, defaultUnitPrice: 25 },
+      { name: 'Concrete (80lb bags)', quantity: 8, defaultUnitPrice: 7 },
+    ], defaultPrice: 920, defaultInstallCost: 550 },
   { size: '12ft', widthFeet: 12, label: "12' Truck Gate", type: 'truck',
     hardware: [
       { name: "12' gate frame (welded tube)", quantity: 1, defaultUnitPrice: 285 },
       { name: 'Heavy duty barrel hinges', quantity: 3, defaultUnitPrice: 28 },
       { name: 'Chain latch set w/ keeper', quantity: 1, defaultUnitPrice: 30 },
       { name: 'Wheel kit (heavy duty)', quantity: 1, defaultUnitPrice: 45 },
-      { name: "Hinge post (drill stem 10')", quantity: 2, defaultUnitPrice: 38 },
-      { name: 'Concrete (80lb bags)', quantity: 8, defaultUnitPrice: 7 },
-      { name: 'Double H-brace assembly', quantity: 2, defaultUnitPrice: 85 },
-    ], defaultPrice: 1050, defaultInstallCost: 600 },
+      { name: "Gate post 4\" vertical (4\" square tube)", quantity: 2, defaultUnitPrice: 65 },
+      { name: 'Triple H-brace horizontal (2-3/8" drill stem)', quantity: 6, defaultUnitPrice: 25 },
+      { name: 'Concrete (80lb bags)', quantity: 10, defaultUnitPrice: 7 },
+    ], defaultPrice: 1120, defaultInstallCost: 650 },
   { size: '16ft', widthFeet: 16, label: "16' Equipment Gate", type: 'equipment',
     hardware: [
       { name: "16' gate frame (cross-braced tube)", quantity: 1, defaultUnitPrice: 420 },
@@ -213,10 +213,10 @@ export const GATE_SPECS: GateSpec[] = [
       { name: 'Chain latch set w/ keeper', quantity: 1, defaultUnitPrice: 30 },
       { name: 'Heavy duty wheel kit', quantity: 1, defaultUnitPrice: 65 },
       { name: 'Gate stop/catcher', quantity: 1, defaultUnitPrice: 20 },
-      { name: "Hinge post (drill stem 10')", quantity: 2, defaultUnitPrice: 45 },
-      { name: 'Concrete (80lb bags)', quantity: 10, defaultUnitPrice: 7 },
-      { name: 'Double H-brace assembly', quantity: 2, defaultUnitPrice: 100 },
-    ], defaultPrice: 1450, defaultInstallCost: 800 },
+      { name: "Gate post 4\" vertical (4\" square tube)", quantity: 2, defaultUnitPrice: 75 },
+      { name: 'Triple H-brace horizontal (2-3/8" drill stem)', quantity: 6, defaultUnitPrice: 30 },
+      { name: 'Concrete (80lb bags)', quantity: 12, defaultUnitPrice: 7 },
+    ], defaultPrice: 1520, defaultInstallCost: 850 },
 ];
 // -- Material Prices --
 // Interface matches store shape: name + price + defaultPrice
