@@ -198,6 +198,8 @@ export default function FencingPage() {
             fenceHeight,
             totalLinearFeet: sections.reduce((s, c) => s + c.linearFeet, 0) || 1000,
             postMaterial,
+            postMaterialLabel: POST_MATERIALS.find(p => p.id === postMaterial)?.label || postMaterial,
+            squareTubeGauge: POST_MATERIALS.find(p => p.id === postMaterial)?.shape === 'square' ? squareTubeGauge : undefined,
             source: terrainSuggestion.source,
             // Enriched SDA data
             bedrockDepthIn: terrainSuggestion.bedrockDepthIn,
@@ -552,10 +554,11 @@ export default function FencingPage() {
 
     // ── pH ──
     if (terrainSuggestion.pH != null) {
+      const postLabel = POST_MATERIALS.find(p => p.id === postMaterial)?.label || postMaterial;
       if (terrainSuggestion.pH >= 7.5) {
-        parts.push(`Soil pH measures ${terrainSuggestion.pH} (alkaline), which is common in limestone regions and actually favorable for metal fence post longevity. Alkaline soils are less corrosive to steel than acidic soils, so your drill stem posts should provide decades of reliable service.`);
+        parts.push(`Soil pH measures ${terrainSuggestion.pH} (alkaline), which is common in limestone regions and actually favorable for metal fence post longevity. Alkaline soils are less corrosive to steel than acidic soils, so your ${postLabel} posts should provide decades of reliable service.`);
       } else if (terrainSuggestion.pH <= 5.5) {
-        parts.push(`Soil pH measures ${terrainSuggestion.pH} (acidic). Acidic soils can gradually corrode metal fence posts over long periods — typically 15 to 25 years depending on wall thickness. We recommend heavy-wall drill stem (2-3/8" OD, 4.7 lb/ft) for maximum longevity in these conditions, and periodic inspection of post bases every 5-10 years.`);
+        parts.push(`Soil pH measures ${terrainSuggestion.pH} (acidic). Acidic soils can gradually corrode metal fence posts over long periods — typically 15 to 25 years depending on wall thickness. With your ${postLabel} posts, we recommend periodic inspection of post bases every 5-10 years to catch any corrosion early.`);
       } else {
         parts.push(`Soil pH measures ${terrainSuggestion.pH} (near neutral) — right in the sweet spot for metal post longevity. Neither acidic enough to cause corrosion concerns nor alkaline enough to affect concrete curing.`);
       }
@@ -569,10 +572,12 @@ export default function FencingPage() {
     // ── Elevation / terrain ──
     if (terrainSuggestion.elevationChange > 0) {
       const elev = Math.round(terrainSuggestion.elevationChange);
+      const totalFt = sections.reduce((s, c) => s + c.linearFeet, 0) || 1000;
+      const avgGrade = totalFt > 0 ? ((elev / totalFt) * 100).toFixed(1) : '0';
       if (elev > 50) {
-        parts.push(`Your fence line crosses approximately ${elev} feet of elevation change${terrainSuggestion.slopeRange ? ` (USDA slope range: ${terrainSuggestion.slopeRange})` : ''}. To put that in perspective, that is about the height of a ${Math.round(elev / 10)}-story building. On steep grades, gravity pulls constantly on the wire, creating additional tension that standard flat-ground spacing cannot handle. We use closer post spacing on slopes to prevent wire sag, and every bracing assembly at a grade change is reinforced with a welded pipe diagonal to resist the extra downhill pull.`);
+        parts.push(`Your fence line crosses approximately ${elev} feet of elevation change over ${totalFt.toLocaleString()} feet${terrainSuggestion.slopeRange ? ` (USDA slope range: ${terrainSuggestion.slopeRange})` : ''}, which works out to roughly a ${avgGrade}% average grade. On the steeper sections, gravity pulls on the wire, creating additional tension that standard flat-ground spacing cannot handle. We use closer post spacing on slopes to prevent wire sag, and every bracing assembly at a grade change is reinforced with a welded pipe diagonal to resist the extra downhill pull.`);
       } else if (elev > 15) {
-        parts.push(`Your fence line crosses approximately ${elev} feet of elevation change${terrainSuggestion.slopeRange ? ` (USDA slope range: ${terrainSuggestion.slopeRange})` : ''}. This moderate grade is very common in the Hill Country and manageable with slightly closer post spacing on the sloped sections to maintain even wire tension.`);
+        parts.push(`Your fence line crosses approximately ${elev} feet of elevation change over ${totalFt.toLocaleString()} feet${terrainSuggestion.slopeRange ? ` (USDA slope range: ${terrainSuggestion.slopeRange})` : ''} — roughly a ${avgGrade}% average grade. This is very common in the Hill Country and manageable with slightly closer post spacing on the sloped sections to maintain even wire tension.`);
       } else {
         parts.push(`Your fence line is relatively level with only about ${elev} feet of elevation change — ideal conditions for efficient installation and consistent wire tension throughout the entire run.`);
       }
@@ -583,7 +588,7 @@ export default function FencingPage() {
     parts.push(`Based on our comprehensive analysis, we have classified this project as "${diffLabel}" terrain difficulty. Every material quantity, post spacing, concrete calculation, and labor estimate in this proposal has been specifically tailored to the soil, rock, and terrain conditions on YOUR property — not generic industry averages. We bring this level of research to every project because a fence is only as good as the ground it is built in.`);
 
     return parts.length > 0 ? parts.join('\n\n') : undefined;
-  }, [terrainSuggestion]);
+  }, [terrainSuggestion, postMaterial, sections]);
 
   const handleDownloadPDF = useCallback(async () => {
     const now = new Date();

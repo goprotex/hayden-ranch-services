@@ -19,6 +19,8 @@ interface SiteAnalysisRequest {
   fenceHeight: string;
   totalLinearFeet: number;
   postMaterial: string;
+  postMaterialLabel?: string;
+  squareTubeGauge?: string;
   source: string | null;
   // Enriched SDA data
   bedrockDepthIn?: number | null;
@@ -58,6 +60,8 @@ Write 4-6 flowing paragraphs, roughly 400-600 words. Structure your narrative li
 Do NOT use bullet points, headers, markdown, or formatting. Write flowing prose paragraphs only.
 Do NOT mention pricing or dollar amounts.
 Do NOT make up soil data — only reference what is provided in the input.
+Do NOT compare elevation change to building heights (stories). A 100-foot elevation change over a 2000-foot fence line is a gentle 5% grade. Put elevation in context of the SLOPE PERCENTAGE over the fence length, not the raw number.
+Always reference the EXACT post material provided (e.g., "2-7/8 inch drill stem" or "3 inch square tube 11ga") — never assume or generalize what the customer selected.
 If soil data is limited, acknowledge that and explain what on-site assessment will verify.
 Write like a contractor who knows his business, not like a salesman.`;
 
@@ -104,7 +108,10 @@ function buildUserPrompt(data: SiteAnalysisRequest): string {
 
   parts.push(`Property: ${data.propertyAddress || 'Texas Hill Country property'}`);
   parts.push(`Fence project: ${totalFeet > 0 ? totalFeet.toLocaleString() : 'TBD'} linear feet of ${data.fenceType || 'fencing'} at ${data.fenceHeight || 'standard'} height`);
-  parts.push(`Post material: ${data.postMaterial === 'drill_stem' ? 'Drill stem (2-3/8" OD recycled oilfield pipe)' : '2" square tube'}`);
+  // Describe the actual selected post material
+  let postDesc = data.postMaterialLabel || data.postMaterial;
+  if (data.squareTubeGauge) postDesc += ` ${data.squareTubeGauge}`;
+  parts.push(`Post material selected by customer: ${postDesc}`);
 
   if (data.soilType) {
     parts.push(`\nSoil survey source: ${data.source === 'UC_Davis_SoilWeb' ? 'UC Davis SoilWeb database (USDA NRCS data)' : 'USDA NRCS Web Soil Survey'}`);
