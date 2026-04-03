@@ -14,8 +14,15 @@ import { matchReceiptsToCatalog } from '@/lib/pricing/receipt-matcher';
 import { fetchSharedPrices, saveSharedPrices, fetchSharedReceipts, saveSharedReceipts } from '@/lib/pricing/shared-pricing';
 
 // Module-level cooldown timestamp — kept outside Zustand to avoid
-// triggering persist serialization cycles.
-let _lastPriceSaveAt = 0;
+// triggering persist serialization cycles. Persisted in localStorage
+// so the cooldown survives page reloads.
+const _SAVE_TS_KEY = 'hayden-last-price-save';
+function getLastPriceSaveAt(): number {
+  try { return parseInt(localStorage.getItem(_SAVE_TS_KEY) ?? '0', 10) || 0; } catch { return 0; }
+}
+function setLastPriceSaveAt(ts: number): void {
+  try { localStorage.setItem(_SAVE_TS_KEY, String(ts)); } catch { /* SSR / private browsing */ }
+}
 
 interface AppState {
   // Projects
@@ -97,12 +104,24 @@ export const useAppStore = create<AppState>()(
       // Pricing
       receipts: [],
       priceDatabase: [],
-      addReceipt: (receipt) =>
-        set((state) => ({ receipts: [...state.receipts, receipt] })),
-      addPriceEntries: (entries) =>
+      addReceipt: (receipt) => {
+        set((state) => ({ receipts: [...state.receipts, receipt] }));
+        // Auto-save to server so all users see the new receipt
+        setTimeout(() => {
+          const { receipts, priceDatabase } = get();
+          saveSharedReceipts(receipts, priceDatabase).catch(console.warn);
+        }, 500);
+      },
+      addPriceEntries: (entries) => {
         set((state) => ({
           priceDatabase: [...state.priceDatabase, ...entries],
-        })),
+        }));
+        // Auto-save to server so all users share the updated price database
+        setTimeout(() => {
+          const { receipts, priceDatabase } = get();
+          saveSharedReceipts(receipts, priceDatabase).catch(console.warn);
+        }, 500);
+      },
 
       // Fencing
       fenceBids: [],
@@ -146,7 +165,7 @@ export const useAppStore = create<AppState>()(
       loadSharedPrices: async () => {
         // Skip loading if we just saved (cooldown prevents stale server data
         // from overwriting freshly-synced receipt prices)
-        if (Date.now() - _lastPriceSaveAt < 60_000) return;
+        if (Date.now() - getLastPriceSaveAt() < 60_000) return;
 
         const result = await fetchSharedPrices();
         // Only overwrite local state with actually-saved server data,
@@ -162,7 +181,7 @@ export const useAppStore = create<AppState>()(
       saveSharedPricesToServer: async (): Promise<boolean> => {
         const prices = get().materialPrices;
         const ok = await saveSharedPrices(prices);
-        if (ok) _lastPriceSaveAt = Date.now();
+        if (ok) setLastPriceSaveAt(Date.now());
         return ok;
       },
 

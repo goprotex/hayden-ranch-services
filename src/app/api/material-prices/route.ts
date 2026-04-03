@@ -50,7 +50,8 @@ async function readBlob(): Promise<MaterialPrice[] | null> {
     const { blobs } = await list({ prefix: BLOB_NAME, limit: 1, token: BLOB_TOKEN });
     if (blobs.length === 0) return null;
     const blobMeta = await head(blobs[0].url, { token: BLOB_TOKEN });
-    const res = await fetch(blobMeta.url, { cache: 'no-store' });
+    // Append timestamp to bust any residual CDN cache on the blob URL
+    const res = await fetch(`${blobMeta.url}?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) return null;
     const data = await res.json() as { prices: MaterialPrice[] };
     if (Array.isArray(data.prices) && data.prices.length > 0) {
@@ -67,7 +68,9 @@ async function readBlob(): Promise<MaterialPrice[] | null> {
 async function writeBlob(prices: MaterialPrice[]): Promise<void> {
   const { put } = await import('@vercel/blob');
   const payload = JSON.stringify({ prices, updatedAt: new Date().toISOString(), version: 1 });
-  await put(BLOB_NAME, payload, { access: 'public', contentType: 'application/json', addRandomSuffix: false, token: BLOB_TOKEN });
+  // cacheControlMaxAge: 0 prevents the Vercel CDN from caching this blob —
+  // without it, stale content is served for up to a year after an overwrite.
+  await put(BLOB_NAME, payload, { access: 'public', contentType: 'application/json', addRandomSuffix: false, cacheControlMaxAge: 0, token: BLOB_TOKEN });
 }
 
 // ── Route handlers ────────────────────────────────────────

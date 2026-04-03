@@ -148,11 +148,144 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
   const [addedPoints, setAddedPoints] = useState<{ coordinate: [number, number]; type: FencePointType; lineId: string }[]>([]);
   const addedPointMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const [terrain3d, setTerrain3d] = useState(false);
+  const gpsImportRef = useRef<HTMLInputElement>(null);
+
+  // Undo/redo history — each entry is a GeoJSON FeatureCollection snapshot
+  const historyRef = useRef<GeoJSON.FeatureCollection[]>([]);
+  const historyIdxRef = useRef(-1);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  const pushHistory = useCallback((fc: GeoJSON.FeatureCollection) => {
+    // Truncate any forward history then push new snapshot
+    historyRef.current = historyRef.current.slice(0, historyIdxRef.current + 1);
+    historyRef.current.push(JSON.parse(JSON.stringify(fc)));
+    historyIdxRef.current = historyRef.current.length - 1;
+    setCanUndo(historyIdxRef.current > 0);
+    setCanRedo(false);
+  }, []);
+
+  const undoDraw = useCallback(() => {
+    const draw = drawRef.current;
+    if (!draw || historyIdxRef.current <= 0) return;
+    historyIdxRef.current--;
+    draw.set(historyRef.current[historyIdxRef.current]);
+    setCanUndo(historyIdxRef.current > 0);
+    setCanRedo(true);
+    syncDrawnLines();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const redoDraw = useCallback(() => {
+    const draw = drawRef.current;
+    if (!draw || historyIdxRef.current >= historyRef.current.length - 1) return;
+    historyIdxRef.current++;
+    draw.set(historyRef.current[historyIdxRef.current]);
+    setCanUndo(true);
+    setCanRedo(historyIdxRef.current < historyRef.current.length - 1);
+    syncDrawnLines();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // GPS / KML / GPX / GeoJSON file import
+  const handleGPSImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !drawRef.current) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      if (!text) return;
+      const draw = drawRef.current!;
+      try {
+        let lines: [number, number][][] = [];
+
+        if (file.name.endsWith('.geojson') || file.name.endsWith('.json')) {
+          const fc = JSON.parse(text) as GeoJSON.FeatureCollection | GeoJSON.Feature;
+          const features: GeoJSON.Feature[] = fc.type === 'FeatureCollection' ? fc.features : [fc];
+          for (const f of features) {
+            if (f.geometry.type === 'LineString') lines.push(f.geometry.coordinates as [number, number][]);
+            if (f.geometry.type === 'MultiLineString') lines.push(...(f.geometry.coordinates as [number, number][][]));
+          }
+        } else if (file.name.endsWith('.gpx')) {
+          // Parse GPX: extract <trkpt> and <rtept> sequences
+          const parser = new DOMParser();
+          const xml = parser.parseFromString(text, 'application/xml');
+          const trksegs = Array.from(xml.querySelectorAll('trkseg'));
+          for (const seg of trksegs) {
+            const pts = Array.from(seg.querySelectorAll('trkpt'));
+            if (pts.length >= 2) {
+              lines.push(pts.map(p => [parseFloat(p.getAttribute('lon') || '0'), parseFloat(p.getAttribute('lat') || '0')]));
+            }
+          }
+          const rte = xml.querySelectorAll('rte');
+          for (const r of Array.from(rte)) {
+            const pts = Array.from(r.querySelectorAll('rtept'));
+            if (pts.length >= 2) {
+              lines.push(pts.map(p => [parseFloat(p.getAttribute('lon') || '0'), parseFloat(p.getAttribute('lat') || '0')]));
+            }
+          }
+        } else if (file.name.endsWith('.kml')) {
+          // Parse KML: extract <coordinates> blocks from LineString/MultiGeometry
+          const parser = new DOMParser();
+          const xml = parser.parseFromString(text, 'application/xml');
+          const coordEls = Array.from(xml.querySelectorAll('LineString > coordinates, MultiGeometry coordinates'));
+          for (const el of coordEls) {
+            const coordText = el.textContent?.trim() || '';
+            const coords = coordText.split(/\s+/).map(c => {
+              const [lng, lat] = c.split(',').map(Number);
+              return [lng, lat] as [number, number];
+            }).filter(([lng, lat]) => !isNaN(lng) && !isNaN(lat));
+            if (coords.length >= 2) lines.push(coords);
+          }
+        }
+
+        if (lines.length === 0) { alert('No fence lines found in file.'); return; }
+
+        // Add each line to draw
+        const newFeatures: GeoJSON.Feature<GeoJSON.LineString>[] = lines.map(coords => ({
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'LineString', coordinates: coords },
+        }));
+        const existing = draw.getAll();
+        draw.set({ type: 'FeatureCollection', features: [...existing.features, ...newFeatures] });
+        pushHistory(draw.getAll());
+        syncDrawnLines();
+
+        // Fit map to imported lines
+        const map = mapRef.current;
+        if (map) {
+          const allCoords = lines.flat();
+          const lngs = allCoords.map(c => c[0]);
+          const lats = allCoords.map(c => c[1]);
+          map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: 60, duration: 800 });
+        }
+      } catch (err) {
+        alert(`Failed to parse file: ${(err as Error).message}`);
+      }
+      // Reset input so the same file can be re-imported
+      if (gpsImportRef.current) gpsImportRef.current.value = '';
+    };
+    reader.readAsText(file);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pushHistory]);
+
+  // Keyboard shortcuts: Ctrl+Z = undo, Ctrl+Y / Ctrl+Shift+Z = redo
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undoDraw(); }
+      if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) { e.preventDefault(); redoDraw(); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [undoDraw, redoDraw]);
 
   type MapboxDraw = {
     getAll: () => GeoJSON.FeatureCollection;
     deleteAll: () => void;
     set: (fc: GeoJSON.FeatureCollection) => void;
+    add: (fc: GeoJSON.FeatureCollection | GeoJSON.Feature) => string[];
   };
 
   const calcLineLengthFeet = useCallback((coords: [number, number][]) => {
@@ -169,6 +302,47 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
     return total;
   }, []);
 
+  // Snap the endpoints of a newly drawn line to nearby existing endpoints.
+  // Prevents doubled corner posts/braces when runs share a junction point.
+  const SNAP_THRESHOLD_FT = 75;
+  const snapNewLineToExisting = useCallback((newFeatureId: string) => {
+    const draw = drawRef.current;
+    if (!draw) return;
+    const fc = draw.getAll();
+
+    // Collect endpoints from all existing lines (excluding the new one)
+    const existingEndpoints: [number, number][] = [];
+    for (const feat of fc.features) {
+      if (feat.geometry.type === 'LineString' && feat.id !== newFeatureId) {
+        const coords = feat.geometry.coordinates as [number, number][];
+        existingEndpoints.push(coords[0], coords[coords.length - 1]);
+      }
+    }
+    if (existingEndpoints.length === 0) return;
+
+    const newFeat = fc.features.find(f => f.id === newFeatureId);
+    if (!newFeat || newFeat.geometry.type !== 'LineString') return;
+    const newCoords = [...(newFeat.geometry.coordinates as [number, number][])];
+
+    let snapped = false;
+    for (const epIdx of [0, newCoords.length - 1]) {
+      let minDist = SNAP_THRESHOLD_FT;
+      let snapTo: [number, number] | null = null;
+      for (const ep of existingEndpoints) {
+        const dist = calcLineLengthFeet([newCoords[epIdx], ep]);
+        if (dist < minDist) { minDist = dist; snapTo = ep; }
+      }
+      if (snapTo) { newCoords[epIdx] = snapTo; snapped = true; }
+    }
+
+    if (snapped) {
+      draw.add({
+        type: 'FeatureCollection',
+        features: [{ ...newFeat, geometry: { type: 'LineString', coordinates: newCoords } }],
+      } as GeoJSON.FeatureCollection);
+    }
+  }, [calcLineLengthFeet]);
+
   // Calculate vertex angles for all intermediate vertices in a line
   const calcVertexAngles = useCallback((coords: [number, number][]): VertexAngle[] => {
     const angles: VertexAngle[] = [];
@@ -184,12 +358,13 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
     return angles;
   }, []);
 
-  const analyzeTerrainForLines = useCallback(async (allCoords: [number, number][]) => {
-    if (!token || allCoords.length < 2) return;
+  const analyzeTerrainForLines = useCallback(async (lines: [number, number][][]) => {
+    const validLines = lines.filter(l => l.length >= 2);
+    if (!token || validLines.length === 0) return;
     setAnalyzing(true);
     try {
-      const { analyzeTerrain } = await import('@/lib/fencing/terrain-analysis');
-      const analysis = await analyzeTerrain(allCoords, token);
+      const { analyzeTerrainMultiLine: analyzeTerrain } = await import('@/lib/fencing/terrain-analysis');
+      const analysis = await analyzeTerrain(validLines, token);
 
       // Build elevation segments for steep-section highlighting
       const elevSegs: ElevationSegment[] = [];
@@ -279,8 +454,11 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
     const fc = drawRef.current.getAll();
     const drawnLines: DrawnLine[] = [];
     let total = 0;
-    const allCoords: [number, number][] = [];
+    const allLineCoords: [number, number][][] = []; // per-line, not flattened
     const braces: BraceMarker[] = [];
+
+    // Length label features for Mapbox layer
+    const labelFeatures: GeoJSON.Feature<GeoJSON.Point>[] = [];
 
     for (const feature of fc.features) {
       if (feature.geometry.type === 'LineString') {
@@ -288,8 +466,22 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
         const len = calcLineLengthFeet(coords);
         const angles = calcVertexAngles(coords);
         total += len;
-        allCoords.push(...coords);
+        allLineCoords.push(coords);
         drawnLines.push({ id: feature.id as string, coordinates: coords, lengthFeet: len, vertexAngles: angles });
+
+        // Length label at line midpoint
+        const midIdx = Math.floor((coords.length - 1) / 2);
+        const midPt: [number, number] = coords.length === 2
+          ? [(coords[0][0] + coords[1][0]) / 2, (coords[0][1] + coords[1][1]) / 2]
+          : coords[midIdx];
+        const label = len >= 5280
+          ? `${(len / 5280).toFixed(2)} mi`
+          : `${Math.round(len).toLocaleString()} ft`;
+        labelFeatures.push({
+          type: 'Feature',
+          properties: { label },
+          geometry: { type: 'Point', coordinates: midPt },
+        });
 
         // End-of-line braces (double H-brace at start and end)
         if (coords.length >= 2) {
@@ -309,15 +501,44 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
       }
     }
 
+    // Update run-length label layer on the map
+    const map = mapRef.current;
+    if (map && map.loaded()) {
+      const geojson: GeoJSON.FeatureCollection<GeoJSON.Point> = { type: 'FeatureCollection', features: labelFeatures };
+      const src = map.getSource('run-labels') as mapboxgl.GeoJSONSource | undefined;
+      if (src) {
+        src.setData(geojson);
+      } else {
+        map.addSource('run-labels', { type: 'geojson', data: geojson });
+        map.addLayer({
+          id: 'run-labels-halo',
+          type: 'symbol',
+          source: 'run-labels',
+          layout: {
+            'text-field': ['get', 'label'],
+            'text-size': 13,
+            'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
+            'text-anchor': 'center',
+            'text-allow-overlap': true,
+          },
+          paint: {
+            'text-color': '#ffffff',
+            'text-halo-color': '#000000',
+            'text-halo-width': 2,
+          },
+        });
+      }
+    }
+
     setTotalLength(total);
     setLineCount(drawnLines.length);
     setBraceMarkers(braces);
     drawnLinesRef.current = drawnLines;
     onFenceLinesChange?.(drawnLines);
 
-    // Trigger terrain analysis
-    if (allCoords.length >= 2) {
-      analyzeTerrainForLines(allCoords);
+    // Trigger terrain analysis — pass each line separately to avoid sampling across gaps
+    if (allLineCoords.length > 0) {
+      analyzeTerrainForLines(allLineCoords);
     }
   }, [calcLineLengthFeet, calcVertexAngles, onFenceLinesChange, analyzeTerrainForLines]);
 
@@ -521,9 +742,34 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
 
     // Interpolate points along each line at linePostSpacing intervals
     const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
+
+    // Helper: interpolate a point at a given distance along a polyline
+    const interpAtDist = (coords: [number, number][], targetDist: number): [number, number] => {
+      let acc = 0;
+      for (let i = 1; i < coords.length; i++) {
+        const segLen = calcLineLengthFeet([coords[i - 1], coords[i]]);
+        if (acc + segLen >= targetDist) {
+          const frac = (targetDist - acc) / segLen;
+          return [
+            coords[i - 1][0] + frac * (coords[i][0] - coords[i - 1][0]),
+            coords[i - 1][1] + frac * (coords[i][1] - coords[i - 1][1]),
+          ];
+        }
+        acc += segLen;
+      }
+      return coords[coords.length - 1];
+    };
+
     for (const line of lines) {
       const coords = line.coordinates;
       if (coords.length < 2) continue;
+
+      // Total run length
+      let totalLineLen = 0;
+      for (let i = 1; i < coords.length; i++) totalLineLen += calcLineLengthFeet([coords[i - 1], coords[i]]);
+
+      // Collect post positions at regular intervals
+      const lineFeatures: GeoJSON.Feature<GeoJSON.Point>[] = [];
       let accumulated = 0;
       let nextPost = linePostSpacing; // first post after start
       for (let i = 1; i < coords.length; i++) {
@@ -532,10 +778,18 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
           const frac = (nextPost - accumulated) / segLen;
           const lng = coords[i - 1][0] + frac * (coords[i][0] - coords[i - 1][0]);
           const lat = coords[i - 1][1] + frac * (coords[i][1] - coords[i - 1][1]);
-          features.push({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [lng, lat] } });
+          lineFeatures.push({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [lng, lat] } });
           nextPost += linePostSpacing;
         }
         accumulated += segLen;
+      }
+
+      // Single intermediate post: center it at the midpoint of the run
+      if (lineFeatures.length === 1) {
+        const [midLng, midLat] = interpAtDist(coords, totalLineLen / 2);
+        features.push({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [midLng, midLat] } });
+      } else {
+        features.push(...lineFeatures);
       }
     }
 
@@ -934,9 +1188,13 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
         }) as unknown as MapboxDraw;
 
         map.addControl(draw as unknown as mapboxgl.IControl);
-        map.on('draw.create', () => syncDrawnLines());
-        map.on('draw.update', () => syncDrawnLines());
-        map.on('draw.delete', () => syncDrawnLines());
+        map.on('draw.create', (e: { features?: GeoJSON.Feature[] }) => {
+          if (e.features?.length) snapNewLineToExisting(e.features[0].id as string);
+          pushHistory(draw.getAll());
+          syncDrawnLines();
+        });
+        map.on('draw.update', () => { pushHistory(draw.getAll()); syncDrawnLines(); });
+        map.on('draw.delete', () => { pushHistory(draw.getAll()); syncDrawnLines(); });
         map.on('load', () => {
           if (!cancelled) setMapLoaded(true);
 
@@ -1066,6 +1324,15 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
           )}
         </div>
         <div className="flex gap-2 text-xs text-steel-500 items-center">
+          {/* Undo / Redo */}
+          <button onClick={undoDraw} disabled={!canUndo} title="Undo (Ctrl+Z)"
+            className={`px-2 py-1 rounded text-xs font-bold transition ${canUndo ? 'bg-steel-800 text-steel-200 hover:bg-steel-700' : 'bg-steel-900 text-steel-600 cursor-not-allowed'}`}>
+            &#x21B6;
+          </button>
+          <button onClick={redoDraw} disabled={!canRedo} title="Redo (Ctrl+Y)"
+            className={`px-2 py-1 rounded text-xs font-bold transition ${canRedo ? 'bg-steel-800 text-steel-200 hover:bg-steel-700' : 'bg-steel-900 text-steel-600 cursor-not-allowed'}`}>
+            &#x21B7;
+          </button>
           {analyzing && <span className="text-white animate-pulse">&#x26a1; Analyzing terrain...</span>}
           {!mapLoaded && <span className="animate-pulse">Loading map&hellip;</span>}
           {mapLoaded && !analyzing && <span>&#x2713; Draw fence lines on satellite view</span>}
@@ -1124,6 +1391,12 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
                 Undo Point ({addedPoints.length})
               </button>
             )}
+
+            {/* GPS / KML / GPX import */}
+            <label className="px-3 py-1.5 rounded-lg bg-steel-900 text-steel-300 hover:bg-steel-700 transition font-medium cursor-pointer" title="Import GPS/KML/GPX/GeoJSON file">
+              &#x1f4e5; Import GPS
+              <input ref={gpsImportRef} type="file" accept=".gpx,.kml,.geojson,.json" className="hidden" onChange={handleGPSImport} />
+            </label>
 
             {onMapCapture && (
               <button onClick={captureMap} className="px-3 py-1.5 rounded-lg bg-steel-900 text-steel-300 hover:bg-steel-900 transition font-medium ml-auto">

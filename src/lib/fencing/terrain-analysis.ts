@@ -311,62 +311,91 @@ export function classifySoilDifficulty(
 }
 
 /**
- * Full terrain analysis for a fence line
+ * Full terrain analysis for a single fence line.
  */
 export async function analyzeTerrain(
   coords: [number, number][],
   token: string,
 ): Promise<TerrainAnalysis> {
-  // Get elevation profile
-  const profile = await getElevationProfile(coords, token);
+  return analyzeTerrainMultiLine([coords], token);
+}
 
-  const elevations = profile.map(p => p.elevation).filter(e => e > 0);
+/**
+ * Full terrain analysis across multiple fence lines (runs).
+ * Elevation is sampled per-line so gaps between disconnected runs
+ * don't generate phantom slope data. Soil is queried at the midpoint
+ * of each line and the most restrictive result is used.
+ */
+export async function analyzeTerrainMultiLine(
+  lines: [number, number][][],
+  token: string,
+): Promise<TerrainAnalysis> {
+  const validLines = lines.filter(l => l.length >= 2);
+  if (validLines.length === 0) {
+    return {
+      elevationProfile: [], avgElevation: 0, minElevation: 0, maxElevation: 0,
+      totalElevationChange: 0, avgSlope: 0, maxSlope: 0, soilType: null,
+      soilInfo: null, soilDifficulty: 'moderate', suggestedDifficulty: 'moderate', confidence: 0,
+    };
+  }
+
+  // Sample elevation per line — never interpolate across gaps between runs
+  const allProfiles: ElevationPoint[] = [];
+  const allSlopes: number[] = [];
+
+  for (const coords of validLines) {
+    const profile = await getElevationProfile(coords, token);
+    allProfiles.push(...profile);
+    for (let i = 1; i < profile.length; i++) {
+      const dist = haversineDistance(
+        [profile[i - 1].lng, profile[i - 1].lat],
+        [profile[i].lng, profile[i].lat],
+      );
+      if (dist > 0) {
+        const elevChange = Math.abs(profile[i].elevation - profile[i - 1].elevation);
+        allSlopes.push((elevChange / dist) * 100);
+      }
+    }
+  }
+
+  const elevations = allProfiles.map(p => p.elevation).filter(e => e > 0);
   const avgElevation = elevations.length > 0 ? elevations.reduce((s, e) => s + e, 0) / elevations.length : 0;
   const minElevation = elevations.length > 0 ? Math.min(...elevations) : 0;
   const maxElevation = elevations.length > 0 ? Math.max(...elevations) : 0;
   const totalElevationChange = maxElevation - minElevation;
+  const avgSlope = allSlopes.length > 0 ? allSlopes.reduce((s, v) => s + v, 0) / allSlopes.length : 0;
+  const maxSlope = allSlopes.length > 0 ? Math.max(...allSlopes) : 0;
 
-  // Calculate slopes between consecutive points
-  const slopes: number[] = [];
-  for (let i = 1; i < profile.length; i++) {
-    const dist = haversineDistance(
-      [profile[i - 1].lng, profile[i - 1].lat],
-      [profile[i].lng, profile[i].lat]
-    );
-    if (dist > 0) {
-      const elevChange = Math.abs(profile[i].elevation - profile[i - 1].elevation);
-      slopes.push((elevChange / dist) * 100);
+  // Query soil at the midpoint of each line, pick the most restrictive result
+  const soilResults = await Promise.all(
+    validLines.map(coords => {
+      const mid = Math.floor(coords.length / 2);
+      return getSoilInfo(coords[mid][0], coords[mid][1]);
+    }),
+  );
+
+  const difficultyRank = { easy: 0, moderate: 1, hard: 2, very_hard: 3 };
+  let worstSoilInfo: SoilInfo | null = null;
+  let worstRank = -1;
+  for (const info of soilResults) {
+    if (!info) continue;
+    const d = classifySoilDifficulty(info.soilType, info.drainage, info);
+    if (difficultyRank[d] > worstRank) {
+      worstRank = difficultyRank[d];
+      worstSoilInfo = info;
     }
   }
 
-  const avgSlope = slopes.length > 0 ? slopes.reduce((s, v) => s + v, 0) / slopes.length : 0;
-  const maxSlope = slopes.length > 0 ? Math.max(...slopes) : 0;
-
-  // Get soil info at midpoint
-  const midIdx = Math.floor(coords.length / 2);
-  const soilInfo = await getSoilInfo(coords[midIdx][0], coords[midIdx][1]);
+  const soilInfo = worstSoilInfo;
   const soilType = soilInfo?.soilType ?? null;
   const soilDifficulty = classifySoilDifficulty(soilType, soilInfo?.drainage ?? null, soilInfo);
-
-  // Calculate suggested difficulty
   const suggestedDifficulty = calculateSuggestedDifficulty(avgSlope, maxSlope, soilDifficulty, totalElevationChange);
-
-  // Confidence based on data quality
   const confidence = elevations.length > 2 ? 0.8 : elevations.length > 0 ? 0.5 : 0.2;
 
   return {
-    elevationProfile: profile,
-    avgElevation,
-    minElevation,
-    maxElevation,
-    totalElevationChange,
-    avgSlope,
-    maxSlope,
-    soilType,
-    soilInfo,
-    soilDifficulty,
-    suggestedDifficulty,
-    confidence,
+    elevationProfile: allProfiles,
+    avgElevation, minElevation, maxElevation, totalElevationChange,
+    avgSlope, maxSlope, soilType, soilInfo, soilDifficulty, suggestedDifficulty, confidence,
   };
 }
 

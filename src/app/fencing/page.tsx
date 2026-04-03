@@ -112,8 +112,9 @@ export default function FencingPage() {
   const [preferredCornerBrace, setPreferredCornerBrace] = useState<BraceType>('corner_brace');
 
   // Pricing
-  const laborRate = 6; // fixed $/ft labor — not shown to customer
-  const depositPercent = 65; // fixed 65% deposit
+  const [laborRate, setLaborRate] = useState(6); // $/ft labor
+  const [markupPercent, setMarkupPercent] = useState(0); // % markup on material costs
+  const [depositPercent, setDepositPercent] = useState(65); // % deposit
 
   // Painting
   const [includePainting, setIncludePainting] = useState(false);
@@ -151,6 +152,105 @@ export default function FencingPage() {
   const [projectOverview, setProjectOverview] = useState(
     'Professional installation of high tensile fence with drill stem bracing system. All materials are commercial grade with concrete setting for structural posts.'
   );
+
+  // Bid tiers (Good / Better / Best)
+  const [showBidTiers, setShowBidTiers] = useState(false);
+  const [tierGoodLabel, setTierGoodLabel] = useState('Standard');
+  const [tierGoodDesc, setTierGoodDesc] = useState('T-post & field fence, basic installation');
+  const [tierBetterLabel, setTierBetterLabel] = useState('Premium');
+  const [tierBetterDesc, setTierBetterDesc] = useState('Stay-Tuff fixed knot, drill stem posts');
+  const [tierBestLabel, setTierBestLabel] = useState('Elite');
+  const [tierBestDesc, setTierBestDesc] = useState('Stay-Tuff + pipe fence, painted steel, concrete-set every post');
+
+  // Competitor comparison
+  const [showCompetitorSection, setShowCompetitorSection] = useState(false);
+  const [competitors, setCompetitors] = useState([
+    { name: 'Budget Contractor', pricePerFoot: 0, notes: 'T-posts only, no warranty' },
+    { name: 'Mid-Range Company', pricePerFoot: 0, notes: 'Standard materials, limited warranty' },
+  ]);
+
+  // Digital acceptance link
+  const [acceptanceLink, setAcceptanceLink] = useState('');
+  const [acceptanceLinkLabel, setAcceptanceLinkLabel] = useState('Sign & Accept This Proposal Online');
+
+  // Draft save/load
+  const DRAFTS_KEY = 'hayden-fence-drafts';
+  type BidDraft = {
+    id: string; name: string; savedAt: string;
+    projectName: string; clientName: string; address: string;
+    fenceType: string; wireCategory: string; stayTuffId: string; postMaterial: string;
+    squareTubeGauge: string; manualHeight: string; topWireType: string; barbedWireType: string;
+    tiePattern: string; includePostCaps: boolean; includeTensioners: boolean;
+    includeSpringIndicators: boolean; concreteFillPosts: boolean;
+    linePostSpacing: number; tPostSpacing: number;
+    laborRate: number; markupPercent: number; depositPercent: number;
+    sections: FenceBidSection[]; gates: BidGate[];
+    includePainting: boolean; paintColor: string; projectOverview: string;
+  };
+  const [showDraftPanel, setShowDraftPanel] = useState(false);
+  const [drafts, setDrafts] = useState<BidDraft[]>(() => {
+    try { return JSON.parse(localStorage.getItem(DRAFTS_KEY) || '[]') as BidDraft[]; } catch { return []; }
+  });
+
+  const saveDraft = useCallback(() => {
+    const name = `${projectName || 'Untitled'} — ${clientName || 'No Client'}`;
+    const draft: BidDraft = {
+      id: uid(), name, savedAt: new Date().toISOString(),
+      projectName, clientName, address,
+      fenceType, wireCategory, stayTuffId: selectedStayTuff.id, postMaterial,
+      squareTubeGauge, manualHeight, topWireType, barbedWireType,
+      tiePattern, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts,
+      linePostSpacing, tPostSpacing, laborRate, markupPercent, depositPercent,
+      sections, gates, includePainting, paintColor, projectOverview,
+    };
+    setDrafts(prev => {
+      const next = [draft, ...prev].slice(0, 20); // keep last 20
+      try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(next)); } catch { /* storage full */ }
+      return next;
+    });
+  }, [projectName, clientName, address, fenceType, wireCategory, selectedStayTuff.id, postMaterial,
+      squareTubeGauge, manualHeight, topWireType, barbedWireType, tiePattern, includePostCaps,
+      includeTensioners, includeSpringIndicators, concreteFillPosts, linePostSpacing, tPostSpacing,
+      laborRate, markupPercent, depositPercent, sections, gates, includePainting, paintColor, projectOverview]);
+
+  const loadDraft = useCallback((draft: BidDraft) => {
+    setProjectName(draft.projectName);
+    setClientName(draft.clientName);
+    setAddress(draft.address);
+    setFenceType(draft.fenceType as FenceType);
+    setWireCategory(draft.wireCategory as WireCategory);
+    const st = STAY_TUFF_CATALOG.find(c => c.id === draft.stayTuffId);
+    if (st) setSelectedStayTuff(st);
+    setPostMaterial(draft.postMaterial as PostMaterial);
+    setSquareTubeGauge(draft.squareTubeGauge as SquareTubeGauge);
+    setManualHeight(draft.manualHeight as FenceHeight);
+    setTopWireType(draft.topWireType as TopWireType);
+    setBarbedWireType(draft.barbedWireType as BarbedWireType);
+    setTiePattern(draft.tiePattern as TiePattern);
+    setIncludePostCaps(draft.includePostCaps);
+    setIncludeTensioners(draft.includeTensioners);
+    setIncludeSpringIndicators(draft.includeSpringIndicators);
+    setConcreteFillPosts(draft.concreteFillPosts);
+    setLinePostSpacing(draft.linePostSpacing);
+    setTPostSpacing(draft.tPostSpacing);
+    setLaborRate(draft.laborRate);
+    setMarkupPercent(draft.markupPercent);
+    setDepositPercent(draft.depositPercent);
+    setSections(draft.sections);
+    setGates(draft.gates);
+    setIncludePainting(draft.includePainting);
+    setPaintColor(draft.paintColor);
+    setProjectOverview(draft.projectOverview);
+    setShowDraftPanel(false);
+  }, []);
+
+  const deleteDraft = useCallback((id: string) => {
+    setDrafts(prev => {
+      const next = prev.filter(d => d.id !== id);
+      try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(next)); } catch { /* */ }
+      return next;
+    });
+  }, []);
   const handleFenceLinesChange = useCallback((lines: DrawnLine[]) => {
     setDrawnLines(lines);
     const allAngles = lines.flatMap(l => l.vertexAngles);
@@ -395,8 +495,8 @@ export default function FencingPage() {
     };
   }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType, barbedWireType, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, steepFootage, sections, tiePattern, braceRecommendations, manualMapPoints]);
 
-  const baseRate = materialCostPerFoot.total + laborRate;
-  const effectiveRate = useMemo(() => Math.round((materialCostPerFoot.total + laborRate * terrainMult) * 100) / 100, [materialCostPerFoot.total, laborRate, terrainMult]);
+  const baseRate = materialCostPerFoot.total * (1 + markupPercent / 100) + laborRate;
+  const effectiveRate = useMemo(() => Math.round((materialCostPerFoot.total * (1 + markupPercent / 100) + laborRate * terrainMult) * 100) / 100, [materialCostPerFoot.total, markupPercent, laborRate, terrainMult]);
 
   const computed = useMemo(() => sections.map(sec => {
     const rate = sec.ratePerFoot > 0 ? sec.ratePerFoot : effectiveRate;
@@ -438,8 +538,11 @@ export default function FencingPage() {
     const spans = Math.max(0, linePostCount - 1);
     const tPostsPerSpan = Math.max(0, Math.floor(linePostSpacing / tPostSpacing) - 1);
     const tPostCount = spans * tPostsPerSpan;
+    // Each gate needs 1 H-brace on each side of the opening (2 per gate)
+    const gateHBraces = gates.length * 2;
     const hBraces = braceRecommendations.filter(b => b.type === 'h_brace' || b.type === 'n_brace').length
-      + manualMapPoints.filter(p => p.type === 'h_brace' || p.type === 'n_brace').length + 2;
+      + manualMapPoints.filter(p => p.type === 'h_brace' || p.type === 'n_brace').length + 2
+      + gateHBraces;
     const cornerBraces = braceRecommendations.filter(b => b.type === 'corner_brace').length
       + manualMapPoints.filter(p => p.type === 'corner_brace').length;
     const doubleHBraces = manualMapPoints.filter(p => p.type === 'double_h').length;
@@ -456,17 +559,18 @@ export default function FencingPage() {
     // Post caps: 1 per line post + 2 per brace assembly (2 brace posts each)
     const postCapsQty = includePostCaps ? linePostCount + (totalBraces * 2) : 0;
 
-    // Brace/termination points where tensioners & indicators are installed
-    const tensionerRuns = Math.max(1, Math.ceil(totalFeet / 660));
+    // Termination points where tensioners & indicators are installed:
+    // 1 set per 660ft run + 1 set per gate opening (both sides of each gate)
+    const tensionerTerminations = Math.max(1, Math.ceil(totalFeet / 660)) + gates.length;
     // Barbed/smooth top & bottom strands
     const wireHeightIn = fenceType.startsWith('stay_tuff') ? selectedStayTuff.height : 60;
     const barbedStrands = wireHeightIn >= 72 ? 2 : 1;
 
-    // Tensioners: (mesh horizontal wires + barbed strands) per 660ft run
-    const tensionersQty = includeTensioners ? tensionerRuns * (horizStrands + barbedStrands) : 0;
+    // Tensioners: (mesh horizontal wires + barbed strands) per termination point
+    const tensionersQty = includeTensioners ? tensionerTerminations * (horizStrands + barbedStrands) : 0;
 
     // Spring tension indicators: same formula
-    const springIndicatorsQty = includeSpringIndicators ? tensionerRuns * (horizStrands + barbedStrands) : 0;
+    const springIndicatorsQty = includeSpringIndicators ? tensionerTerminations * (horizStrands + barbedStrands) : 0;
 
     // Concrete fill (inside tube posts): only for square tube posts
     const postSpec = POST_MATERIALS.find(p => p.id === postMaterial);
@@ -485,7 +589,7 @@ export default function FencingPage() {
       concreteFillPostsQty, concreteFillBracesQty,
       horizStrands,
     };
-  }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations, manualMapPoints, fenceType, selectedStayTuff, materialCostPerFoot, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, postMaterial, terrainSuggestion]);
+  }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations, manualMapPoints, gates, fenceType, selectedStayTuff, materialCostPerFoot, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, postMaterial, terrainSuggestion]);
 
   // Auto-calculate timeline from labor estimate
   const tiesPerLinePost = tiePattern === 'every_strand' ? materialCalc.horizStrands
@@ -518,6 +622,17 @@ export default function FencingPage() {
   }, [terrain]);
   const updSec = useCallback((id: string, u: Partial<FenceBidSection>) => { setSections(p => p.map(s => s.id === id ? { ...s, ...u } : s)); }, []);
   const rmSec = useCallback((id: string) => { setSections(p => p.filter(s => s.id !== id)); }, []);
+  const dupSec = useCallback((id: string) => {
+    setSections(p => {
+      const src = p.find(s => s.id === id);
+      if (!src) return p;
+      const copy = { ...src, id: uid(), name: `${src.name} (copy)` };
+      const idx = p.findIndex(s => s.id === id);
+      const next = [...p];
+      next.splice(idx + 1, 0, copy);
+      return next;
+    });
+  }, []);
 
   const addGate = useCallback((spec: GateSpec) => {
     setGates(p => [...p, {
@@ -813,12 +928,67 @@ export default function FencingPage() {
         d.setDate(d.getDate() + 14);
         return `${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
       })(),
+      bidTiers: showBidTiers ? {
+        good:   { label: tierGoodLabel,   price: Math.round(projTotal * 0.80), description: tierGoodDesc },
+        better: { label: tierBetterLabel, price: projTotal,                    description: tierBetterDesc },
+        best:   { label: tierBestLabel,   price: Math.round(projTotal * 1.20), description: tierBestDesc },
+      } : undefined,
+      competitorComparison: showCompetitorSection && competitors.some(c => c.name) ? competitors.filter(c => c.name) : undefined,
+      acceptanceLink: acceptanceLink || undefined,
+      acceptanceLinkLabel: acceptanceLinkLabel || undefined,
     };
     await generateFenceBidPDF(data);
     } finally {
       setGeneratingPDF(false);
     }
-  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, laborEstimate, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory, paintEst, paintColor]);
+  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, laborEstimate, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory, paintEst, paintColor, showBidTiers, tierGoodLabel, tierGoodDesc, tierBetterLabel, tierBetterDesc, tierBestLabel, tierBestDesc, showCompetitorSection, competitors, acceptanceLink, acceptanceLinkLabel]);
+
+  const handleExportMaterialsCSV = useCallback(() => {
+    // Aggregate materials from all sections
+    const allMaterials: { name: string; quantity: string }[] = [];
+    for (const sec of computed) {
+      const mats = calculateSectionMaterials(
+        sec.linearFeet, fenceType as import('@/types').FenceType, fenceHeight,
+        fenceType.startsWith('stay_tuff') ? selectedStayTuff.id : undefined,
+        terrain, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType,
+      );
+      for (const m of mats) {
+        const existing = allMaterials.find(x => x.name === m.name);
+        if (existing) {
+          // Try to sum numeric quantities
+          const existN = parseFloat(existing.quantity);
+          const newN = parseFloat(m.quantity);
+          if (!isNaN(existN) && !isNaN(newN)) {
+            existing.quantity = String(existN + newN);
+          }
+        } else {
+          allMaterials.push({ ...m });
+        }
+      }
+    }
+    // Add gates
+    for (const g of gates) allMaterials.push({ name: `Gate — ${g.type}`, quantity: '1' });
+
+    // Build CSV
+    const rows = [
+      ['Material Order Sheet'],
+      [`Project: ${projectName || 'Untitled'}`],
+      [`Client: ${clientName || ''}`],
+      [`Date: ${new Date().toLocaleDateString()}`],
+      [],
+      ['Item', 'Quantity'],
+      ...allMaterials.map(m => [m.name, m.quantity]),
+    ];
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(projectName || 'fence-order').replace(/\s+/g, '-')}-materials.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [computed, fenceType, fenceHeight, selectedStayTuff.id, terrain, postMaterial, squareTubeGauge,
+      tPostSpacing, linePostSpacing, topWireType, gates, projectName, clientName]);
 
   const handleSaveBid = useCallback(() => {
     addFenceBid({
@@ -846,6 +1016,34 @@ export default function FencingPage() {
             <h1 className="text-white font-bold text-sm uppercase tracking-widest">Fence Bid Creator</h1>
           </div>
           <div className="flex items-center gap-3">
+            {/* Draft save/load */}
+            <div className="relative">
+              <button onClick={() => setShowDraftPanel(p => !p)} className="text-xs uppercase tracking-wider glass text-steel-300 px-3 py-2 hover:text-white transition font-medium">
+                Drafts {drafts.length > 0 && <span className="ml-1 text-tan-300">({drafts.length})</span>}
+              </button>
+              {showDraftPanel && (
+                <div className="absolute right-0 top-full mt-1 w-72 bg-steel-900 border border-white/10 rounded-xl shadow-2xl z-50 p-3 space-y-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-steel-200">Saved Drafts</span>
+                    <button onClick={saveDraft} className="text-xs bg-tan-400/20 text-tan-300 px-2 py-1 rounded hover:bg-tan-400/40 transition">+ Save Current</button>
+                  </div>
+                  {drafts.length === 0 && <p className="text-[11px] text-steel-500 text-center py-2">No saved drafts</p>}
+                  {drafts.map(d => (
+                    <div key={d.id} className="flex items-start justify-between gap-2 bg-black/40 rounded-lg p-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-steel-200 font-medium truncate">{d.name}</p>
+                        <p className="text-[10px] text-steel-500">{new Date(d.savedAt).toLocaleDateString()}</p>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <button onClick={() => loadDraft(d)} className="text-[11px] text-tan-300 hover:text-tan-200 underline">Load</button>
+                        <button onClick={() => deleteDraft(d.id)} className="text-[11px] text-red-500 hover:text-red-400">&#x2715;</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button onClick={handleExportMaterialsCSV} className="text-xs uppercase tracking-wider glass text-steel-300 px-3 py-2 hover:text-white transition font-medium">&#x1f4e6; Materials CSV</button>
             <button onClick={handleSaveBid} className="text-xs uppercase tracking-wider glass text-steel-300 px-4 py-2 hover:text-white transition font-medium">Save Bid</button>
             {mapImages.length > 0 && (
               <span className="flex items-center gap-1.5 text-[10px]">
@@ -871,128 +1069,6 @@ export default function FencingPage() {
       </header>
 
       <main className="max-w-[1500px] mx-auto px-6 py-6">
-        {/* MAP FIRST — full width above everything on config tab */}
-        {activeTab === 'config' && (
-          <div className="mb-6 animate-fade-in">
-            <Card title="Draw Your Fence" icon="&#x1f5fa;&#xfe0f;" className="!p-0 overflow-hidden">
-              <div className="p-4 pb-2">
-                <p className="text-[11px] text-steel-400 mb-2">Click on the map to draw your fence lines. The map will analyze terrain, soil, and elevation automatically.</p>
-              </div>
-              <FenceMap
-                ref={fenceMapRef}
-                linePostSpacing={linePostSpacing}
-                onFenceLinesChange={handleFenceLinesChange}
-                onTerrainAnalyzed={handleTerrainAnalyzed}
-                onMapCapture={(dataUrl) => { setMapImages(prev => [...prev, dataUrl]); }}
-                onGatesPlaced={handleGatesPlaced}
-                onAddPointOnLine={(coord, type, lineId) => {
-                  if (type === 'gate') {
-                    const defaultSpec = GATE_SPECS.find(s => s.size === '10ft') || GATE_SPECS[3];
-                    setGates(p => [...p, {
-                      id: uid(), type: defaultSpec.label, width: defaultSpec.widthFeet,
-                      cost: defaultSpec.defaultPrice + defaultSpec.defaultInstallCost,
-                    }]);
-                  } else {
-                    // Track all non-gate manual points for pricing
-                    setManualMapPoints(prev => [...prev, { id: uid(), type }]);
-                  }
-                }}
-                onPointTypeChange={(coord, newType, oldType) => {
-                  if (newType === oldType) return;
-                  // If changed TO gate, add a gate line item
-                  if (newType === 'gate') {
-                    const defaultSpec = GATE_SPECS.find(s => s.size === '10ft') || GATE_SPECS[3];
-                    setGates(p => [...p, {
-                      id: uid(), type: defaultSpec.label, width: defaultSpec.widthFeet,
-                      cost: defaultSpec.defaultPrice + defaultSpec.defaultInstallCost,
-                    }]);
-                  }
-                  // Add the new type as a manual point (for non-gate)
-                  if (newType !== 'gate') {
-                    setManualMapPoints(prev => [...prev, { id: uid(), type: newType }]);
-                  }
-                  // Remove one instance of the old type from manual points or auto braces
-                  if (oldType !== 'gate') {
-                    setManualMapPoints(prev => {
-                      const idx = prev.findIndex(p => p.type === oldType);
-                      if (idx >= 0) return prev.filter((_, i) => i !== idx);
-                      return prev;
-                    });
-                    // Also try removing from auto braces if it was an auto-detected brace
-                    if (oldType === 'h_brace' || oldType === 'n_brace' || oldType === 'corner_brace') {
-                      setBraceRecommendations(prev => {
-                        const idx = prev.findIndex(b => b.type === oldType);
-                        if (idx >= 0) return prev.filter((_, i) => i !== idx);
-                        return prev;
-                      });
-                    }
-                  }
-                }}
-              />
-            </Card>
-
-            {/* Soil type banner */}
-            {terrainSuggestion?.soilType && (
-              <div className="mt-4 bg-steel-900/60 rounded-xl p-4 border border-white/[0.08] flex items-center gap-3">
-                <span className="text-2xl">&#x1f30d;</span>
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-steel-200">Soil: {terrainSuggestion.soilType}</p>
-                  <p className="text-[11px] text-steel-400 mt-0.5">
-                    Elevation change: {Math.round(terrainSuggestion.elevationChange)} ft &bull;
-                    Avg elevation: {Math.round(terrainSuggestion.avgElevation)} ft &bull;
-                    Suggested difficulty: {TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label}
-                  </p>
-                  {terrainSuggestion.drainage && (
-                    <p className="text-[11px] text-steel-500 mt-0.5">
-                      Drainage: {terrainSuggestion.drainage}
-                      {terrainSuggestion.hydric ? ` \u2022 Hydric: ${terrainSuggestion.hydric}` : ''}
-                    </p>
-                  )}
-                  {terrainSuggestion.components && terrainSuggestion.components.length > 1 && (
-                    <p className="text-[10px] text-steel-500 mt-0.5">
-                      Components: {terrainSuggestion.components.slice(0, 3).map((c: { name: string; percent: number }) => `${c.name} (${c.percent}%)`).join(', ')}
-                    </p>
-                  )}
-                  <p className="text-[10px] text-steel-500 mt-0.5">
-                    Soil affects concrete requirements ({soilMultiplier}x) and labor difficulty.
-                    Source: {terrainSuggestion.source === 'UC_Davis_SoilWeb' ? 'UC Davis SoilWeb' : 'USDA NRCS Web Soil Survey'}
-                  </p>
-                </div>
-              </div>
-            )}
-            {terrainSuggestion && !terrainSuggestion.soilType && (
-              <div className="mt-4 bg-black/50 rounded-xl p-3 border border-steel-800 flex items-center gap-3">
-                <span className="text-xl">&#x26a0;&#xfe0f;</span>
-                <div>
-                  <p className="text-xs text-steel-400">Soil data unavailable for this location</p>
-                  <p className="text-[10px] text-steel-500">
-                    Elevation: {Math.round(terrainSuggestion.avgElevation)} ft &bull;
-                    Change: {Math.round(terrainSuggestion.elevationChange)} ft &bull;
-                    Using terrain-based difficulty estimate
-                  </p>
-                </div>
-              </div>
-            )}
-            {/* AI site analysis status */}
-            {generatingNarrative && (
-              <div className="mt-4 bg-purple-900/20 rounded-lg p-3 border border-purple-700/30 flex items-center gap-2">
-                <span className="animate-pulse text-purple-400">&#x1f916;</span>
-                <p className="text-xs text-purple-300">Generating AI site analysis for this property&hellip;</p>
-              </div>
-            )}
-            {aiNarrative && !generatingNarrative && (
-              <div className="mt-4 bg-emerald-900/20 rounded-lg p-3 border border-emerald-700/30">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <span className="text-emerald-400 text-sm">&#x2713;</span>
-                  <p className="text-xs font-semibold text-emerald-300">AI Site Analysis Ready</p>
-                  <button onClick={() => setAiNarrative(null)} className="ml-auto text-[10px] text-red-400 hover:text-red-300 underline">clear</button>
-                </div>
-                <p className="text-[11px] text-steel-300 leading-relaxed line-clamp-4">{aiNarrative}</p>
-              </div>
-            )}
-          </div>
-        )}
-
         <div className="space-y-8">
 
           {/* CONFIG CARDS — centered 2-column grid with scroll animation */}
@@ -1284,6 +1360,31 @@ export default function FencingPage() {
                   </div>
                 </div>
 
+                {/* Pricing controls */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-[11px] text-steel-400 w-24 shrink-0">Labor $/ft</label>
+                    <input type="number" step={0.5} min={0} value={laborRate} onChange={e => setLaborRate(parseFloat(e.target.value) || 0)}
+                      className="flex-1 bg-black border border-steel-800 rounded px-2 py-1 text-xs text-steel-200 text-right focus:ring-1 focus:ring-tan-400/40" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-[11px] text-steel-400 w-24 shrink-0">Material markup</label>
+                    <div className="flex-1 flex items-center gap-1">
+                      <input type="number" step={1} min={0} max={100} value={markupPercent} onChange={e => setMarkupPercent(parseFloat(e.target.value) || 0)}
+                        className="flex-1 bg-black border border-steel-800 rounded px-2 py-1 text-xs text-steel-200 text-right focus:ring-1 focus:ring-tan-400/40" />
+                      <span className="text-xs text-steel-500">%</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-[11px] text-steel-400 w-24 shrink-0">Deposit %</label>
+                    <div className="flex-1 flex items-center gap-1">
+                      <input type="number" step={5} min={0} max={100} value={depositPercent} onChange={e => setDepositPercent(parseFloat(e.target.value) || 0)}
+                        className="flex-1 bg-black border border-steel-800 rounded px-2 py-1 text-xs text-steel-200 text-right focus:ring-1 focus:ring-tan-400/40" />
+                      <span className="text-xs text-steel-500">%</span>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Effective rate summary */}
                 <div className="bg-steel-900/60 rounded-lg p-3 border border-white/[0.08] space-y-1.5">
                   <div className="flex justify-between items-center">
@@ -1292,6 +1393,8 @@ export default function FencingPage() {
                   </div>
                   <div className="text-[10px] text-steel-500 space-y-0.5">
                     <div className="flex justify-between"><span>Material:</span><span>${materialCostPerFoot.total.toFixed(2)}/ft</span></div>
+                    {markupPercent > 0 && <div className="flex justify-between"><span>Markup ({markupPercent}%):</span><span>+${(materialCostPerFoot.total * markupPercent / 100).toFixed(2)}/ft</span></div>}
+                    <div className="flex justify-between"><span>Labor:</span><span>${laborRate.toFixed(2)}/ft</span></div>
                     <div className="flex justify-between border-t border-white/[0.08] pt-0.5"><span className="font-semibold">All-In Rate:</span><span className="font-semibold">${effectiveRate.toFixed(2)}/ft</span></div>
                   </div>
                 </div>
@@ -1329,6 +1432,60 @@ export default function FencingPage() {
               <textarea value={projectOverview} onChange={e => setProjectOverview(e.target.value)} rows={3}
                 className="w-full bg-black border border-steel-800 rounded-lg px-3 py-2 text-xs text-steel-300 focus:ring-2 focus:ring-tan-400/40" placeholder="Describe the project scope..." />
             </Card>
+
+            <Card title="PDF Extras" icon="&#x1f4cb;">
+              <div className="space-y-4">
+                {/* Good / Better / Best */}
+                <div>
+                  <label className="flex items-center gap-2 cursor-pointer mb-2">
+                    <input type="checkbox" checked={showBidTiers} onChange={e => setShowBidTiers(e.target.checked)} className="accent-tan-400" />
+                    <span className="text-xs font-semibold text-steel-200">Include Good / Better / Best pricing tiers</span>
+                  </label>
+                  {showBidTiers && (
+                    <div className="grid grid-cols-3 gap-2 pl-4">
+                      {[
+                        { label: tierGoodLabel, setLabel: setTierGoodLabel, desc: tierGoodDesc, setDesc: setTierGoodDesc, tier: 'Good' },
+                        { label: tierBetterLabel, setLabel: setTierBetterLabel, desc: tierBetterDesc, setDesc: setTierBetterDesc, tier: 'Better' },
+                        { label: tierBestLabel, setLabel: setTierBestLabel, desc: tierBestDesc, setDesc: setTierBestDesc, tier: 'Best' },
+                      ].map(t => (
+                        <div key={t.tier} className="space-y-1">
+                          <p className="text-[10px] font-bold text-steel-400">{t.tier}</p>
+                          <input value={t.label} onChange={e => t.setLabel(e.target.value)} placeholder="Label" className="w-full bg-black border border-steel-800 rounded px-2 py-1 text-xs text-steel-200" />
+                          <textarea value={t.desc} onChange={e => t.setDesc(e.target.value)} rows={2} placeholder="Description" className="w-full bg-black border border-steel-800 rounded px-2 py-1 text-[11px] text-steel-300" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Competitor Comparison */}
+                <div>
+                  <label className="flex items-center gap-2 cursor-pointer mb-2">
+                    <input type="checkbox" checked={showCompetitorSection} onChange={e => setShowCompetitorSection(e.target.checked)} className="accent-tan-400" />
+                    <span className="text-xs font-semibold text-steel-200">Include competitor comparison table</span>
+                  </label>
+                  {showCompetitorSection && (
+                    <div className="pl-4 space-y-1">
+                      {competitors.map((c, i) => (
+                        <div key={i} className="grid grid-cols-5 gap-1 items-center">
+                          <input value={c.name} onChange={e => setCompetitors(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} placeholder="Company" className="col-span-2 bg-black border border-steel-800 rounded px-2 py-1 text-xs text-steel-200" />
+                          <input type="number" step={0.5} value={c.pricePerFoot || ''} onChange={e => setCompetitors(prev => prev.map((x, j) => j === i ? { ...x, pricePerFoot: parseFloat(e.target.value) || 0 } : x))} placeholder="$/ft" className="bg-black border border-steel-800 rounded px-2 py-1 text-xs text-steel-200 text-right" />
+                          <input value={c.notes} onChange={e => setCompetitors(prev => prev.map((x, j) => j === i ? { ...x, notes: e.target.value } : x))} placeholder="Notes" className="col-span-2 bg-black border border-steel-800 rounded px-2 py-1 text-xs text-steel-200" />
+                        </div>
+                      ))}
+                      <button onClick={() => setCompetitors(p => [...p, { name: '', pricePerFoot: 0, notes: '' }])} className="text-[11px] text-tan-300 hover:text-tan-200 underline">+ Add row</button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Acceptance Link */}
+                <div>
+                  <label className="text-xs font-semibold text-steel-200 block mb-1">Digital acceptance link (optional)</label>
+                  <DInput value={acceptanceLink} onChange={setAcceptanceLink} placeholder="https://sign.example.com/your-proposal" />
+                  {acceptanceLink && <DInput value={acceptanceLinkLabel} onChange={setAcceptanceLinkLabel} placeholder="Button label text" />}
+                </div>
+              </div>
+            </Card>
           </StaggerReveal>
 
           {/* SECTIONS, PREVIEW & PRICING */}
@@ -1349,14 +1506,43 @@ export default function FencingPage() {
                     <button onClick={addSection} className="text-xs bg-tan-400/10 text-tan-300 px-3 py-1.5 rounded-lg font-semibold hover:bg-white/20 transition">+ Add Section</button>
                   </div>
                   <div className="divide-y divide-steel-700/20">
+                    {/* Column headers */}
+                    <div className="grid grid-cols-12 gap-3 px-5 py-1.5 text-[10px] text-steel-500 font-medium border-b border-white/[0.04]">
+                      <div className="col-span-4">Name</div>
+                      <div className="col-span-2 text-right">Feet</div>
+                      <div className="col-span-2 text-right">$/ft</div>
+                      <div className="col-span-2 text-right">Total</div>
+                      <div className="col-span-2"></div>
+                    </div>
                     {computed.map((sec, idx) => (
-                      <div key={sec.id} className="px-5 py-3">
+                      <div key={sec.id} className="px-5 py-2.5">
                         <div className="grid grid-cols-12 gap-3 items-center">
                           <div className="col-span-4"><input type="text" value={sec.name} onChange={e => updSec(sec.id, { name: e.target.value })} className="w-full bg-black border border-steel-800 rounded px-2.5 py-1.5 text-sm text-steel-200 font-medium focus:ring-1 focus:ring-tan-400/40" /></div>
                           <div className="col-span-2"><input title="Linear feet" type="number" value={sections[idx]?.linearFeet || 0} onChange={e => updSec(sec.id, { linearFeet: parseInt(e.target.value) || 0 })} className="w-full bg-black border border-steel-800 rounded px-2.5 py-1.5 text-sm text-right text-steel-200 focus:ring-1 focus:ring-tan-400/40" /></div>
                           <div className="col-span-2"><input type="number" step={0.5} value={sections[idx]?.ratePerFoot || ''} onChange={e => updSec(sec.id, { ratePerFoot: parseFloat(e.target.value) || 0 })} className="w-full bg-black border border-steel-800 rounded px-2.5 py-1.5 text-sm text-right text-steel-200 pl-5 focus:ring-1 focus:ring-tan-400/40" placeholder={effectiveRate.toFixed(2)} /></div>
-                          <div className="col-span-3 text-right"><span className="text-sm font-bold text-white">${fmt(sec.total)}</span></div>
-                          <div className="col-span-1 text-right">{computed.length > 1 && <button onClick={() => rmSec(sec.id)} className="text-steel-500 hover:text-red-400 transition">&times;</button>}</div>
+                          <div className="col-span-2 text-right"><span className="text-sm font-bold text-white">${fmt(sec.total)}</span></div>
+                          <div className="col-span-2 flex items-center justify-end gap-2">
+                            <button title="Duplicate section" onClick={() => dupSec(sec.id)} className="text-steel-500 hover:text-tan-300 transition text-xs">&#x2398;</button>
+                            {computed.length > 1 && <button title="Delete section" onClick={() => rmSec(sec.id)} className="text-steel-500 hover:text-red-400 transition">&times;</button>}
+                          </div>
+                        </div>
+                        {/* Per-section overrides row */}
+                        <div className="flex gap-2 mt-1.5 flex-wrap">
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-steel-500">Fence:</span>
+                            <select title="Fence type override" value={sections[idx]?.fenceTypeOverride || ''} onChange={e => updSec(sec.id, { fenceTypeOverride: e.target.value || undefined })}
+                              className="bg-black border border-steel-800 rounded px-1.5 py-0.5 text-[11px] text-steel-300 focus:ring-1 focus:ring-tan-400/40">
+                              <option value="">— Global —</option>
+                              {Object.entries(FENCE_TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                            </select>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-steel-500">Terrain:</span>
+                            <select title="Terrain override" value={sections[idx]?.terrain || terrain} onChange={e => updSec(sec.id, { terrain: e.target.value as 'easy'|'moderate'|'difficult'|'very_difficult' })}
+                              className="bg-black border border-steel-800 rounded px-1.5 py-0.5 text-[11px] text-steel-300 focus:ring-1 focus:ring-tan-400/40">
+                              {Object.entries(TERRAIN_MAP).map(([v, t]) => <option key={v} value={v}>{t.label}</option>)}
+                            </select>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1572,6 +1758,126 @@ export default function FencingPage() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* MAP — full width, always visible, below all config */}
+        <div className="mt-6 animate-fade-in">
+          <Card title="Draw Your Fence" icon="&#x1f5fa;&#xfe0f;" className="!p-0 overflow-hidden">
+            <div className="p-4 pb-2">
+              <p className="text-[11px] text-steel-400 mb-2">Click on the map to draw your fence lines. The map will analyze terrain, soil, and elevation automatically.</p>
+            </div>
+            <FenceMap
+              ref={fenceMapRef}
+              linePostSpacing={linePostSpacing}
+              onFenceLinesChange={handleFenceLinesChange}
+              onTerrainAnalyzed={handleTerrainAnalyzed}
+              onMapCapture={(dataUrl) => { setMapImages(prev => [...prev, dataUrl]); }}
+              onGatesPlaced={handleGatesPlaced}
+              onAddPointOnLine={(coord, type, lineId) => {
+                if (type === 'gate') {
+                  const defaultSpec = GATE_SPECS.find(s => s.size === '10ft') || GATE_SPECS[3];
+                  setGates(p => [...p, {
+                    id: uid(), type: defaultSpec.label, width: defaultSpec.widthFeet,
+                    cost: defaultSpec.defaultPrice + defaultSpec.defaultInstallCost,
+                  }]);
+                } else {
+                  // Track all non-gate manual points for pricing
+                  setManualMapPoints(prev => [...prev, { id: uid(), type }]);
+                }
+              }}
+              onPointTypeChange={(coord, newType, oldType) => {
+                if (newType === oldType) return;
+                // If changed TO gate, add a gate line item
+                if (newType === 'gate') {
+                  const defaultSpec = GATE_SPECS.find(s => s.size === '10ft') || GATE_SPECS[3];
+                  setGates(p => [...p, {
+                    id: uid(), type: defaultSpec.label, width: defaultSpec.widthFeet,
+                    cost: defaultSpec.defaultPrice + defaultSpec.defaultInstallCost,
+                  }]);
+                }
+                // Add the new type as a manual point (for non-gate)
+                if (newType !== 'gate') {
+                  setManualMapPoints(prev => [...prev, { id: uid(), type: newType }]);
+                }
+                // Remove one instance of the old type from manual points or auto braces
+                if (oldType !== 'gate') {
+                  setManualMapPoints(prev => {
+                    const idx = prev.findIndex(p => p.type === oldType);
+                    if (idx >= 0) return prev.filter((_, i) => i !== idx);
+                    return prev;
+                  });
+                  // Also try removing from auto braces if it was an auto-detected brace
+                  if (oldType === 'h_brace' || oldType === 'n_brace' || oldType === 'corner_brace') {
+                    setBraceRecommendations(prev => {
+                      const idx = prev.findIndex(b => b.type === oldType);
+                      if (idx >= 0) return prev.filter((_, i) => i !== idx);
+                      return prev;
+                    });
+                  }
+                }
+              }}
+            />
+          </Card>
+
+          {/* Soil type banner */}
+          {terrainSuggestion?.soilType && (
+            <div className="mt-4 bg-steel-900/60 rounded-xl p-4 border border-white/[0.08] flex items-center gap-3">
+              <span className="text-2xl">&#x1f30d;</span>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-steel-200">Soil: {terrainSuggestion.soilType}</p>
+                <p className="text-[11px] text-steel-400 mt-0.5">
+                  Elevation change: {Math.round(terrainSuggestion.elevationChange)} ft &bull;
+                  Avg elevation: {Math.round(terrainSuggestion.avgElevation)} ft &bull;
+                  Suggested difficulty: {TERRAIN_MAP[terrainSuggestion.suggestedDifficulty]?.label}
+                </p>
+                {terrainSuggestion.drainage && (
+                  <p className="text-[11px] text-steel-500 mt-0.5">
+                    Drainage: {terrainSuggestion.drainage}
+                    {terrainSuggestion.hydric ? ` \u2022 Hydric: ${terrainSuggestion.hydric}` : ''}
+                  </p>
+                )}
+                {terrainSuggestion.components && terrainSuggestion.components.length > 1 && (
+                  <p className="text-[10px] text-steel-500 mt-0.5">
+                    Components: {terrainSuggestion.components.slice(0, 3).map((c: { name: string; percent: number }) => `${c.name} (${c.percent}%)`).join(', ')}
+                  </p>
+                )}
+                <p className="text-[10px] text-steel-500 mt-0.5">
+                  Soil affects concrete requirements ({soilMultiplier}x) and labor difficulty.
+                  Source: {terrainSuggestion.source === 'UC_Davis_SoilWeb' ? 'UC Davis SoilWeb' : 'USDA NRCS Web Soil Survey'}
+                </p>
+              </div>
+            </div>
+          )}
+          {terrainSuggestion && !terrainSuggestion.soilType && (
+            <div className="mt-4 bg-black/50 rounded-xl p-3 border border-steel-800 flex items-center gap-3">
+              <span className="text-xl">&#x26a0;&#xfe0f;</span>
+              <div>
+                <p className="text-xs text-steel-400">Soil data unavailable for this location</p>
+                <p className="text-[10px] text-steel-500">
+                  Elevation: {Math.round(terrainSuggestion.avgElevation)} ft &bull;
+                  Change: {Math.round(terrainSuggestion.elevationChange)} ft &bull;
+                  Using terrain-based difficulty estimate
+                </p>
+              </div>
+            </div>
+          )}
+          {/* AI site analysis status */}
+          {generatingNarrative && (
+            <div className="mt-4 bg-purple-900/20 rounded-lg p-3 border border-purple-700/30 flex items-center gap-2">
+              <span className="animate-pulse text-purple-400">&#x1f916;</span>
+              <p className="text-xs text-purple-300">Generating AI site analysis for this property&hellip;</p>
+            </div>
+          )}
+          {aiNarrative && !generatingNarrative && (
+            <div className="mt-4 bg-emerald-900/20 rounded-lg p-3 border border-emerald-700/30">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-emerald-400 text-sm">&#x2713;</span>
+                <p className="text-xs font-semibold text-emerald-300">AI Site Analysis Ready</p>
+                <button onClick={() => setAiNarrative(null)} className="ml-auto text-[10px] text-red-400 hover:text-red-300 underline">clear</button>
+              </div>
+              <p className="text-[11px] text-steel-300 leading-relaxed line-clamp-4">{aiNarrative}</p>
+            </div>
+          )}
         </div>
 
         {/* Bottom Summary Bar */}

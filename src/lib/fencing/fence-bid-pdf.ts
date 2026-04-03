@@ -36,6 +36,7 @@ export interface FenceBidSection {
   ratePerFoot: number; // can override global
   total: number;
   terrain: 'easy' | 'moderate' | 'difficult' | 'very_difficult';
+  fenceTypeOverride?: string;  // per-section fence type (overrides global when set)
   materials?: SectionMaterial[];
   gates?: BidGate[];
 }
@@ -204,6 +205,20 @@ export interface FenceBidData {
 
   // Seasonal pricing deadline
   seasonalPricingDeadline?: string;      // e.g. "April 15, 2026"
+
+  // Good / Better / Best pricing tiers
+  bidTiers?: {
+    good: { label: string; price: number; description: string };
+    better: { label: string; price: number; description: string };
+    best: { label: string; price: number; description: string };
+  };
+
+  // Competitor comparison section
+  competitorComparison?: { name: string; pricePerFoot: number; notes: string }[];
+
+  // Digital acceptance link (e.g., DocuSign, SignNow, or custom URL)
+  acceptanceLink?: string;
+  acceptanceLinkLabel?: string;          // e.g. "Sign & Accept This Proposal"
 }
 
 // ============================================================
@@ -552,6 +567,290 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
   if (specLine) doc.text(specLine, mx + cw / 2 + 5, y + 17);
 
   y += 30;
+
+  // ── Investment Summary ──
+  y = ensureSpace(doc, y, 60);
+  doc.setTextColor(27, 38, 54);
+  sz(12);
+  doc.setFont(brandFont, 'bold');
+  doc.text('INVESTMENT SUMMARY', mx, y);
+  y += 8;
+
+  // Table header
+  doc.setFillColor(27, 38, 54);
+  doc.rect(mx, y - 4, cw, 8, 'F');
+  doc.setTextColor(255, 255, 255);
+  sz(9);
+  doc.setFont(brandFont, 'bold');
+  doc.text('Section', mx + 3, y);
+  doc.text('Linear Feet', mx + cw * 0.55, y);
+  doc.text('Total', mx + cw - 3, y, { align: 'right' });
+  y += 7;
+
+  // Section rows
+  let totalLinearFeetPricing = 0;
+  doc.setTextColor(50, 50, 50);
+  doc.setFont(brandFont, 'normal');
+
+  for (let i = 0; i < data.sections.length; i++) {
+    const sec = data.sections[i];
+    y = ensureSpace(doc, y, 7);
+
+    if (i % 2 === 0) {
+      doc.setFillColor(245, 247, 250);
+      doc.rect(mx, y - 4, cw, 7, 'F');
+    }
+
+    sz(9);
+    const secLabel = sec.fenceTypeOverride
+      ? `${sec.name} (${sec.fenceTypeOverride.replace(/_/g, ' ')})`
+      : sec.name;
+    doc.text(secLabel, mx + 3, y);
+    doc.text(sec.linearFeet.toLocaleString(), mx + cw * 0.55, y);
+    doc.text(`$${sec.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y, { align: 'right' });
+    totalLinearFeetPricing += sec.linearFeet;
+    y += 7;
+  }
+
+  // Gates (if any)
+  for (const gate of data.gates) {
+    y = ensureSpace(doc, y, 7);
+    sz(9);
+    doc.text(gate.type, mx + 3, y);
+    doc.text('—', mx + cw * 0.55, y);
+    doc.text(`$${gate.cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y, { align: 'right' });
+    y += 7;
+  }
+
+  // Total linear feet row
+  y = ensureSpace(doc, y, 8);
+  doc.setFillColor(230, 235, 240);
+  doc.rect(mx, y - 4, cw, 8, 'F');
+  doc.setFont(brandFont, 'bold');
+  sz(9);
+  doc.setTextColor(27, 38, 54);
+  doc.text(`Total Linear Feet: ${totalLinearFeetPricing.toLocaleString()}`, mx + 3, y);
+  y += 10;
+
+  // Accessories breakdown (if any)
+  if (data.accessories) {
+    const acc = data.accessories;
+    const accRows: [string, number][] = [];
+    if (acc.postCaps > 0) accRows.push([`Post Caps (${acc.postCaps})`, acc.postCaps * 3.5]);
+    if (acc.tensioners > 0) accRows.push([`Inline Tensioners (${acc.tensioners})`, acc.tensioners * 12]);
+    if (acc.springIndicators > 0) accRows.push([`Spring Tension Indicators (${acc.springIndicators})`, acc.springIndicators * 18]);
+    if (acc.concreteFillPosts > 0) accRows.push([`Concrete Fill — Posts (${acc.concreteFillPosts})`, acc.concreteFillPosts * 8]);
+    if (acc.concreteFillBraces > 0) accRows.push([`Concrete Fill — Braces (${acc.concreteFillBraces})`, acc.concreteFillBraces * 12]);
+    if (accRows.length > 0) {
+      y = ensureSpace(doc, y, 8 + accRows.length * 7);
+      doc.setFont(brandFont, 'bold');
+      sz(9);
+      doc.setTextColor(27, 38, 54);
+      doc.text('Accessories', mx + 3, y);
+      y += 7;
+      for (const [label, cost] of accRows) {
+        y = ensureSpace(doc, y, 7);
+        doc.setFont(brandFont, 'normal');
+        sz(8);
+        doc.setTextColor(80, 80, 80);
+        doc.text(`  ${label}`, mx + 3, y);
+        doc.text(`$${cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y, { align: 'right' });
+        y += 7;
+      }
+    }
+  }
+
+  // Painting add-on (if selected)
+  if (data.painting) {
+    y = ensureSpace(doc, y, 22);
+    doc.setFont(brandFont, 'bold');
+    sz(9);
+    doc.setTextColor(27, 38, 54);
+    doc.text('Painting', mx + 3, y);
+    y += 7;
+    const paintLines: [string, string][] = [
+      [`${data.painting.color} — ${data.painting.gallons} gal paint`, `$${data.painting.materialCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
+      ['Paint labor', `$${data.painting.laborCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
+    ];
+    for (const [label, cost] of paintLines) {
+      y = ensureSpace(doc, y, 7);
+      doc.setFont(brandFont, 'normal');
+      sz(8);
+      doc.setTextColor(80, 80, 80);
+      doc.text(`  ${label}`, mx + 3, y);
+      doc.text(cost, mx + cw - 3, y, { align: 'right' });
+      y += 7;
+    }
+  }
+
+  // Steep grade surcharge (if any)
+  if (data.steepFootage && data.steepSurchargePerFoot) {
+    y = ensureSpace(doc, y, 10);
+    doc.setFillColor(255, 240, 240);
+    doc.rect(mx, y - 4, cw, 8, 'F');
+    doc.setFont(brandFont, 'bold');
+    sz(9);
+    doc.setTextColor(180, 40, 40);
+    const steepTotal = data.steepFootage * data.steepSurchargePerFoot;
+    doc.text(`Steep Grade Surcharge (${data.steepFootage}' @ $${data.steepSurchargePerFoot}/ft)`, mx + 3, y);
+    doc.text(`$${steepTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y, { align: 'right' });
+    y += 10;
+  }
+
+  // Project total
+  doc.setFillColor(27, 38, 54);
+  doc.rect(mx, y - 4, cw, 10, 'F');
+  doc.setTextColor(255, 255, 255);
+  sz(12);
+  doc.setFont(brandFont, 'bold');
+  doc.text('PROJECT TOTAL', mx + 3, y + 1);
+  doc.text(`$${data.projectTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y + 1, { align: 'right' });
+  y += 12;
+
+  // ── Cost-Per-Year Value Comparison ──
+  {
+    const totalLinFt = data.sections.reduce((s, sec) => s + sec.linearFeet, 0);
+    const costPerFt = totalLinFt > 0 ? data.projectTotal / totalLinFt : 0;
+    const lifespan = data.fenceLifespanYears ?? 25;
+    const costPerFtPerYear = lifespan > 0 ? costPerFt / lifespan : 0;
+
+    const altCostPerFt = data.alternativeCostPerFoot ?? 6;
+    const altLifespan = data.alternativeLifespanYears ?? 8;
+    const altCostPerFtPerYear = altLifespan > 0 ? altCostPerFt / altLifespan : 0;
+
+    y = ensureSpace(doc, y, 32);
+
+    // Two-column comparison boxes
+    const boxW = (cw - 6) / 2;
+    const boxH = 24;
+
+    // Left box — This fence
+    doc.setFillColor(240, 250, 245);
+    doc.roundedRect(mx, y, boxW, boxH, 2, 2, 'F');
+    doc.setFillColor(34, 139, 84);
+    doc.rect(mx, y, boxW, 2.5, 'F');
+
+    sz(7);
+    doc.setFont(brandFont, 'bold');
+    doc.setTextColor(34, 139, 84);
+    doc.text('THIS FENCE', mx + 4, y + 7);
+
+    sz(14);
+    doc.setTextColor(27, 38, 54);
+    doc.text(`$${costPerFtPerYear.toFixed(2)}/ft/yr`, mx + 4, y + 14);
+
+    sz(7);
+    doc.setFont(brandFont, 'normal');
+    doc.setTextColor(80, 80, 80);
+    doc.text(`$${costPerFt.toFixed(2)}/ft  ×  ${lifespan} year lifespan`, mx + 4, y + 19);
+
+    // Right box — Standard barbed alternative
+    const rx = mx + boxW + 6;
+    doc.setFillColor(255, 245, 245);
+    doc.roundedRect(rx, y, boxW, boxH, 2, 2, 'F');
+    doc.setFillColor(180, 60, 40);
+    doc.rect(rx, y, boxW, 2.5, 'F');
+
+    sz(7);
+    doc.setFont(brandFont, 'bold');
+    doc.setTextColor(180, 60, 40);
+    doc.text('STANDARD BARBED WIRE', rx + 4, y + 7);
+
+    sz(14);
+    doc.setTextColor(27, 38, 54);
+    doc.text(`$${altCostPerFtPerYear.toFixed(2)}/ft/yr`, rx + 4, y + 14);
+
+    sz(7);
+    doc.setFont(brandFont, 'normal');
+    doc.setTextColor(80, 80, 80);
+    doc.text(`$${altCostPerFt.toFixed(2)}/ft  ×  ${altLifespan} year lifespan`, rx + 4, y + 19);
+
+    y += boxH + 4;
+
+    // Savings note
+    if (costPerFtPerYear < altCostPerFtPerYear) {
+      const savings = altCostPerFtPerYear - costPerFtPerYear;
+      const pctSavings = Math.round((savings / altCostPerFtPerYear) * 100);
+      sz(7.5);
+      doc.setFont(brandFont, 'bold');
+      doc.setTextColor(34, 139, 84);
+      doc.text(`Your fence costs ${pctSavings}% less per year than a standard barbed wire installation that needs replacing in ${altLifespan} years.`, mx, y);
+      y += 5;
+    }
+
+    // Acreage framing (if provided)
+    if (data.enclosedAcreage && data.enclosedAcreage > 0) {
+      const costPerAcre = data.projectTotal / data.enclosedAcreage;
+      sz(7.5);
+      doc.setFont(brandFont, 'normal');
+      doc.setTextColor(60, 60, 60);
+      doc.text(`Enclosing ${data.enclosedAcreage.toFixed(1)} acres  —  $${costPerAcre.toLocaleString(undefined, { maximumFractionDigits: 0 })}/acre  —  $${(costPerAcre / lifespan).toFixed(0)}/acre/year over the fence lifetime.`, mx, y);
+      y += 5;
+    }
+
+    y += 4;
+  }
+
+  // ── Seasonal Pricing Indicator ──
+  if (data.seasonalPricingDeadline) {
+    y = ensureSpace(doc, y, 14);
+
+    doc.setFillColor(255, 251, 235);
+    doc.roundedRect(mx, y - 2, cw, 12, 2, 2, 'F');
+    doc.setDrawColor(217, 170, 56);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(mx, y - 2, cw, 12, 2, 2, 'S');
+
+    sz(8.5);
+    doc.setFont(brandFont, 'bold');
+    doc.setTextColor(130, 90, 10);
+    doc.text(`Book before ${data.seasonalPricingDeadline} and lock in current material pricing.`, mx + 5, y + 4);
+
+    sz(7);
+    doc.setFont(brandFont, 'normal');
+    doc.setTextColor(100, 80, 30);
+    doc.text('Material costs are subject to change after this date. See Terms & Conditions for details.', mx + 5, y + 8);
+
+    y += 16;
+  }
+
+  // ── Payment Schedule ──
+  y = ensureSpace(doc, y, 40);
+  doc.setTextColor(27, 38, 54);
+  sz(12);
+  doc.setFont(brandFont, 'bold');
+  doc.text('PAYMENT SCHEDULE', mx, y);
+  y += 8;
+
+  // Payment table
+  const payRows = [
+    [`Deposit (${data.depositPercent}% — due at signing)`, `$${data.depositAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
+    ['Balance (due at completion)', `$${data.balanceAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
+  ];
+
+  for (let i = 0; i < payRows.length; i++) {
+    y = ensureSpace(doc, y, 7);
+    if (i % 2 === 0) {
+      doc.setFillColor(245, 247, 250);
+      doc.rect(mx, y - 4, cw, 7, 'F');
+    }
+    doc.setFont(brandFont, 'normal');
+    sz(9);
+    doc.setTextColor(50, 50, 50);
+    doc.text(payRows[i][0], mx + 3, y);
+    doc.text(payRows[i][1], mx + cw - 3, y, { align: 'right' });
+    y += 7;
+  }
+
+  // Total row
+  doc.setFillColor(27, 38, 54);
+  doc.rect(mx, y - 4, cw, 8, 'F');
+  doc.setTextColor(255, 255, 255);
+  sz(10);
+  doc.setFont(brandFont, 'bold');
+  doc.text('PROJECT TOTAL', mx + 3, y);
+  doc.text(`$${data.projectTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y, { align: 'right' });
+  y += 14;
 
   // ── Project Overview ──
   sz(12);
@@ -1328,287 +1627,6 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     y += 6;
   }
 
-  // ── Investment Summary ──
-  y = ensureSpace(doc, y, 60);
-  doc.setTextColor(27, 38, 54);
-  sz(12);
-  doc.setFont(brandFont, 'bold');
-  doc.text('INVESTMENT SUMMARY', mx, y);
-  y += 8;
-
-  // Table header
-  doc.setFillColor(27, 38, 54);
-  doc.rect(mx, y - 4, cw, 8, 'F');
-  doc.setTextColor(255, 255, 255);
-  sz(9);
-  doc.setFont(brandFont, 'bold');
-  doc.text('Section', mx + 3, y);
-  doc.text('Linear Feet', mx + cw * 0.55, y);
-  doc.text('Total', mx + cw - 3, y, { align: 'right' });
-  y += 7;
-
-  // Section rows
-  let totalLinearFeet = 0;
-  doc.setTextColor(50, 50, 50);
-  doc.setFont(brandFont, 'normal');
-
-  for (let i = 0; i < data.sections.length; i++) {
-    const sec = data.sections[i];
-    y = ensureSpace(doc, y, 7);
-
-    if (i % 2 === 0) {
-      doc.setFillColor(245, 247, 250);
-      doc.rect(mx, y - 4, cw, 7, 'F');
-    }
-
-    sz(9);
-    doc.text(sec.name, mx + 3, y);
-    doc.text(sec.linearFeet.toLocaleString(), mx + cw * 0.55, y);
-    doc.text(`$${sec.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y, { align: 'right' });
-    totalLinearFeet += sec.linearFeet;
-    y += 7;
-  }
-
-  // Gates (if any)
-  for (const gate of data.gates) {
-    y = ensureSpace(doc, y, 7);
-    sz(9);
-    doc.text(gate.type, mx + 3, y);
-    doc.text('—', mx + cw * 0.55, y);
-    doc.text(`$${gate.cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y, { align: 'right' });
-    y += 7;
-  }
-
-  // Total linear feet row
-  y = ensureSpace(doc, y, 8);
-  doc.setFillColor(230, 235, 240);
-  doc.rect(mx, y - 4, cw, 8, 'F');
-  doc.setFont(brandFont, 'bold');
-  sz(9);
-  doc.setTextColor(27, 38, 54);
-  doc.text(`Total Linear Feet: ${totalLinearFeet.toLocaleString()}`, mx + 3, y);
-  y += 10;
-
-  // Accessories breakdown (if any)
-  if (data.accessories) {
-    const acc = data.accessories;
-    const accRows: [string, number][] = [];
-    if (acc.postCaps > 0) accRows.push([`Post Caps (${acc.postCaps})`, acc.postCaps * 3.5]);
-    if (acc.tensioners > 0) accRows.push([`Inline Tensioners (${acc.tensioners})`, acc.tensioners * 12]);
-    if (acc.springIndicators > 0) accRows.push([`Spring Tension Indicators (${acc.springIndicators})`, acc.springIndicators * 18]);
-    if (acc.concreteFillPosts > 0) accRows.push([`Concrete Fill — Posts (${acc.concreteFillPosts})`, acc.concreteFillPosts * 8]);
-    if (acc.concreteFillBraces > 0) accRows.push([`Concrete Fill — Braces (${acc.concreteFillBraces})`, acc.concreteFillBraces * 12]);
-    if (accRows.length > 0) {
-      y = ensureSpace(doc, y, 8 + accRows.length * 7);
-      doc.setFont(brandFont, 'bold');
-      sz(9);
-      doc.setTextColor(27, 38, 54);
-      doc.text('Accessories', mx + 3, y);
-      y += 7;
-      for (const [label, cost] of accRows) {
-        y = ensureSpace(doc, y, 7);
-        doc.setFont(brandFont, 'normal');
-        sz(8);
-        doc.setTextColor(80, 80, 80);
-        doc.text(`  ${label}`, mx + 3, y);
-        doc.text(`$${cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y, { align: 'right' });
-        y += 7;
-      }
-    }
-  }
-
-  // Painting add-on (if selected)
-  if (data.painting) {
-    y = ensureSpace(doc, y, 22);
-    doc.setFont(brandFont, 'bold');
-    sz(9);
-    doc.setTextColor(27, 38, 54);
-    doc.text('Painting', mx + 3, y);
-    y += 7;
-    const paintLines: [string, string][] = [
-      [`${data.painting.color} — ${data.painting.gallons} gal paint`, `$${data.painting.materialCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
-      ['Paint labor', `$${data.painting.laborCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
-    ];
-    for (const [label, cost] of paintLines) {
-      y = ensureSpace(doc, y, 7);
-      doc.setFont(brandFont, 'normal');
-      sz(8);
-      doc.setTextColor(80, 80, 80);
-      doc.text(`  ${label}`, mx + 3, y);
-      doc.text(cost, mx + cw - 3, y, { align: 'right' });
-      y += 7;
-    }
-  }
-
-  // Steep grade surcharge (if any)
-  if (data.steepFootage && data.steepSurchargePerFoot) {
-    y = ensureSpace(doc, y, 10);
-    doc.setFillColor(255, 240, 240);
-    doc.rect(mx, y - 4, cw, 8, 'F');
-    doc.setFont(brandFont, 'bold');
-    sz(9);
-    doc.setTextColor(180, 40, 40);
-    const steepTotal = data.steepFootage * data.steepSurchargePerFoot;
-    doc.text(`Steep Grade Surcharge (${data.steepFootage}' @ $${data.steepSurchargePerFoot}/ft)`, mx + 3, y);
-    doc.text(`$${steepTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y, { align: 'right' });
-    y += 10;
-  }
-
-  // Project total
-  doc.setFillColor(27, 38, 54);
-  doc.rect(mx, y - 4, cw, 10, 'F');
-  doc.setTextColor(255, 255, 255);
-  sz(12);
-  doc.setFont(brandFont, 'bold');
-  doc.text('PROJECT TOTAL', mx + 3, y + 1);
-  doc.text(`$${data.projectTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y + 1, { align: 'right' });
-  y += 12;
-
-  // ── Cost-Per-Year Value Comparison ──
-  {
-    const totalLinFt = data.sections.reduce((s, sec) => s + sec.linearFeet, 0);
-    const costPerFt = totalLinFt > 0 ? data.projectTotal / totalLinFt : 0;
-    const lifespan = data.fenceLifespanYears ?? 25;
-    const costPerFtPerYear = lifespan > 0 ? costPerFt / lifespan : 0;
-
-    const altCostPerFt = data.alternativeCostPerFoot ?? 6;
-    const altLifespan = data.alternativeLifespanYears ?? 8;
-    const altCostPerFtPerYear = altLifespan > 0 ? altCostPerFt / altLifespan : 0;
-
-    y = ensureSpace(doc, y, 32);
-
-    // Two-column comparison boxes
-    const boxW = (cw - 6) / 2;
-    const boxH = 24;
-
-    // Left box — This fence
-    doc.setFillColor(240, 250, 245);
-    doc.roundedRect(mx, y, boxW, boxH, 2, 2, 'F');
-    doc.setFillColor(34, 139, 84);
-    doc.rect(mx, y, boxW, 2.5, 'F');
-
-    sz(7);
-    doc.setFont(brandFont, 'bold');
-    doc.setTextColor(34, 139, 84);
-    doc.text('THIS FENCE', mx + 4, y + 7);
-
-    sz(14);
-    doc.setTextColor(27, 38, 54);
-    doc.text(`$${costPerFtPerYear.toFixed(2)}/ft/yr`, mx + 4, y + 14);
-
-    sz(7);
-    doc.setFont(brandFont, 'normal');
-    doc.setTextColor(80, 80, 80);
-    doc.text(`$${costPerFt.toFixed(2)}/ft  ×  ${lifespan} year lifespan`, mx + 4, y + 19);
-
-    // Right box — Standard barbed alternative
-    const rx = mx + boxW + 6;
-    doc.setFillColor(255, 245, 245);
-    doc.roundedRect(rx, y, boxW, boxH, 2, 2, 'F');
-    doc.setFillColor(180, 60, 40);
-    doc.rect(rx, y, boxW, 2.5, 'F');
-
-    sz(7);
-    doc.setFont(brandFont, 'bold');
-    doc.setTextColor(180, 60, 40);
-    doc.text('STANDARD BARBED WIRE', rx + 4, y + 7);
-
-    sz(14);
-    doc.setTextColor(27, 38, 54);
-    doc.text(`$${altCostPerFtPerYear.toFixed(2)}/ft/yr`, rx + 4, y + 14);
-
-    sz(7);
-    doc.setFont(brandFont, 'normal');
-    doc.setTextColor(80, 80, 80);
-    doc.text(`$${altCostPerFt.toFixed(2)}/ft  ×  ${altLifespan} year lifespan`, rx + 4, y + 19);
-
-    y += boxH + 4;
-
-    // Savings note
-    if (costPerFtPerYear < altCostPerFtPerYear) {
-      const savings = altCostPerFtPerYear - costPerFtPerYear;
-      const pctSavings = Math.round((savings / altCostPerFtPerYear) * 100);
-      sz(7.5);
-      doc.setFont(brandFont, 'bold');
-      doc.setTextColor(34, 139, 84);
-      doc.text(`Your fence costs ${pctSavings}% less per year than a standard barbed wire installation that needs replacing in ${altLifespan} years.`, mx, y);
-      y += 5;
-    }
-
-    // Acreage framing (if provided)
-    if (data.enclosedAcreage && data.enclosedAcreage > 0) {
-      const costPerAcre = data.projectTotal / data.enclosedAcreage;
-      sz(7.5);
-      doc.setFont(brandFont, 'normal');
-      doc.setTextColor(60, 60, 60);
-      doc.text(`Enclosing ${data.enclosedAcreage.toFixed(1)} acres  —  $${costPerAcre.toLocaleString(undefined, { maximumFractionDigits: 0 })}/acre  —  $${(costPerAcre / lifespan).toFixed(0)}/acre/year over the fence lifetime.`, mx, y);
-      y += 5;
-    }
-
-    y += 4;
-  }
-
-  // ── Seasonal Pricing Indicator ──
-  if (data.seasonalPricingDeadline) {
-    y = ensureSpace(doc, y, 14);
-
-    doc.setFillColor(255, 251, 235);
-    doc.roundedRect(mx, y - 2, cw, 12, 2, 2, 'F');
-    doc.setDrawColor(217, 170, 56);
-    doc.setLineWidth(0.4);
-    doc.roundedRect(mx, y - 2, cw, 12, 2, 2, 'S');
-
-    sz(8.5);
-    doc.setFont(brandFont, 'bold');
-    doc.setTextColor(130, 90, 10);
-    doc.text(`Book before ${data.seasonalPricingDeadline} and lock in current material pricing.`, mx + 5, y + 4);
-
-    sz(7);
-    doc.setFont(brandFont, 'normal');
-    doc.setTextColor(100, 80, 30);
-    doc.text('Material costs are subject to change after this date. See Terms & Conditions for details.', mx + 5, y + 8);
-
-    y += 16;
-  }
-
-  // ── Payment Schedule ──
-  y = ensureSpace(doc, y, 40);
-  doc.setTextColor(27, 38, 54);
-  sz(12);
-  doc.setFont(brandFont, 'bold');
-  doc.text('PAYMENT SCHEDULE', mx, y);
-  y += 8;
-
-  // Payment table
-  const payRows = [
-    [`Deposit (${data.depositPercent}% — due at signing)`, `$${data.depositAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
-    ['Balance (due at completion)', `$${data.balanceAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
-  ];
-
-  for (let i = 0; i < payRows.length; i++) {
-    y = ensureSpace(doc, y, 7);
-    if (i % 2 === 0) {
-      doc.setFillColor(245, 247, 250);
-      doc.rect(mx, y - 4, cw, 7, 'F');
-    }
-    doc.setFont(brandFont, 'normal');
-    sz(9);
-    doc.setTextColor(50, 50, 50);
-    doc.text(payRows[i][0], mx + 3, y);
-    doc.text(payRows[i][1], mx + cw - 3, y, { align: 'right' });
-    y += 7;
-  }
-
-  // Total row
-  doc.setFillColor(27, 38, 54);
-  doc.rect(mx, y - 4, cw, 8, 'F');
-  doc.setTextColor(255, 255, 255);
-  sz(10);
-  doc.setFont(brandFont, 'bold');
-  doc.text('PROJECT TOTAL', mx + 3, y);
-  doc.text(`$${data.projectTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, mx + cw - 3, y, { align: 'right' });
-  y += 14;
-
   // ── Project Timeline ──
   if (data.laborEstimate) {
     const le = data.laborEstimate;
@@ -1920,11 +1938,32 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
         if (!matMap.has(key)) {
           matMap.set(key, { shortName, qty: m.quantity, sortOrder: order });
         } else {
-          // For multi-section: append quantities
+          // For multi-section: append quantities (wire types are corrected below)
           const existing = matMap.get(key)!;
           existing.qty += ` + ${m.quantity}`;
         }
       }
+    }
+
+    // Override wire roll counts with aggregate-from-total-footage to avoid per-section rounding inflation.
+    // e.g. three 100' sections don't each round up to 1 roll — total 330' fits in 1 roll.
+    const aggFeetWithOverlap = Math.ceil(totalLinearFeet * 1.1);
+    const wireKeys: Array<{ key: string; rollLen: number; label: string }> = [
+      { key: 'wire',       rollLen: resolveWireRollLength(data.stayTuffModel), label: `${resolveWireRollLength(data.stayTuffModel)}'` },
+      { key: 'field_wire', rollLen: 330,  label: `330'` },
+      { key: 'no_climb',   rollLen: 200,  label: `200'` },
+      { key: 'wire_gen',   rollLen: 330,  label: `330'` },
+    ];
+    for (const { key, rollLen, label } of wireKeys) {
+      if (matMap.has(key)) {
+        const rolls = Math.ceil(aggFeetWithOverlap / rollLen);
+        matMap.get(key)!.qty = `${rolls} roll${rolls !== 1 ? 's' : ''} (${label} ea) — project total`;
+      }
+    }
+    // Barbed wire main fence: 4-strand, same aggregation
+    if (matMap.has('barbed_main')) {
+      const barbedRolls = Math.ceil((aggFeetWithOverlap * 4) / 1320);
+      matMap.get('barbed_main')!.qty = `${barbedRolls} roll${barbedRolls !== 1 ? 's' : ''} (1,320' ea) — project total`;
     }
 
     // Sort by order
@@ -2181,6 +2220,113 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     y += 20;
   }
 
+  // ── Good / Better / Best Pricing Tiers ──
+  if (data.bidTiers) {
+    y = ensureSpace(doc, y, 60);
+
+    sz(12);
+    doc.setFont(brandFont, 'bold');
+    doc.setTextColor(27, 38, 54);
+    doc.text('INVESTMENT OPTIONS', mx, y);
+    y += 8;
+
+    const tiers = [
+      { tier: data.bidTiers.good,   color: [34, 197, 94] as [number,number,number],   label: 'GOOD' },
+      { tier: data.bidTiers.better, color: [59, 130, 246] as [number,number,number],  label: 'BETTER' },
+      { tier: data.bidTiers.best,   color: [234, 138, 45] as [number,number,number],  label: 'BEST' },
+    ];
+    const tierW = (cw - 8) / 3;
+    let tx = mx;
+    for (const { tier, color, label } of tiers) {
+      doc.setFillColor(...color);
+      doc.roundedRect(tx, y, tierW, 8, 2, 2, 'F');
+      sz(8); doc.setFont(brandFont, 'bold'); doc.setTextColor(255, 255, 255);
+      doc.text(label, tx + tierW / 2, y + 5.5, { align: 'center' });
+
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(tx, y + 8, tierW, 30, 0, 0, 'F');
+      doc.setDrawColor(...color);
+      doc.setLineWidth(0.4);
+      doc.roundedRect(tx, y, tierW, 38, 2, 2, 'S');
+
+      sz(10); doc.setFont(brandFont, 'bold'); doc.setTextColor(27, 38, 54);
+      doc.text(`$${tier.price.toLocaleString()}`, tx + tierW / 2, y + 18, { align: 'center' });
+
+      sz(7); doc.setFont(brandFont, 'bold'); doc.setTextColor(...color);
+      doc.text(tier.label, tx + tierW / 2, y + 24, { align: 'center' });
+
+      sz(7); doc.setFont(brandFont, 'normal'); doc.setTextColor(80, 80, 80);
+      doc.text(tier.description, tx + tierW / 2, y + 31, { align: 'center', maxWidth: tierW - 6 });
+
+      tx += tierW + 4;
+    }
+    y += 44;
+  }
+
+  // ── Competitor Comparison ──
+  if (data.competitorComparison && data.competitorComparison.length > 0) {
+    y = ensureSpace(doc, y, 50);
+
+    sz(12); doc.setFont(brandFont, 'bold'); doc.setTextColor(27, 38, 54);
+    doc.text('WHY HAYDEN RANCH SERVICES?', mx, y);
+    y += 8;
+
+    // Header row
+    doc.setFillColor(27, 38, 54);
+    doc.rect(mx, y, cw, 7, 'F');
+    sz(7); doc.setFont(brandFont, 'bold'); doc.setTextColor(255, 255, 255);
+    const compColW = [cw * 0.35, cw * 0.2, cw * 0.45];
+    doc.text('Company', mx + 3, y + 4.5);
+    doc.text('$/ft', mx + compColW[0] + 3, y + 4.5);
+    doc.text('Notes', mx + compColW[0] + compColW[1] + 3, y + 4.5);
+    y += 7;
+
+    // Our row first (highlighted)
+    doc.setFillColor(255, 249, 235);
+    doc.rect(mx, y, cw, 8, 'F');
+    doc.setDrawColor(234, 138, 45); doc.setLineWidth(0.5);
+    doc.rect(mx, y, cw, 8, 'S');
+    sz(7); doc.setFont(brandFont, 'bold'); doc.setTextColor(27, 38, 54);
+    const ourRate = data.projectTotal / (data.sections.reduce((s, r) => s + r.linearFeet, 0) || 1);
+    doc.text('Hayden Ranch Services ★', mx + 3, y + 5);
+    doc.text(`$${ourRate.toFixed(2)}`, mx + compColW[0] + 3, y + 5);
+    sz(7); doc.setFont(brandFont, 'normal');
+    doc.text('Commercial-grade materials, concrete-set posts, 1-yr workmanship warranty', mx + compColW[0] + compColW[1] + 3, y + 5, { maxWidth: compColW[2] - 6 });
+    y += 8;
+
+    for (let i = 0; i < data.competitorComparison.length; i++) {
+      const comp = data.competitorComparison[i];
+      doc.setFillColor(i % 2 === 0 ? 248 : 255, i % 2 === 0 ? 250 : 255, i % 2 === 0 ? 252 : 255);
+      doc.rect(mx, y, cw, 8, 'F');
+      sz(7); doc.setFont(brandFont, 'bold'); doc.setTextColor(80, 80, 80);
+      doc.text(comp.name, mx + 3, y + 5);
+      doc.text(`$${comp.pricePerFoot.toFixed(2)}`, mx + compColW[0] + 3, y + 5);
+      sz(7); doc.setFont(brandFont, 'normal'); doc.setTextColor(100, 100, 100);
+      doc.text(comp.notes, mx + compColW[0] + compColW[1] + 3, y + 5, { maxWidth: compColW[2] - 6 });
+      y += 8;
+    }
+    y += 6;
+  }
+
+  // ── Digital Acceptance Link ──
+  if (data.acceptanceLink) {
+    y = ensureSpace(doc, y, 40);
+
+    doc.setFillColor(234, 138, 45);
+    doc.roundedRect(mx, y, cw, 30, 3, 3, 'F');
+
+    sz(11); doc.setFont(brandFont, 'bold'); doc.setTextColor(255, 255, 255);
+    doc.text(data.acceptanceLinkLabel || 'ACCEPT THIS PROPOSAL ONLINE', mx + cw / 2, y + 10, { align: 'center' });
+
+    sz(8); doc.setFont(brandFont, 'normal'); doc.setTextColor(255, 255, 255);
+    doc.text('Scan the QR code or visit the link below to sign and approve:', mx + cw / 2, y + 17, { align: 'center' });
+
+    sz(9); doc.setFont(brandFont, 'bold');
+    doc.text(data.acceptanceLink, mx + cw / 2, y + 25, { align: 'center' });
+
+    y += 36;
+  }
+
   // ── Terms and Conditions ──
   doc.addPage();
   y = 20;
@@ -2347,15 +2493,29 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
 /** Parse wire height in inches from stayTuffModel (e.g. '15/96/6' → 96) or fenceHeight (e.g. '6ft' → 72) */
 function resolveWireHeight(fenceHeight: string, stayTuffModel?: string): number {
   if (stayTuffModel) {
-    const parts = stayTuffModel.split('/');
-    if (parts.length >= 2) {
-      const h = parseInt(parts[1], 10);
+    // Spec format: "WWHH-SS-RR" e.g. "2096-6-330" → 96", "949-6-330" → 49", "735-6-330" → 35"
+    // Height is the last 2 digits of the first dash-separated group
+    const firstGroup = stayTuffModel.split('-')[0];
+    if (firstGroup && firstGroup.length >= 2) {
+      const h = parseInt(firstGroup.slice(-2), 10);
       if (!isNaN(h) && h > 0) return h;
     }
   }
   const match = fenceHeight.match(/(\d+)/);
   if (match) return parseInt(match[1], 10) * 12;
   return 60; // fallback 5ft
+}
+
+/** Extract roll length from Stay-Tuff spec string, e.g. "2096-6-330" → 330, "1661-3-200" → 200 */
+function resolveWireRollLength(stayTuffModel?: string): number {
+  if (stayTuffModel) {
+    const parts = stayTuffModel.split('-');
+    if (parts.length >= 3) {
+      const rollLen = parseInt(parts[2], 10);
+      if (!isNaN(rollLen) && rollLen > 0) return rollLen;
+    }
+  }
+  return 330; // default
 }
 
 /** Resolve horizontal wire count from Stay-Tuff model spec or fence type */
@@ -2401,16 +2561,18 @@ export function calculateSectionMaterials(
 ): SectionMaterial[] {
   const ft = linearFeet;
   const wireHeightIn = resolveWireHeight(fenceHeight, stayTuffModel);
+  const rollLength = resolveWireRollLength(stayTuffModel);
   const wireWithOverlap = Math.ceil(ft * 1.1); // 10% overlap for tensioning
-  const wireRolls = Math.ceil(wireWithOverlap / 330);
-  const wireRollsDec = (wireWithOverlap / 330).toFixed(1);
+  const wireRolls = Math.ceil(wireWithOverlap / rollLength);
+  const wireRollsDec = (wireWithOverlap / rollLength).toFixed(1);
 
   // Use user-configured spacings
   const linePostCount = Math.max(2, Math.ceil(ft / linePostSpacing));
   // T-posts go between each pair of line posts: subtract 1 for each line post position
   const spans = Math.max(0, linePostCount - 1);
   const tPostsPerSpan = Math.max(0, Math.floor(linePostSpacing / tPostSpacing) - 1);
-  const tPosts = spans * tPostsPerSpan;
+  // Minimum 1 T-post per section so very short runs still get at least one intermediate support
+  const tPosts = Math.max(1, spans * tPostsPerSpan);
 
   // Correct T-post sizing from fence-materials.ts
   const tPostSpec = recommendedTPostLength(wireHeightIn);
@@ -2502,22 +2664,22 @@ export function calculateSectionMaterials(
   } else if (isStayTuff && stayTuffModel) {
     materials.push({
       name: `Stay-Tuff ${stayTuffModel} Fixed Knot Wire — ${wireHeightIn}"`,
-      quantity: `${wireRolls} rolls (330' ea)`,
+      quantity: `${wireRolls} rolls (${rollLength}' ea)`,
     });
   } else if (isStayTuff) {
     materials.push({
       name: `Stay-Tuff Fixed Knot Wire — ${wireHeightIn}"`,
-      quantity: `${wireRolls} rolls (330' ea)`,
+      quantity: `${wireRolls} rolls (${rollLength}' ea)`,
     });
   } else if (isFieldFence) {
     materials.push({
       name: `Field Fence Wire — ${wireHeightIn}"`,
-      quantity: `${wireRolls} rolls (330' ea)`,
+      quantity: `${wireRolls} rolls (${rollLength}' ea)`,
     });
   } else {
     materials.push({
       name: `Fence Wire — ${wireHeightIn}"`,
-      quantity: `${wireRolls} rolls (330' ea)`,
+      quantity: `${wireRolls} rolls (${rollLength}' ea)`,
     });
   }
 
