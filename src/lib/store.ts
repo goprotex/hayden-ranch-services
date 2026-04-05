@@ -141,6 +141,9 @@ export const useAppStore = create<AppState>()(
       resetMaterialPrices: () =>
         set({ materialPrices: [...DEFAULT_MATERIAL_PRICES] }),
       syncReceiptPrices: async () => {
+        // Block polling for the duration of the sync + save so the 30s interval
+        // cannot fetch stale server data and overwrite prices mid-flight.
+        setLastPriceSaveAt(Date.now());
         const state = get();
         const { matches } = await matchReceiptsToCatalog(state.priceDatabase, state.materialPrices);
         let matched = matches.length;
@@ -179,9 +182,11 @@ export const useAppStore = create<AppState>()(
         }
       },
       saveSharedPricesToServer: async (): Promise<boolean> => {
+        // Set cooldown optimistically before the async write so any polling
+        // that fires while the request is in-flight is blocked.
+        setLastPriceSaveAt(Date.now());
         const prices = get().materialPrices;
         const ok = await saveSharedPrices(prices);
-        if (ok) setLastPriceSaveAt(Date.now());
         return ok;
       },
 

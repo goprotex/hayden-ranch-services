@@ -82,7 +82,7 @@ export default function PricingPage() {
       if (res.ok) {
         const data = await res.json();
         if (!data.error) {
-          processAIResult(data);
+          await processAIResult(data);
           setReceiptText('');
           setUploadStatus('done');
           setTimeout(() => setUploadStatus('idle'), 2000);
