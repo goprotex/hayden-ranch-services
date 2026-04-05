@@ -1720,7 +1720,15 @@ export default function FencingPage() {
                   </div>
                 )}
                 <div className="card-dark p-4">
-                  <h3 className="text-sm font-bold text-steel-200 mb-3">Custom Material Pricing</h3>
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="text-sm font-bold text-steel-200">Custom Material Pricing</h3>
+                    {materialPrices.some(m => m.price !== m.defaultPrice) && (
+                      <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                        {materialPrices.filter(m => m.price !== m.defaultPrice).length} from receipts
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-steel-500 mb-4">Adjust unit prices for each material. Changes recalculate costs automatically.</p>
                   {(() => {
                     const cats = Array.from(new Set(materialPrices.map(m => m.category)));
@@ -1728,24 +1736,28 @@ export default function FencingPage() {
                       <div key={cat} className="mb-4">
                         <h4 className="text-xs font-bold text-white uppercase tracking-wide mb-2">{cat}</h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {materialPrices.filter(m => m.category === cat).map(mp => (
-                            <div key={mp.id} className="flex items-center gap-2 bg-steel-900/50 rounded px-3 py-2">
-                              <span className="flex-1 text-xs text-steel-300 truncate" title={mp.name}>{mp.name}</span>
-                              <span className="text-xs text-steel-500">/{mp.unit}</span>
-                              <input type="number" step="0.01" min="0"
-                                className="w-20 bg-steel-800 text-right text-sm text-steel-200 px-2 py-1 rounded border border-steel-700 focus:border-tan-400/60 focus:outline-none"
-                                value={mp.price}
-                                onChange={e => {
-                                  const v = parseFloat(e.target.value) || 0;
-                                  updateMaterialPrice(mp.id, v);
-                                }}
-                                onBlur={() => saveSharedPricesToServer()}
-                              />
-                              <button className="text-xs text-steel-600 hover:text-white" title="Reset"
-                                onClick={() => { updateMaterialPrice(mp.id, mp.defaultPrice); saveSharedPricesToServer(); }}
-                              >?</button>
-                            </div>
-                          ))}
+                          {materialPrices.filter(m => m.category === cat).map(mp => {
+                            const fromReceipt = mp.price !== mp.defaultPrice;
+                            return (
+                              <div key={mp.id} className={`flex items-center gap-2 rounded px-3 py-2${fromReceipt ? ' bg-emerald-950/30 border border-emerald-800/40' : ' bg-steel-900/50'}`}>
+                                {fromReceipt && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" title="Price from uploaded receipt" />}
+                                <span className="flex-1 text-xs text-steel-300 truncate" title={mp.name}>{mp.name}</span>
+                                <span className="text-xs text-steel-500">/{mp.unit}</span>
+                                <input type="number" step="0.01" min="0"
+                                  className={`w-20 text-right text-sm px-2 py-1 rounded border focus:outline-none${fromReceipt ? ' bg-emerald-950/50 text-emerald-300 border-emerald-700/60 focus:border-emerald-500' : ' bg-steel-800 text-steel-200 border-steel-700 focus:border-tan-400/60'}`}
+                                  value={mp.price}
+                                  onChange={e => {
+                                    const v = parseFloat(e.target.value) || 0;
+                                    updateMaterialPrice(mp.id, v);
+                                  }}
+                                  onBlur={() => saveSharedPricesToServer()}
+                                />
+                                <button className="text-xs text-steel-600 hover:text-white" title="Reset to default"
+                                  onClick={() => { updateMaterialPrice(mp.id, mp.defaultPrice); saveSharedPricesToServer(); }}
+                                >↺</button>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     ));

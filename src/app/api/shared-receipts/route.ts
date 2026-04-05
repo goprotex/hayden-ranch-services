@@ -1,17 +1,16 @@
 // ============================================================
 // Shared Receipts & Price Database API
-// GET  → returns receipts + priceDatabase from blob
-// POST → saves receipts + priceDatabase to blob
+// GET  → returns receipts + priceDatabase
+// POST → saves receipts + priceDatabase
 //
-// Uses same storage strategy as material-prices:
-// @vercel/blob in production, local filesystem in dev.
+// Uses Supabase in production (reliable, no CDN caching).
+// Falls back to local filesystem in development.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { IS_SUPABASE, getSupabase } from '@/lib/supabase/client';
 
-const BLOB_NAME = 'shared-receipts.json';
-const BLOB_TOKEN = process.env.Price_update_READ_WRITE_TOKEN || '';
-const IS_VERCEL = !!BLOB_TOKEN;
+const SETTINGS_KEY = 'shared-receipts';
 
 interface SharedReceiptsPayload {
   receipts: unknown[];
@@ -39,45 +38,36 @@ async function writeLocal(payload: SharedReceiptsPayload): Promise<void> {
   const path = await import('path');
   const dir = path.join(process.cwd(), 'data');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(
-    path.join(dir, 'shared-receipts.json'),
-    JSON.stringify(payload, null, 2),
-    'utf-8'
-  );
+  fs.writeFileSync(path.join(dir, 'shared-receipts.json'), JSON.stringify(payload, null, 2), 'utf-8');
 }
 
-// ── Vercel Blob storage (production) ──────────────────────
-async function readBlob(): Promise<SharedReceiptsPayload | null> {
-  const { list, head } = await import('@vercel/blob');
-  try {
-    const { blobs } = await list({ prefix: BLOB_NAME, limit: 1, token: BLOB_TOKEN });
-    if (blobs.length === 0) return null;
-    const blobMeta = await head(blobs[0].url, { token: BLOB_TOKEN });
-    const res = await fetch(blobMeta.url);
-    if (!res.ok) return null;
-    const data = (await res.json()) as SharedReceiptsPayload;
-    if (Array.isArray(data.receipts)) return data;
-  } catch (err) {
-    console.error('[SharedReceipts] Blob read error:', err);
-  }
-  return null;
+// ── Supabase storage (production) ─────────────────────────
+async function readSupabase(): Promise<SharedReceiptsPayload | null> {
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from('app_settings')
+    .select('value')
+    .eq('key', SETTINGS_KEY)
+    .single();
+
+  if (error || !data) return null;
+  const payload = data.value as SharedReceiptsPayload;
+  if (!Array.isArray(payload?.receipts)) return null;
+  return payload;
 }
 
-async function writeBlob(payload: SharedReceiptsPayload): Promise<void> {
-  const { put } = await import('@vercel/blob');
-  const json = JSON.stringify(payload);
-  await put(BLOB_NAME, json, {
-    access: 'public',
-    contentType: 'application/json',
-    addRandomSuffix: false,
-    token: BLOB_TOKEN,
-  });
+async function writeSupabase(payload: SharedReceiptsPayload): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb
+    .from('app_settings')
+    .upsert({ key: SETTINGS_KEY, value: payload });
+  if (error) throw error;
 }
 
 // ── Route handlers ────────────────────────────────────────
 export async function GET() {
   try {
-    const data = IS_VERCEL ? await readBlob() : await readLocal();
+    const data = IS_SUPABASE ? await readSupabase() : await readLocal();
     if (data) {
       return NextResponse.json({
         receipts: data.receipts,
@@ -87,7 +77,7 @@ export async function GET() {
     }
     return NextResponse.json({ receipts: [], priceDatabase: [] });
   } catch (err) {
-    console.error('Failed to read shared receipts:', err);
+    console.error('[shared-receipts] GET failed:', err);
     return NextResponse.json({ receipts: [], priceDatabase: [] });
   }
 }
@@ -110,8 +100,8 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date().toISOString(),
     };
 
-    if (IS_VERCEL) {
-      await writeBlob(payload);
+    if (IS_SUPABASE) {
+      await writeSupabase(payload);
     } else {
       await writeLocal(payload);
     }
@@ -123,7 +113,7 @@ export async function POST(request: NextRequest) {
       updatedAt: payload.updatedAt,
     });
   } catch (err) {
-    console.error('Failed to save shared receipts:', err);
+    console.error('[shared-receipts] POST failed:', err);
     return NextResponse.json({ error: 'Failed to save receipts' }, { status: 500 });
   }
 }
