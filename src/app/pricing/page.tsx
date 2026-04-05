@@ -363,11 +363,22 @@ export default function PricingPage() {
           <div className="px-6 py-4 border-b border-white/[0.06] flex items-center justify-between">
             <div>
               <h2 className="text-steel-200 font-semibold">Current Material Prices</h2>
-              <p className="text-sm text-steel-500 mt-1">Synced across all browsers &bull; Updated from receipts</p>
+              <p className="text-sm text-steel-500 mt-1">
+                Synced across all browsers &bull; Updated from receipts &bull;{' '}
+                <span className="text-emerald-400">
+                  {materialPrices.filter(m => m.price !== m.defaultPrice).length} from receipts
+                </span>
+              </p>
             </div>
-            <span className="text-xs text-steel-500 bg-steel-900 px-3 py-1 rounded-full">
-              {materialPrices.length} items
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+                receipt price
+              </span>
+              <span className="text-xs text-steel-500 bg-steel-900 px-3 py-1 rounded-full">
+                {materialPrices.length} items
+              </span>
+            </div>
           </div>
           {Object.entries(materialsByCategory).map(([category, items]) => (
             <div key={category}>
@@ -376,13 +387,28 @@ export default function PricingPage() {
               </div>
               <table className="w-full text-sm">
                 <tbody>
-                  {items.map((mp) => (
-                    <tr key={mp.id} className="border-b border-steel-700/10 hover:bg-steel-900/50">
-                      <td className="px-6 py-2 text-steel-300">{mp.name}</td>
-                      <td className="px-6 py-2 text-right text-steel-500 text-xs">{mp.unit}</td>
-                      <td className="px-6 py-2 text-right font-medium text-white w-28">${mp.price.toFixed(2)}</td>
-                    </tr>
-                  ))}
+                  {items.map((mp) => {
+                    const fromReceipt = mp.price !== mp.defaultPrice;
+                    return (
+                      <tr key={mp.id} className={`border-b border-steel-700/10 hover:bg-steel-900/50${fromReceipt ? ' bg-emerald-950/20' : ''}`}>
+                        <td className="px-6 py-2 text-steel-300 flex items-center gap-2">
+                          {fromReceipt && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" title="Price from uploaded receipt" />}
+                          {mp.name}
+                        </td>
+                        <td className="px-6 py-2 text-right text-steel-500 text-xs">{mp.unit}</td>
+                        <td className="px-6 py-2 text-right w-40">
+                          {fromReceipt ? (
+                            <span className="font-semibold text-emerald-300">${mp.price.toFixed(2)}</span>
+                          ) : (
+                            <span className="font-medium text-white">${mp.price.toFixed(2)}</span>
+                          )}
+                          {fromReceipt && (
+                            <span className="ml-2 text-xs text-steel-600 line-through">${mp.defaultPrice.toFixed(2)}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
