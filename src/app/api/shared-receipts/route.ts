@@ -3,14 +3,14 @@
 // GET  → returns receipts + priceDatabase
 // POST → saves receipts + priceDatabase
 //
-// Uses @vercel/kv in production (no CDN caching, always fresh).
+// Uses Supabase in production (reliable, no CDN caching).
 // Falls back to local filesystem in development.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { IS_SUPABASE, getSupabase } from '@/lib/supabase/client';
 
-const RECEIPTS_KEY = 'hayden:shared-receipts';
-const IS_KV = !!process.env.KV_REST_API_URL;
+const SETTINGS_KEY = 'shared-receipts';
 
 interface SharedReceiptsPayload {
   receipts: unknown[];
@@ -38,34 +38,36 @@ async function writeLocal(payload: SharedReceiptsPayload): Promise<void> {
   const path = await import('path');
   const dir = path.join(process.cwd(), 'data');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(
-    path.join(dir, 'shared-receipts.json'),
-    JSON.stringify(payload, null, 2),
-    'utf-8'
-  );
+  fs.writeFileSync(path.join(dir, 'shared-receipts.json'), JSON.stringify(payload, null, 2), 'utf-8');
 }
 
-// ── Vercel KV storage (production) ────────────────────────
-async function readKV(): Promise<SharedReceiptsPayload | null> {
-  const { kv } = await import('@vercel/kv');
-  try {
-    const data = await kv.get<SharedReceiptsPayload>(RECEIPTS_KEY);
-    if (data && Array.isArray(data.receipts)) return data;
-  } catch (err) {
-    console.error('[SharedReceipts] KV read error:', err);
-  }
-  return null;
+// ── Supabase storage (production) ─────────────────────────
+async function readSupabase(): Promise<SharedReceiptsPayload | null> {
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from('app_settings')
+    .select('value')
+    .eq('key', SETTINGS_KEY)
+    .single();
+
+  if (error || !data) return null;
+  const payload = data.value as SharedReceiptsPayload;
+  if (!Array.isArray(payload?.receipts)) return null;
+  return payload;
 }
 
-async function writeKV(payload: SharedReceiptsPayload): Promise<void> {
-  const { kv } = await import('@vercel/kv');
-  await kv.set(RECEIPTS_KEY, payload);
+async function writeSupabase(payload: SharedReceiptsPayload): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb
+    .from('app_settings')
+    .upsert({ key: SETTINGS_KEY, value: payload });
+  if (error) throw error;
 }
 
 // ── Route handlers ────────────────────────────────────────
 export async function GET() {
   try {
-    const data = IS_KV ? await readKV() : await readLocal();
+    const data = IS_SUPABASE ? await readSupabase() : await readLocal();
     if (data) {
       return NextResponse.json({
         receipts: data.receipts,
@@ -75,7 +77,7 @@ export async function GET() {
     }
     return NextResponse.json({ receipts: [], priceDatabase: [] });
   } catch (err) {
-    console.error('Failed to read shared receipts:', err);
+    console.error('[shared-receipts] GET failed:', err);
     return NextResponse.json({ receipts: [], priceDatabase: [] });
   }
 }
@@ -98,8 +100,8 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date().toISOString(),
     };
 
-    if (IS_KV) {
-      await writeKV(payload);
+    if (IS_SUPABASE) {
+      await writeSupabase(payload);
     } else {
       await writeLocal(payload);
     }
@@ -111,7 +113,7 @@ export async function POST(request: NextRequest) {
       updatedAt: payload.updatedAt,
     });
   } catch (err) {
-    console.error('Failed to save shared receipts:', err);
+    console.error('[shared-receipts] POST failed:', err);
     return NextResponse.json({ error: 'Failed to save receipts' }, { status: 500 });
   }
 }
