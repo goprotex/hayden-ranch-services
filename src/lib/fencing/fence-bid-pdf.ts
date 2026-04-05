@@ -2558,6 +2558,8 @@ export function calculateSectionMaterials(
   tPostSpacing: number = 10,
   linePostSpacing: number = 66,
   topWireType: TopWireType = 'smooth',
+  totalBraceAssemblies: number = 0,  // actual brace count from page (H + corner + gate)
+  includeTensioners: boolean = true,
 ): SectionMaterial[] {
   const ft = linearFeet;
   const wireHeightIn = resolveWireHeight(fenceHeight, stayTuffModel);
@@ -2590,11 +2592,11 @@ export function calculateSectionMaterials(
   const jointLen = postSpec.jointLengthFeet;
   const postsPerJoint = postCalc.postsPerJoint(postMaterial);
   // ── Bracing ──
-  // H-braces go at each end of the section + mid-run braces for very long straight runs (1 per 660').
-  // Gate braces and bend/corner braces are calculated separately in the overall bid.
+  // Use the actual brace count passed from the page (includes H-braces, corner braces, gate braces).
+  // Fall back to end-of-section estimate only when called standalone (e.g. CSV export).
   const endBraces = 2;
   const midRunBraces = Math.max(0, Math.floor(linearFeet / 660) - 1);
-  const hBraceCount = endBraces + midRunBraces;
+  const hBraceCount = totalBraceAssemblies > 0 ? totalBraceAssemblies : (endBraces + midRunBraces);
 
   // Brace geometry: H = above ground (ft), D = below ground (ft), S = brace spacing (ft)
   const H = postCalc.aboveGroundFeet;
@@ -2604,7 +2606,7 @@ export function calculateSectionMaterials(
 
   // Single H-brace pipe: 2 posts (H+D each) + 1 horizontal (S) + 1 diagonal
   const singleHPipe = 2 * (H + D) + S + diag;
-  const bracePostCount = hBraceCount * 2; // 2 vertical posts per H-brace
+  const bracePostCount = hBraceCount * 2; // 2 vertical posts per brace assembly
   const totalBracePipeFeet = hBraceCount * singleHPipe;
 
   // Pipe joints: line posts + brace pipe
@@ -2622,16 +2624,16 @@ export function calculateSectionMaterials(
   const concreteBagsPerPost = wireHeightIn >= 72 ? 3 : 2;
   const concreteBags = (linePostCount * concreteBagsPerPost) + (hBraceCount * concreteBagsPerPost);
 
-  // Hardware counts
-  const clipsPerTPost = wireHeightIn >= 72 ? 5 : 4;
-  const clips = tPosts * clipsPerTPost;
-  const clipBoxes = Math.ceil(clips / 500);
-
   // High-tensile top/bottom wire
   const htStrands = wireHeightIn >= 72 ? 2 : 1;
 
   // Tensioners: (mesh horizontal wires + barbed wire strands) per 660ft run
   const meshHorizWires = resolveHorizontalWires(stayTuffModel, fenceType);
+
+  // Hardware counts — one clip per wire strand per T-post, packs of 1,000
+  const clipsPerTPost = meshHorizWires; // each horizontal strand gets one clip per T-post
+  const clips = tPosts * clipsPerTPost;
+  const clipPacks = Math.ceil(clips / 1000);
   const barbedStrands = htStrands; // top (and bottom for tall fences) barbed/smooth strands
   const tensionerRuns = Math.max(1, Math.ceil(ft / 660));
   const tensioners = tensionerRuns * (meshHorizWires + barbedStrands);
@@ -2743,9 +2745,9 @@ export function calculateSectionMaterials(
   });
 
   // ==============================================================
-  // INLINE TENSIONERS
+  // INLINE TENSIONERS — only when selected
   // ==============================================================
-  if (!isBarbedWire && !isPipeFence) {
+  if (!isBarbedWire && !isPipeFence && includeTensioners) {
     materials.push({
       name: `Inline Wire Tensioners — ratchet-style`,
       quantity: `${tensioners} tensioners`,
@@ -2758,7 +2760,7 @@ export function calculateSectionMaterials(
   if (!isPipeFence) {
     materials.push({
       name: `Fence Clips — galvanized steel`,
-      quantity: `${clips} clips (${clipBoxes} box${clipBoxes > 1 ? 'es' : ''})`,
+      quantity: `${clips} clips (${clipPacks} pack${clipPacks !== 1 ? 's' : ''} of 1,000)`,
     });
   }
 

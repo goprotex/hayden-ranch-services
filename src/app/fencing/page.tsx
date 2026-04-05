@@ -415,10 +415,10 @@ export default function FencingPage() {
     const bagsPerBracePost = Math.ceil(concreteCuFtPerPost * 1.5 / 0.6 * soilMultiplier); // brace posts get 50% more concrete
     const concreteCostPerFt = (findPrice('concrete_bag') * bagsPerLinePost) / linePostSpacing;
 
-    // Hardware per foot
-    const clipsCostPerFt = (findPrice('clips') / 500) * (4 / tPostSpacing);
     // Horizontal strands for tensioner/spring indicator calcs
     const horizStrands = fenceType.startsWith('stay_tuff') ? selectedStayTuff.horizontalWires : 9;
+    // Hardware per foot — clips: one per wire strand per T-post, packs of 1,000
+    const clipsCostPerFt = (findPrice('clips') / 1000) * (horizStrands / tPostSpacing);
     // Wire tie cost per foot based on tie pattern
     const tiesPerPost = tiePattern === 'every_strand' ? horizStrands
       : tiePattern === 'every_other' ? Math.ceil(horizStrands / 2)
@@ -556,6 +556,10 @@ export default function FencingPage() {
     // Horizontal wire strands for accessory calcs
     const horizStrands = fenceType.startsWith('stay_tuff') ? selectedStayTuff.horizontalWires : 9;
 
+    // Clips: one per wire strand per T-post, ordered in packs of 1,000
+    const clipsQty = horizStrands * Math.max(0, tPostCount);
+    const clipPacksQty = Math.ceil(clipsQty / 1000);
+
     // Post caps: 1 per line post + 2 per brace assembly (2 brace posts each)
     const postCapsQty = includePostCaps ? linePostCount + (totalBraces * 2) : 0;
 
@@ -585,6 +589,7 @@ export default function FencingPage() {
       hBraces, cornerBraces, doubleHBraces, totalBraces,
       waterGapCount,
       wireRolls, concreteBags,
+      clipsQty, clipPacksQty,
       postCapsQty, tensionersQty, springIndicatorsQty,
       concreteFillPostsQty, concreteFillBracesQty,
       horizStrands,
@@ -602,7 +607,7 @@ export default function FencingPage() {
     hBraceCount: materialCalc.hBraces,
     cornerBraceCount: materialCalc.cornerBraces,
     gateCount: gates.length,
-    clipsPerTPost: 4,
+    clipsPerTPost: materialCalc.horizStrands,
     tiesPerLinePost,
   }), [totalFeet, materialCalc, gates.length, tiesPerLinePost]);
   const timelineDays = laborEstimate.workDays;
@@ -814,6 +819,7 @@ export default function FencingPage() {
       ...sec, materials: calculateSectionMaterials(
         sec.linearFeet, ftLabel, fenceHeight, stModel,
         sec.terrain || terrain, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType,
+        materialCalc.totalBraces, includeTensioners,
       ),
     }));
     const data: FenceBidData = {
@@ -937,11 +943,13 @@ export default function FencingPage() {
       acceptanceLink: acceptanceLink || undefined,
       acceptanceLinkLabel: acceptanceLinkLabel || undefined,
     };
+    // Always pull the latest synced prices before generating — no manual sync needed
+    await loadSharedPrices();
     await generateFenceBidPDF(data);
     } finally {
       setGeneratingPDF(false);
     }
-  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, laborEstimate, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory, paintEst, paintColor, showBidTiers, tierGoodLabel, tierGoodDesc, tierBetterLabel, tierBetterDesc, tierBestLabel, tierBestDesc, showCompetitorSection, competitors, acceptanceLink, acceptanceLinkLabel]);
+  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, laborEstimate, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory, paintEst, paintColor, showBidTiers, tierGoodLabel, tierGoodDesc, tierBetterLabel, tierBetterDesc, tierBestLabel, tierBestDesc, showCompetitorSection, competitors, acceptanceLink, acceptanceLinkLabel, includeTensioners, loadSharedPrices]);
 
   const handleExportMaterialsCSV = useCallback(() => {
     // Aggregate materials from all sections
@@ -951,6 +959,7 @@ export default function FencingPage() {
         sec.linearFeet, fenceType as import('@/types').FenceType, fenceHeight,
         fenceType.startsWith('stay_tuff') ? selectedStayTuff.id : undefined,
         terrain, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType,
+        materialCalc.totalBraces, includeTensioners,
       );
       for (const m of mats) {
         const existing = allMaterials.find(x => x.name === m.name);
@@ -1144,7 +1153,11 @@ export default function FencingPage() {
                     <select title="Stay-Tuff product" value={selectedStayTuff.id}
                       onChange={e => { const o = STAY_TUFF_CATALOG.find(x => x.id === e.target.value); if (o) setSelectedStayTuff(o); }}
                       className="w-full bg-black border border-steel-800 rounded-lg px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-tan-400/40">
-                      {filteredStayTuff.map(o => <option key={o.id} value={o.id}>{o.partNo} — {o.spec} ({o.description})</option>)}
+                      {filteredStayTuff.map(o => {
+                        const rollPrice = materialPrices.find(m => m.id === wireRollPriceId(o.id))?.price ?? 0;
+                        const pricePart = rollPrice > 0 ? ` · $${(rollPrice / o.rollLength).toFixed(2)}/ft` : '';
+                        return <option key={o.id} value={o.id}>{o.partNo} — {o.spec} ({o.description}){pricePart}</option>;
+                      })}
                     </select>
                     <p className="text-[10px] text-steel-400 mt-1">
                       Wire height: {selectedStayTuff.height}&quot; &rarr; fence height: {fenceHeight} | {selectedStayTuff.rollLength}&apos; rolls | T-Post: {tPostRec.label}
@@ -1652,6 +1665,7 @@ export default function FencingPage() {
                       <div><span className="text-steel-500">Corner Braces:</span> <span className="text-steel-200">{materialCalc.cornerBraces}</span></div>
                       <div><span className="text-steel-500">Wire Rolls:</span> <span className="text-steel-200">{materialCalc.wireRolls} ({fenceType.startsWith('stay_tuff') ? selectedStayTuff.rollLength : 330}&apos; ea)</span></div>
                       <div><span className="text-steel-500">Concrete:</span> <span className="text-steel-200">{materialCalc.concreteBags} bags (80lb)</span></div>
+                      <div><span className="text-steel-500">Clips:</span> <span className="text-steel-200">{materialCalc.clipsQty.toLocaleString()} exact ({materialCalc.clipPacksQty} pack{materialCalc.clipPacksQty !== 1 ? 's' : ''} of 1,000)</span></div>
                       <div><span className="text-steel-500">Gates:</span> <span className="text-steel-200">{gates.length}</span></div>
                       {materialCalc.postCapsQty > 0 && <div><span className="text-steel-500">Post Caps:</span> <span className="text-steel-200">{materialCalc.postCapsQty}</span></div>}
                       {materialCalc.tensionersQty > 0 && <div><span className="text-steel-500">Tensioners:</span> <span className="text-steel-200">{materialCalc.tensionersQty}</span></div>}

@@ -307,7 +307,7 @@ export const DEFAULT_MATERIAL_PRICES: MaterialPrice[] = [
   { id: 'ht_smooth', category: 'Wire — Other', name: "High Tensile Smooth (4000' roll)", unit: 'roll', price: 110, defaultPrice: 110 },
 
   // ── Hardware & Accessories ──
-  { id: 'clips', category: 'Hardware', name: 'Fence Clips/Staples (box of 500)', unit: 'box', price: 45, defaultPrice: 45 },
+  { id: 'clips', category: 'Hardware', name: 'Fence Clips/Staples (pack of 1,000)', unit: 'pack', price: 45, defaultPrice: 45 },
   { id: 'concrete_bag', category: 'Hardware', name: 'Concrete Mix (80 lb bag)', unit: 'bag', price: 7, defaultPrice: 7 },
   { id: 'tensioner', category: 'Hardware', name: 'Inline Wire Tensioner', unit: 'each', price: 6, defaultPrice: 6 },
   { id: 'spring_tension_indicator', category: 'Hardware', name: 'Spring Tension Indicator', unit: 'each', price: 18, defaultPrice: 18 },
