@@ -175,9 +175,22 @@ export const useAppStore = create<AppState>()(
         // never with defaults (which would erase receipt-synced prices)
         if (result && result.source === 'saved') {
           set((state) => {
+            const serverMap = new Map(result.prices.map(p => [p.id, p]));
+            // Smart merge: prefer whichever price is non-default.
+            // If the server save failed, server will have default prices while local
+            // has receipt-synced prices — we must NOT let the server defaults win.
+            const mergedPrices = state.materialPrices.map(local => {
+              const server = serverMap.get(local.id);
+              if (!server) return local;
+              const localIsCustom = local.price !== local.defaultPrice;
+              const serverIsCustom = server.price !== server.defaultPrice;
+              if (serverIsCustom) return server; // real receipt price on server → adopt it
+              if (localIsCustom) return local;   // local has receipt price, server has default → keep local
+              return server;                     // both default → use server
+            });
             const serverIds = new Set(result.prices.map(p => p.id));
             const localOnly = state.materialPrices.filter(p => !serverIds.has(p.id));
-            return { materialPrices: [...result.prices, ...localOnly] };
+            return { materialPrices: [...mergedPrices, ...localOnly] };
           });
         }
       },
@@ -187,6 +200,15 @@ export const useAppStore = create<AppState>()(
         setLastPriceSaveAt(Date.now());
         const prices = get().materialPrices;
         const ok = await saveSharedPrices(prices);
+        if (!ok) {
+          // Save failed — schedule a retry in 10s so the server eventually
+          // catches up without blocking the UI.
+          setTimeout(() => {
+            const current = get().materialPrices;
+            setLastPriceSaveAt(Date.now()); // extend cooldown for the retry window
+            saveSharedPrices(current).catch(console.warn);
+          }, 10_000);
+        }
         return ok;
       },
 
