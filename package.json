@@ -15,6 +15,7 @@
     "@mapbox/mapbox-gl-draw": "^1.4.3",
     "@turf/turf": "^7.0.0",
     "@vercel/blob": "^2.3.1",
+    "@vercel/kv": "^3.0.0",
     "clsx": "^2.1.0",
     "jspdf": "^2.5.1",
     "lucide-react": "^0.365.0",

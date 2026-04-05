@@ -1,17 +1,16 @@
 // ============================================================
 // Shared Receipts & Price Database API
-// GET  → returns receipts + priceDatabase from blob
-// POST → saves receipts + priceDatabase to blob
+// GET  → returns receipts + priceDatabase
+// POST → saves receipts + priceDatabase
 //
-// Uses same storage strategy as material-prices:
-// @vercel/blob in production, local filesystem in dev.
+// Uses @vercel/kv in production (no CDN caching, always fresh).
+// Falls back to local filesystem in development.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 
-const BLOB_NAME = 'shared-receipts.json';
-const BLOB_TOKEN = process.env.Price_update_READ_WRITE_TOKEN || '';
-const IS_VERCEL = !!BLOB_TOKEN;
+const RECEIPTS_KEY = 'hayden:shared-receipts';
+const IS_KV = !!process.env.KV_REST_API_URL;
 
 interface SharedReceiptsPayload {
   receipts: unknown[];
@@ -46,38 +45,27 @@ async function writeLocal(payload: SharedReceiptsPayload): Promise<void> {
   );
 }
 
-// ── Vercel Blob storage (production) ──────────────────────
-async function readBlob(): Promise<SharedReceiptsPayload | null> {
-  const { list, head } = await import('@vercel/blob');
+// ── Vercel KV storage (production) ────────────────────────
+async function readKV(): Promise<SharedReceiptsPayload | null> {
+  const { kv } = await import('@vercel/kv');
   try {
-    const { blobs } = await list({ prefix: BLOB_NAME, limit: 1, token: BLOB_TOKEN });
-    if (blobs.length === 0) return null;
-    const blobMeta = await head(blobs[0].url, { token: BLOB_TOKEN });
-    const res = await fetch(blobMeta.url);
-    if (!res.ok) return null;
-    const data = (await res.json()) as SharedReceiptsPayload;
-    if (Array.isArray(data.receipts)) return data;
+    const data = await kv.get<SharedReceiptsPayload>(RECEIPTS_KEY);
+    if (data && Array.isArray(data.receipts)) return data;
   } catch (err) {
-    console.error('[SharedReceipts] Blob read error:', err);
+    console.error('[SharedReceipts] KV read error:', err);
   }
   return null;
 }
 
-async function writeBlob(payload: SharedReceiptsPayload): Promise<void> {
-  const { put } = await import('@vercel/blob');
-  const json = JSON.stringify(payload);
-  await put(BLOB_NAME, json, {
-    access: 'public',
-    contentType: 'application/json',
-    addRandomSuffix: false,
-    token: BLOB_TOKEN,
-  });
+async function writeKV(payload: SharedReceiptsPayload): Promise<void> {
+  const { kv } = await import('@vercel/kv');
+  await kv.set(RECEIPTS_KEY, payload);
 }
 
 // ── Route handlers ────────────────────────────────────────
 export async function GET() {
   try {
-    const data = IS_VERCEL ? await readBlob() : await readLocal();
+    const data = IS_KV ? await readKV() : await readLocal();
     if (data) {
       return NextResponse.json({
         receipts: data.receipts,
@@ -110,8 +98,8 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date().toISOString(),
     };
 
-    if (IS_VERCEL) {
-      await writeBlob(payload);
+    if (IS_KV) {
+      await writeKV(payload);
     } else {
       await writeLocal(payload);
     }

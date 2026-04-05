@@ -3,16 +3,15 @@
 // GET  → returns the current shared prices (or defaults)
 // POST → saves updated prices for all users
 //
-// Uses @vercel/blob in production for persistent cross-instance
-// storage, and local filesystem in development.
+// Uses @vercel/kv in production (no CDN caching, always fresh).
+// Falls back to local filesystem in development.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { DEFAULT_MATERIAL_PRICES, MaterialPrice } from '@/lib/fencing/fence-materials';
 
-const BLOB_NAME = 'shared-prices.json';
-const BLOB_TOKEN = process.env.Price_update_READ_WRITE_TOKEN || '';
-const IS_VERCEL = !!BLOB_TOKEN;
+const PRICES_KEY = 'hayden:material-prices';
+const IS_KV = !!process.env.KV_REST_API_URL;
 
 // ── Local filesystem fallback (dev only) ──────────────────
 async function readLocal(): Promise<MaterialPrice[] | null> {
@@ -42,49 +41,36 @@ async function writeLocal(prices: MaterialPrice[]): Promise<void> {
   fs.writeFileSync(path.join(dir, 'shared-prices.json'), JSON.stringify(payload, null, 2), 'utf-8');
 }
 
-// ── Vercel Blob storage (production) ──────────────────────
-async function readBlob(): Promise<MaterialPrice[] | null> {
-  const { list, head } = await import('@vercel/blob');
+// ── Vercel KV storage (production) ────────────────────────
+async function readKV(): Promise<MaterialPrice[] | null> {
+  const { kv } = await import('@vercel/kv');
   try {
-    // Find the blob by listing with prefix
-    const { blobs } = await list({ prefix: BLOB_NAME, limit: 1, token: BLOB_TOKEN });
-    if (blobs.length === 0) return null;
-    const blobMeta = await head(blobs[0].url, { token: BLOB_TOKEN });
-    // Append timestamp to bust any residual CDN cache on the blob URL
-    const res = await fetch(`${blobMeta.url}?t=${Date.now()}`, { cache: 'no-store' });
-    if (!res.ok) return null;
-    const data = await res.json() as { prices: MaterialPrice[] };
-    if (Array.isArray(data.prices) && data.prices.length > 0) {
+    const data = await kv.get<{ prices: MaterialPrice[] }>(PRICES_KEY);
+    if (data?.prices && Array.isArray(data.prices) && data.prices.length > 0) {
+      // Backfill any catalog items added since the last save
       const savedIds = new Set(data.prices.map(p => p.id));
       const missing = DEFAULT_MATERIAL_PRICES.filter(d => !savedIds.has(d.id));
       return [...data.prices, ...missing];
     }
   } catch (err) {
-    console.error('[SharedPricing] Blob read error:', err);
+    console.error('[SharedPricing] KV read error:', err);
   }
   return null;
 }
 
-async function writeBlob(prices: MaterialPrice[]): Promise<void> {
-  const { put } = await import('@vercel/blob');
-  const payload = JSON.stringify({ prices, updatedAt: new Date().toISOString(), version: 1 });
-  // cacheControlMaxAge: 0 prevents the Vercel CDN from caching this blob —
-  // without it, stale content is served for up to a year after an overwrite.
-  await put(BLOB_NAME, payload, { access: 'public', contentType: 'application/json', addRandomSuffix: false, cacheControlMaxAge: 0, token: BLOB_TOKEN });
+async function writeKV(prices: MaterialPrice[]): Promise<void> {
+  const { kv } = await import('@vercel/kv');
+  await kv.set(PRICES_KEY, { prices, updatedAt: new Date().toISOString(), version: 1 });
 }
 
 // ── Route handlers ────────────────────────────────────────
 export async function GET() {
   try {
-    const saved = IS_VERCEL ? await readBlob() : await readLocal();
+    const saved = IS_KV ? await readKV() : await readLocal();
     if (saved) {
-      return NextResponse.json({
-        prices: saved,
-        count: saved.length,
-        source: 'saved',
-      });
+      return NextResponse.json({ prices: saved, count: saved.length, source: 'saved' });
     }
-    // No saved prices — return defaults but mark source so client knows
+    // No saved prices yet — return defaults so client knows to keep local state
     return NextResponse.json({
       prices: DEFAULT_MATERIAL_PRICES,
       count: DEFAULT_MATERIAL_PRICES.length,
@@ -112,7 +98,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate each price has required fields
     for (const p of prices) {
       if (!p.id || typeof p.price !== 'number') {
         return NextResponse.json(
@@ -122,8 +107,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (IS_VERCEL) {
-      await writeBlob(prices);
+    if (IS_KV) {
+      await writeKV(prices);
     } else {
       await writeLocal(prices);
     }
@@ -135,9 +120,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     console.error('Failed to save shared prices:', err);
-    return NextResponse.json(
-      { error: 'Failed to save prices' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to save prices' }, { status: 500 });
   }
 }
