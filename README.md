@@ -60,6 +60,7 @@ cp .env.example .env.local
 
 Edit `.env.local` and add:
 - `NEXT_PUBLIC_MAPBOX_TOKEN` — Get one free at [mapbox.com](https://account.mapbox.com/access-tokens/)
+- `NEXT_PUBLIC_FENCING_MAP_STYLE` — Optional. Paste the same Mapbox style URL used by your cedar-clearing app to reuse that satellite basemap on `/fencing`. If omitted, fencing falls back to the current stock satellite style.
 
 ### 3. Run Locally
 

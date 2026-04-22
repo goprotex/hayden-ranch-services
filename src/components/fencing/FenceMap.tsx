@@ -17,6 +17,12 @@ const POINT_TYPE_OPTIONS: { value: FencePointType; label: string; color: string 
   { value: 'water_gap', label: 'Water Gap', color: '#06b6d4' },
 ];
 
+const DEFAULT_FENCING_MAP_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
+const FENCING_MAP_STYLE = process.env.NEXT_PUBLIC_FENCING_MAP_STYLE?.trim()
+  || process.env.NEXT_PUBLIC_MAPBOX_STYLE?.trim()
+  || DEFAULT_FENCING_MAP_STYLE;
+const USE_DEFAULT_AERIAL_OVERLAY = FENCING_MAP_STYLE === DEFAULT_FENCING_MAP_STYLE;
+
 interface FenceMapProps {
   onFenceLinesChange?: (lines: DrawnLine[]) => void;
   onTerrainAnalyzed?: (analysis: TerrainSuggestion) => void;
@@ -1152,7 +1158,7 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
 
         const map = new mapboxgl.Map({
           container: mapContainer.current,
-          style: 'mapbox://styles/mapbox/satellite-streets-v12',
+          style: FENCING_MAP_STYLE,
           center, zoom,
           maxZoom: 22,
           attributionControl: false,
@@ -1217,26 +1223,24 @@ const FenceMap = forwardRef<FenceMapHandle, FenceMapProps>(function FenceMap({
             },
           });
 
-          // Add Bing Maps aerial tile layer for higher resolution imagery
-          map.addSource('bing-aerial', {
-            type: 'raster',
-            tiles: [
-              'https://ecn.t0.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587&n=z',
-              'https://ecn.t1.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587&n=z',
-              'https://ecn.t2.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587&n=z',
-              'https://ecn.t3.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587&n=z',
-            ],
-            tileSize: 256,
-            maxzoom: 20,
-          });
-          // Insert below labels but above default satellite base
-          const firstSymbolLayer = map.getStyle().layers?.find(l => l.type === 'symbol');
-          map.addLayer({
-            id: 'bing-aerial-layer',
-            type: 'raster',
-            source: 'bing-aerial',
-            paint: { 'raster-opacity': 0.85 },
-          }, firstSymbolLayer?.id);
+          if (USE_DEFAULT_AERIAL_OVERLAY) {
+            // Mirror the cedar-clearing map: overlay Esri World Imagery for sharper RGB detail.
+            map.addSource('world-imagery', {
+              type: 'raster',
+              tiles: [
+                '/api/world-imagery?bbox={bbox-epsg-3857}&size=256,256',
+              ],
+              tileSize: 256,
+              maxzoom: 20,
+            });
+            const firstSymbolLayer = map.getStyle().layers?.find(l => l.type === 'symbol');
+            map.addLayer({
+              id: 'world-imagery-layer',
+              type: 'raster',
+              source: 'world-imagery',
+              paint: { 'raster-opacity': 0.85 },
+            }, firstSymbolLayer?.id);
+          }
         });
 
         mapRef.current = map;

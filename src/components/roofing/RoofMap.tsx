@@ -415,6 +415,20 @@ export default function RoofMap({
         map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
         map.on('load', () => {
           if (cancelled) return;
+          map.addSource('world-imagery', {
+            type: 'raster',
+            tiles: ['/api/world-imagery?bbox={bbox-epsg-3857}&size=256,256'],
+            tileSize: 256,
+            maxzoom: 20,
+          });
+          const firstSymbolLayer = map.getStyle().layers?.find(l => l.type === 'symbol');
+          map.addLayer({
+            id: 'world-imagery-layer',
+            type: 'raster',
+            source: 'world-imagery',
+            paint: { 'raster-opacity': 0.85 },
+          }, firstSymbolLayer?.id);
+
           const empty: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
           ['roof-polygons','roof-edges','roof-labels','roof-vertices','roof-drawing','roof-panels','roof-pitch'].forEach(id => map.addSource(id, { type: 'geojson', data: empty }));
           map.addLayer({ id: 'roof-poly-fill', type: 'fill', source: 'roof-polygons', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.25 } });
