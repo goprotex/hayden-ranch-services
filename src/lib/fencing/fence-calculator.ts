@@ -91,6 +91,81 @@ export const WIRE_CATEGORY_LABELS: Record<WireCategory, string> = {
   xtreme_black: 'Fixed Knot Xtreme Black',
 };
 
+// ── Unified fence-selection catalog ──
+// One dropdown driving fenceType + (optional) Stay-Tuff product + wireCategory.
+export type FenceSelectionId = string;
+
+export interface FenceSelection {
+  id: FenceSelectionId;          // dropdown value
+  groupLabel: string;            // <optgroup> label
+  label: string;                 // option label shown to user
+  fenceType:
+    | 'stay_tuff_fixed_knot'
+    | 'stay_tuff_hinge_joint'
+    | 'field_fence'
+    | 'barbed_wire'
+    | 'no_climb'
+    | 'pipe_fence'
+    | 't_post_wire';
+  stayTuffId?: string;           // present only for Stay-Tuff selections
+  wireCategory?: WireCategory;   // present only for Stay-Tuff selections
+}
+
+const STAY_TUFF_GROUP_LABEL: Record<WireCategory, string> = {
+  cattle: 'Stay-Tuff Cattle Fence',
+  deer: 'Stay-Tuff Deer Fence',
+  horse: 'Stay-Tuff Horse Fence',
+  goat: 'Stay-Tuff Goat Fence',
+  field: 'Stay-Tuff General Field Fence',
+  xtreme: 'Stay-Tuff Fixed Knot Xtreme',
+  xtreme_black: 'Stay-Tuff Fixed Knot Xtreme Black',
+};
+
+/**
+ * Build the unified ordered list of every selectable fence option.
+ * Stay-Tuff options first (grouped by category), then other wire fences,
+ * then specialty (Pipe, Barbed Wire only).
+ */
+export const FENCE_SELECTIONS: FenceSelection[] = [
+  // Stay-Tuff (Fixed Knot) — grouped per WireCategory in display order
+  ...(['cattle', 'deer', 'horse', 'goat', 'field', 'xtreme', 'xtreme_black'] as WireCategory[]).flatMap(
+    (cat) =>
+      STAY_TUFF_CATALOG.filter((p) => p.category === cat).map<FenceSelection>((p) => ({
+        id: `staytuff:${p.id}`,
+        groupLabel: STAY_TUFF_GROUP_LABEL[cat],
+        label: `${p.partNo} — ${p.spec} (${p.description})${p.madeToOrder ? ' [MTO]' : ''}`,
+        fenceType: 'stay_tuff_fixed_knot',
+        stayTuffId: p.id,
+        wireCategory: cat,
+      })),
+  ),
+  // Other wire fences
+  { id: 'field_fence', groupLabel: 'Other Wire Fences', label: 'Field Fence', fenceType: 'field_fence' },
+  { id: 'no_climb', groupLabel: 'Other Wire Fences', label: 'No-Climb Horse Fence', fenceType: 'no_climb' },
+  { id: 't_post_wire', groupLabel: 'Other Wire Fences', label: 'T-Post & Wire', fenceType: 't_post_wire' },
+  // Specialty
+  { id: 'pipe_fence', groupLabel: 'Specialty', label: 'Pipe Fence', fenceType: 'pipe_fence' },
+  { id: 'barbed_wire', groupLabel: 'Specialty', label: 'Barbed Wire Only', fenceType: 'barbed_wire' },
+];
+
+/** Find a selection by its dropdown id. */
+export function getFenceSelection(id: FenceSelectionId): FenceSelection | undefined {
+  return FENCE_SELECTIONS.find((s) => s.id === id);
+}
+
+/**
+ * Reverse lookup: given a fence type and (optional) stay-tuff id, find the matching
+ * selection id. Used to back-fill selection state from saved drafts.
+ */
+export function selectionIdFor(fenceType: string, stayTuffId?: string): FenceSelectionId {
+  if (fenceType.startsWith('stay_tuff') && stayTuffId) {
+    const found = FENCE_SELECTIONS.find((s) => s.stayTuffId === stayTuffId);
+    if (found) return found.id;
+  }
+  const found = FENCE_SELECTIONS.find((s) => s.fenceType === fenceType && !s.stayTuffId);
+  return found?.id ?? 'barbed_wire';
+}
+
 /** Legacy adapter: convert StayTuffOption to old StayTuffProduct interface */
 export function toStayTuffProduct(opt: StayTuffOption): StayTuffProduct {
   return {

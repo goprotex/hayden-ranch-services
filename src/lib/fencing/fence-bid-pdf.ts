@@ -74,6 +74,9 @@ export interface FenceBidData {
   tPostSpacing: number;              // user-configured, e.g. 10
   linePostSpacing: number;           // user-configured, e.g. 66
   topWireType: TopWireType;          // 'smooth' | 'barbed' | 'barbed_double'
+  barbedStrandCount?: number;        // for fenceType === 'barbed_wire'; default 4
+  barbedPointType?: '2_point' | '4_point';
+  premiumGalvanized?: boolean;       // upgrade: galvanized line posts, t-posts & caps
 
   // Sections
   sections: FenceBidSection[];
@@ -1960,9 +1963,10 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
         matMap.get(key)!.qty = `${rolls} roll${rolls !== 1 ? 's' : ''} (${label} ea) — project total`;
       }
     }
-    // Barbed wire main fence: 4-strand, same aggregation
+    // Barbed wire main fence: configurable strand count, same aggregation
     if (matMap.has('barbed_main')) {
-      const barbedRolls = Math.ceil((aggFeetWithOverlap * 4) / 1320);
+      const strands = Math.max(2, Math.min(8, Math.round(data.barbedStrandCount ?? 4)));
+      const barbedRolls = Math.ceil((aggFeetWithOverlap * strands) / 1320);
       matMap.get('barbed_main')!.qty = `${barbedRolls} roll${barbedRolls !== 1 ? 's' : ''} (1,320' ea) — project total`;
     }
 
@@ -2031,7 +2035,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       // Accessories
       if (data.accessories) {
         const accItems: { name: string; qty: number }[] = [];
-        if (data.accessories.postCaps > 0) accItems.push({ name: 'Post Caps', qty: data.accessories.postCaps });
+        if (data.accessories.postCaps > 0) accItems.push({ name: data.premiumGalvanized ? 'Galvanized Post Caps' : 'Post Caps', qty: data.accessories.postCaps });
         if (data.accessories.springIndicators > 0) accItems.push({ name: 'Spring Tension Indicators', qty: data.accessories.springIndicators });
         if (data.accessories.concreteFillPosts > 0) accItems.push({ name: 'Concrete Fill (posts)', qty: data.accessories.concreteFillPosts });
         if (data.accessories.concreteFillBraces > 0) accItems.push({ name: 'Concrete Fill (braces)', qty: data.accessories.concreteFillBraces });
@@ -2558,7 +2562,15 @@ export function calculateSectionMaterials(
   tPostSpacing: number = 10,
   linePostSpacing: number = 66,
   topWireType: TopWireType = 'smooth',
+  options: {
+    barbedStrandCount?: number; // for fenceType === 'barbed_wire'; default 4
+    barbedPointType?: '2_point' | '4_point'; // affects barbed wire material name
+    premiumGalvanized?: boolean; // labels posts/t-posts/caps as galvanized
+  } = {},
 ): SectionMaterial[] {
+  const barbedStrandCount = Math.max(2, Math.min(8, Math.round(options.barbedStrandCount ?? 4)));
+  const barbedPointLabel = options.barbedPointType === '2_point' ? '2-point' : '4-point';
+  const galvPrefix = options.premiumGalvanized ? 'Galvanized ' : '';
   const ft = linearFeet;
   const wireHeightIn = resolveWireHeight(fenceHeight, stayTuffModel);
   const rollLength = resolveWireRollLength(stayTuffModel);
@@ -2620,7 +2632,8 @@ export function calculateSectionMaterials(
     : postMaterial;
 
   const concreteBagsPerPost = wireHeightIn >= 72 ? 3 : 2;
-  const concreteBags = (linePostCount * concreteBagsPerPost) + (hBraceCount * concreteBagsPerPost);
+  // An H-brace assembly has 2 vertical posts → 2 holes worth of concrete.
+  const concreteBags = (linePostCount * concreteBagsPerPost) + (hBraceCount * 2 * concreteBagsPerPost);
 
   // Hardware counts
   const clipsPerTPost = wireHeightIn >= 72 ? 5 : 4;
@@ -2630,9 +2643,14 @@ export function calculateSectionMaterials(
   // High-tensile top/bottom wire
   const htStrands = wireHeightIn >= 72 ? 2 : 1;
 
-  // Tensioners: (mesh horizontal wires + barbed wire strands) per 660ft run
-  const meshHorizWires = resolveHorizontalWires(stayTuffModel, fenceType);
-  const barbedStrands = htStrands; // top (and bottom for tall fences) barbed/smooth strands
+  // Tensioners: (mesh horizontal wires + barbed wire strands) per 660ft run.
+  // For a barbed-wire-only fence the "mesh" is the barbed strands themselves and
+  // there is no separate top/bottom strand.
+  const isBarbedWireForTensioner = fenceType.toLowerCase().includes('barbed');
+  const meshHorizWires = isBarbedWireForTensioner
+    ? barbedStrandCount
+    : resolveHorizontalWires(stayTuffModel, fenceType);
+  const barbedStrands = isBarbedWireForTensioner ? 0 : htStrands;
   const tensionerRuns = Math.max(1, Math.ceil(ft / 660));
   const tensioners = tensionerRuns * (meshHorizWires + barbedStrands);
 
@@ -2649,10 +2667,10 @@ export function calculateSectionMaterials(
   // WIRE — varies by fence type
   // ==============================================================
   if (isBarbedWire) {
-    const strands = 4;
+    const strands = barbedStrandCount;
     const barbedRolls = Math.ceil((wireWithOverlap * strands) / 1320);
     materials.push({
-      name: `Barbed Wire — ${strands}-strand, 15.5 ga, 4-point`,
+      name: `Barbed Wire — ${strands}-strand, 15.5 ga, ${barbedPointLabel}`,
       quantity: `${barbedRolls} rolls (1,320' ea)`,
     });
   } else if (isNoClimb) {
@@ -2696,7 +2714,7 @@ export function calculateSectionMaterials(
       const barbedFtNeeded = wireWithOverlap * totalStrands;
       const barbedRolls = Math.ceil(barbedFtNeeded / 1320);
       materials.push({
-        name: `HT Barbed Wire — ${totalStrands} strand${totalStrands > 1 ? 's' : ''} (top${bottomStrands ? ' & bottom' : ''})`,
+        name: `HT Barbed Wire (${barbedPointLabel}) — ${totalStrands} strand${totalStrands > 1 ? 's' : ''} (top${bottomStrands ? ' & bottom' : ''})`,
         quantity: `${barbedRolls} rolls (1,320' ea)`,
       });
     } else {
@@ -2713,7 +2731,7 @@ export function calculateSectionMaterials(
   // ==============================================================
   if (!isPipeFence) {
     materials.push({
-      name: `${tPostSpec.label} T-Posts — studded, ${tPostSpacing}' spacing`,
+      name: `${galvPrefix}${tPostSpec.label} T-Posts — studded, ${tPostSpacing}' spacing`,
       quantity: `${tPosts} posts`,
     });
   }
@@ -2722,7 +2740,7 @@ export function calculateSectionMaterials(
   // LINE POSTS
   // ==============================================================
   materials.push({
-    name: `${postLabel} Line Posts — ${postCalc.totalLengthFeet}' cut length, ${linePostSpacing}' spacing`,
+    name: `${galvPrefix}${postLabel} Line Posts — ${postCalc.totalLengthFeet}' cut length, ${linePostSpacing}' spacing`,
     quantity: `${linePostCount} posts (${jointsNeeded} joints × ${jointLen}')`,
   });
 
