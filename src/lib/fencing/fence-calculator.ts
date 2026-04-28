@@ -163,7 +163,7 @@ export function selectionIdFor(fenceType: string, stayTuffId?: string): FenceSel
     if (found) return found.id;
   }
   const found = FENCE_SELECTIONS.find((s) => s.fenceType === fenceType && !s.stayTuffId);
-  return found?.id ?? 'barbed_wire';
+  return found?.id ?? FENCE_SELECTIONS[0].id;
 }
 
 /** Legacy adapter: convert StayTuffOption to old StayTuffProduct interface */
