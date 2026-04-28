@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Reveal, StaggerReveal } from '@/components/animations';
 import { useAppStore } from '@/lib/store';
-import { STAY_TUFF_CATALOG, WIRE_CATEGORY_LABELS, toStayTuffProduct, type StayTuffOption, type WireCategory } from '@/lib/fencing/fence-calculator';
+import { STAY_TUFF_CATALOG, WIRE_CATEGORY_LABELS, toStayTuffProduct, FENCE_SELECTIONS, getFenceSelection, selectionIdFor, type StayTuffOption, type WireCategory } from '@/lib/fencing/fence-calculator';
 import {
   POST_MATERIALS, BRACE_SPECS, GATE_SPECS, DEFAULT_MATERIAL_PRICES,
   getGaugeOptions,
@@ -78,6 +78,10 @@ export default function FencingPage() {
   const [topWireType, setTopWireType] = useState<TopWireType>('barbed');
   // Barbed wire point type
   const [barbedWireType, setBarbedWireType] = useState<BarbedWireType>('4_point');
+  // Number of barbed-wire strands for a barbed-wire-only fence (3-7 typical)
+  const [barbedStrandCount, setBarbedStrandCount] = useState<number>(4);
+  // Premium upgrade: all-galvanized line posts, t-posts and post caps
+  const [premiumGalvanized, setPremiumGalvanized] = useState<boolean>(false);
   // Tie pattern
   const [tiePattern, setTiePattern] = useState<TiePattern>('every_strand');
   // Accessories
@@ -102,6 +106,31 @@ export default function FencingPage() {
   const filteredStayTuff = useMemo(() => STAY_TUFF_CATALOG.filter(p => p.category === wireCategory), [wireCategory]);
   // Gauge options for current post material
   const currentGaugeOptions = useMemo(() => getGaugeOptions(postMaterial), [postMaterial]);
+
+  // ── Unified fence-selection (one master dropdown drives fenceType + Stay-Tuff product) ──
+  const fenceSelectionId = useMemo(
+    () => selectionIdFor(fenceType, fenceType.startsWith('stay_tuff') ? selectedStayTuff.id : undefined),
+    [fenceType, selectedStayTuff.id],
+  );
+  const handleFenceSelectionChange = useCallback((id: string) => {
+    const sel = getFenceSelection(id);
+    if (!sel) return;
+    setFenceType(sel.fenceType as FenceType);
+    if (sel.stayTuffId && sel.wireCategory) {
+      setWireCategory(sel.wireCategory);
+      const st = STAY_TUFF_CATALOG.find(p => p.id === sel.stayTuffId);
+      if (st) setSelectedStayTuff(st);
+    }
+  }, []);
+  // Group selections by groupLabel for <optgroup> rendering
+  const fenceSelectionGroups = useMemo(() => {
+    const groups = new Map<string, typeof FENCE_SELECTIONS>();
+    for (const sel of FENCE_SELECTIONS) {
+      if (!groups.has(sel.groupLabel)) groups.set(sel.groupLabel, []);
+      groups.get(sel.groupLabel)!.push(sel);
+    }
+    return Array.from(groups.entries());
+  }, []);
 
   // Spacing
   const [linePostSpacing, setLinePostSpacing] = useState(50); // ft
@@ -186,6 +215,7 @@ export default function FencingPage() {
     laborRate: number; markupPercent: number; depositPercent: number;
     sections: FenceBidSection[]; gates: BidGate[];
     includePainting: boolean; paintColor: string; projectOverview: string;
+    barbedStrandCount?: number; premiumGalvanized?: boolean;
   };
   const [showDraftPanel, setShowDraftPanel] = useState(false);
   const [drafts, setDrafts] = useState<BidDraft[]>(() => {
@@ -202,6 +232,7 @@ export default function FencingPage() {
       tiePattern, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts,
       linePostSpacing, tPostSpacing, laborRate, markupPercent, depositPercent,
       sections, gates, includePainting, paintColor, projectOverview,
+      barbedStrandCount, premiumGalvanized,
     };
     setDrafts(prev => {
       const next = [draft, ...prev].slice(0, 20); // keep last 20
@@ -211,7 +242,8 @@ export default function FencingPage() {
   }, [projectName, clientName, address, fenceType, wireCategory, selectedStayTuff.id, postMaterial,
       squareTubeGauge, manualHeight, topWireType, barbedWireType, tiePattern, includePostCaps,
       includeTensioners, includeSpringIndicators, concreteFillPosts, linePostSpacing, tPostSpacing,
-      laborRate, markupPercent, depositPercent, sections, gates, includePainting, paintColor, projectOverview]);
+      laborRate, markupPercent, depositPercent, sections, gates, includePainting, paintColor, projectOverview,
+      barbedStrandCount, premiumGalvanized]);
 
   const loadDraft = useCallback((draft: BidDraft) => {
     setProjectName(draft.projectName);
@@ -241,6 +273,8 @@ export default function FencingPage() {
     setIncludePainting(draft.includePainting);
     setPaintColor(draft.paintColor);
     setProjectOverview(draft.projectOverview);
+    if (typeof draft.barbedStrandCount === 'number') setBarbedStrandCount(draft.barbedStrandCount);
+    if (typeof draft.premiumGalvanized === 'boolean') setPremiumGalvanized(draft.premiumGalvanized);
     setShowDraftPanel(false);
   }, []);
 
@@ -279,57 +313,10 @@ export default function FencingPage() {
     return () => clearInterval(interval);
   }, [loadSharedPrices]);
 
-  // Generate AI site analysis when terrain data arrives
-  useEffect(() => {
-    if (!terrainSuggestion?.soilType) return;
-    let cancelled = false;
-    setGeneratingNarrative(true);
-    (async () => {
-      try {
-        const res = await fetch('/api/site-analysis', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            propertyAddress: address,
-            soilType: terrainSuggestion.soilType,
-            soilComponents: terrainSuggestion.components || [],
-            drainage: terrainSuggestion.drainage,
-            hydric: terrainSuggestion.hydric,
-            elevationChange: terrainSuggestion.elevationChange,
-            suggestedDifficulty: terrainSuggestion.suggestedDifficulty,
-            fenceType: FENCE_TYPES[fenceType] || fenceType,
-            fenceHeight,
-            totalLinearFeet: sections.reduce((s, c) => s + c.linearFeet, 0) || 1000,
-            postMaterial,
-            postMaterialLabel: POST_MATERIALS.find(p => p.id === postMaterial)?.label || postMaterial,
-            squareTubeGauge: POST_MATERIALS.find(p => p.id === postMaterial)?.shape === 'square' ? squareTubeGauge : undefined,
-            source: terrainSuggestion.source,
-            // Enriched SDA data
-            bedrockDepthIn: terrainSuggestion.bedrockDepthIn,
-            restrictionType: terrainSuggestion.restrictionType,
-            slopeRange: terrainSuggestion.slopeRange,
-            runoff: terrainSuggestion.runoff,
-            taxonomy: terrainSuggestion.taxonomy,
-            texture: terrainSuggestion.texture,
-            clayPct: terrainSuggestion.clayPct,
-            rockFragmentPct: terrainSuggestion.rockFragmentPct,
-            pH: terrainSuggestion.pH,
-          }),
-        });
-        const data = await res.json();
-        if (!cancelled && data.narrative) {
-          setAiNarrative(data.narrative);
-        }
-      } catch (err) {
-        console.error('AI narrative error:', err);
-      } finally {
-        if (!cancelled) setGeneratingNarrative(false);
-      }
-    })();
-    return () => { cancelled = true; };
-    // Only regenerate when terrain analysis changes (not on every keystroke)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terrainSuggestion]);
+  // Generate AI site analysis. Now also passes the actual selected materials &
+  // quantities (line posts, t-posts, braces, etc.) so the AI can reference them.
+  // Defined as a useCallback below so it can be invoked manually (Regenerate)
+  // and from the auto-trigger useEffect when terrain analysis arrives.
 
   const terrainMult = TERRAIN_MAP[terrain]?.mult || 1;
 
@@ -357,7 +344,7 @@ export default function FencingPage() {
     } else if (fenceType === 'field_fence') {
       wireCostPerFt = findPrice('field_fence_roll') / 330;
     } else if (fenceType === 'barbed_wire') {
-      wireCostPerFt = (findPrice(barbedId) / 1320) * 4;
+      wireCostPerFt = (findPrice(barbedId) / 1320) * barbedStrandCount;
     } else if (fenceType === 'no_climb') {
       wireCostPerFt = findPrice('no_climb_roll') / 200;
     } else {
@@ -379,13 +366,14 @@ export default function FencingPage() {
       }
     }
 
-    // T-Post cost per foot (auto-sized)
-    const tPostPrice = findPrice(tPostRec.priceId);
+    // T-Post cost per foot (auto-sized) — premium galvanized adds 30% upcharge
+    const galvMultiplier = premiumGalvanized ? 1.30 : 1.0;
+    const tPostPrice = findPrice(tPostRec.priceId) * galvMultiplier;
     const tPostCostPerFt = tPostPrice / tPostSpacing;
 
     // Line post cost per foot (joint-based)
     const postPriceId = postJointPriceId(postMaterial, squareTubeGauge);
-    const jointPrice = findPrice(postPriceId);
+    const jointPrice = findPrice(postPriceId) * galvMultiplier;
     const postSpec = POST_MATERIALS.find(p => p.id === postMaterial);
     const jointLen = postSpec?.jointLengthFeet ?? 20;
     const postCalc = calculatePostLength(wireHeightInches);
@@ -418,7 +406,12 @@ export default function FencingPage() {
     // Hardware per foot
     const clipsCostPerFt = (findPrice('clips') / 500) * (4 / tPostSpacing);
     // Horizontal strands for tensioner/spring indicator calcs
-    const horizStrands = fenceType.startsWith('stay_tuff') ? selectedStayTuff.horizontalWires : 9;
+    // For a barbed-wire-only fence, each strand IS a horizontal strand.
+    const horizStrands = fenceType.startsWith('stay_tuff')
+      ? selectedStayTuff.horizontalWires
+      : fenceType === 'barbed_wire'
+        ? barbedStrandCount
+        : 9;
     // Wire tie cost per foot based on tie pattern
     const tiesPerPost = tiePattern === 'every_strand' ? horizStrands
       : tiePattern === 'every_other' ? Math.ceil(horizStrands / 2)
@@ -446,9 +439,11 @@ export default function FencingPage() {
     const springIndicatorsPerFt = includeSpringIndicators
       ? (findPrice('spring_tension_indicator') * horizStrands * actualBraceCount) / estTotalFeet
       : 0;
-    // Post caps: 1 per line post + 2 per brace assembly
-    const postCapsCostPerFt = includePostCaps
-      ? (findPrice('post_cap') / linePostSpacing) + (actualBraceCount * 2 * findPrice('post_cap')) / estTotalFeet
+    // Post caps: 1 per line post + 2 per brace assembly. Premium galvanized auto-includes caps.
+    const postCapsActive = includePostCaps || premiumGalvanized;
+    const postCapPrice = findPrice('post_cap') * galvMultiplier;
+    const postCapsCostPerFt = postCapsActive
+      ? (postCapPrice / linePostSpacing) + (actualBraceCount * 2 * postCapPrice) / estTotalFeet
       : 0;
     // Concrete fill (inside tube): only for square tube posts
     const concreteFillCostPerFt = (concreteFillPosts && postSpec?.shape === 'square')
@@ -493,7 +488,7 @@ export default function FencingPage() {
       _bagsPerLinePost: bagsPerLinePost,
       _bagsPerBracePost: bagsPerBracePost,
     };
-  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType, barbedWireType, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, steepFootage, sections, tiePattern, braceRecommendations, manualMapPoints]);
+  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType, barbedWireType, barbedStrandCount, premiumGalvanized, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, steepFootage, sections, tiePattern, braceRecommendations, manualMapPoints]);
 
   const baseRate = materialCostPerFoot.total * (1 + markupPercent / 100) + laborRate;
   const effectiveRate = useMemo(() => Math.round((materialCostPerFoot.total * (1 + markupPercent / 100) + laborRate * terrainMult) * 100) / 100, [materialCostPerFoot.total, markupPercent, laborRate, terrainMult]);
@@ -547,26 +542,48 @@ export default function FencingPage() {
       + manualMapPoints.filter(p => p.type === 'corner_brace').length;
     const doubleHBraces = manualMapPoints.filter(p => p.type === 'double_h').length;
     const totalBraces = hBraces + cornerBraces + (doubleHBraces * 2);
-    const wireRolls = Math.ceil((totalFeet * 1.1) / (fenceType.startsWith('stay_tuff') ? selectedStayTuff.rollLength : 330));
+
+    // Wire rolls — per fence type (different roll lengths and strand counts).
+    // Stay-Tuff:   roll length from selected product
+    // Field fence: 330' rolls, 1 strand
+    // No-climb:    200' rolls, 1 strand
+    // Barbed:      1320' rolls, N strands
+    // Other:       330' rolls, 1 strand (legacy default)
+    const wireRolls = (() => {
+      const ftWithOverlap = totalFeet * 1.1;
+      if (fenceType.startsWith('stay_tuff')) return Math.ceil(ftWithOverlap / selectedStayTuff.rollLength);
+      if (fenceType === 'no_climb') return Math.ceil(ftWithOverlap / 200);
+      if (fenceType === 'barbed_wire') return Math.ceil((ftWithOverlap * barbedStrandCount) / 1320);
+      return Math.ceil(ftWithOverlap / 330);
+    })();
 
     // Concrete bags: diameter-based calculation from materialCostPerFoot
     const concreteBags = (linePostCount * materialCostPerFoot._bagsPerLinePost)
       + (totalBraces * 2 * materialCostPerFoot._bagsPerBracePost); // 2 posts per brace assembly
 
     // Horizontal wire strands for accessory calcs
-    const horizStrands = fenceType.startsWith('stay_tuff') ? selectedStayTuff.horizontalWires : 9;
+    // Barbed-wire fence: each strand is itself a horizontal strand and there is no
+    // separate top/bottom add — keep parity with the cost calc above.
+    const horizStrands = fenceType.startsWith('stay_tuff')
+      ? selectedStayTuff.horizontalWires
+      : fenceType === 'barbed_wire'
+        ? barbedStrandCount
+        : 9;
 
-    // Post caps: 1 per line post + 2 per brace assembly (2 brace posts each)
-    const postCapsQty = includePostCaps ? linePostCount + (totalBraces * 2) : 0;
+    // Post caps: 1 per line post + 2 per brace assembly (2 brace posts each).
+    // Premium galvanized package auto-includes caps.
+    const capsActive = includePostCaps || premiumGalvanized;
+    const postCapsQty = capsActive ? linePostCount + (totalBraces * 2) : 0;
 
     // Termination points where tensioners & indicators are installed:
     // 1 set per 660ft run + 1 set per gate opening (both sides of each gate)
     const tensionerTerminations = Math.max(1, Math.ceil(totalFeet / 660)) + gates.length;
-    // Barbed/smooth top & bottom strands
+    // Top/bottom barbed/smooth strands — only relevant when there's a separate top wire.
+    // For a barbed-wire-only fence the strand count is already in horizStrands.
     const wireHeightIn = fenceType.startsWith('stay_tuff') ? selectedStayTuff.height : 60;
-    const barbedStrands = wireHeightIn >= 72 ? 2 : 1;
+    const barbedStrands = fenceType === 'barbed_wire' ? 0 : (wireHeightIn >= 72 ? 2 : 1);
 
-    // Tensioners: (mesh horizontal wires + barbed strands) per termination point
+    // Tensioners: (mesh horizontal wires + barbed/smooth top/bottom strands) per termination point
     const tensionersQty = includeTensioners ? tensionerTerminations * (horizStrands + barbedStrands) : 0;
 
     // Spring tension indicators: same formula
@@ -589,7 +606,7 @@ export default function FencingPage() {
       concreteFillPostsQty, concreteFillBracesQty,
       horizStrands,
     };
-  }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations, manualMapPoints, gates, fenceType, selectedStayTuff, materialCostPerFoot, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, postMaterial, terrainSuggestion]);
+  }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations, manualMapPoints, gates, fenceType, selectedStayTuff, materialCostPerFoot, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, postMaterial, terrainSuggestion, barbedStrandCount, premiumGalvanized]);
 
   // Auto-calculate timeline from labor estimate
   const tiesPerLinePost = tiePattern === 'every_strand' ? materialCalc.horizStrands
@@ -616,6 +633,90 @@ export default function FencingPage() {
   const projTotal = secTotal + gateTotal + paintCost;
   const deposit = Math.round(projTotal * depositPercent / 100 * 100) / 100;
   const balance = Math.round((projTotal - deposit) * 100) / 100;
+
+  // ── AI site analysis (uses latest selected materials + quantities) ──
+  const generateAINarrative = useCallback(async () => {
+    if (!terrainSuggestion?.soilType) return;
+    setGeneratingNarrative(true);
+    try {
+      const res = await fetch('/api/site-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          propertyAddress: address,
+          clientName,
+          projectName,
+          projectOverview,
+          soilType: terrainSuggestion.soilType,
+          soilComponents: terrainSuggestion.components || [],
+          drainage: terrainSuggestion.drainage,
+          hydric: terrainSuggestion.hydric,
+          elevationChange: terrainSuggestion.elevationChange,
+          suggestedDifficulty: terrainSuggestion.suggestedDifficulty,
+          fenceType: FENCE_TYPES[fenceType] || fenceType,
+          fenceHeight,
+          totalLinearFeet: totalFeet || 1000,
+          postMaterial,
+          postMaterialLabel: POST_MATERIALS.find(p => p.id === postMaterial)?.label || postMaterial,
+          squareTubeGauge: POST_MATERIALS.find(p => p.id === postMaterial)?.shape === 'square' ? squareTubeGauge : undefined,
+          source: terrainSuggestion.source,
+          // Enriched SDA data
+          bedrockDepthIn: terrainSuggestion.bedrockDepthIn,
+          restrictionType: terrainSuggestion.restrictionType,
+          slopeRange: terrainSuggestion.slopeRange,
+          runoff: terrainSuggestion.runoff,
+          taxonomy: terrainSuggestion.taxonomy,
+          texture: terrainSuggestion.texture,
+          clayPct: terrainSuggestion.clayPct,
+          rockFragmentPct: terrainSuggestion.rockFragmentPct,
+          pH: terrainSuggestion.pH,
+          steepFootage: steepFootage > 0 ? steepFootage : undefined,
+          // ── Materials & quantities (so the AI can reference exact counts) ──
+          materials: {
+            linePostCount: materialCalc.linePostCount,
+            tPostCount: materialCalc.tPostCount,
+            hBraces: materialCalc.hBraces,
+            cornerBraces: materialCalc.cornerBraces,
+            doubleHBraces: materialCalc.doubleHBraces,
+            totalBraces: materialCalc.totalBraces,
+            wireRolls: materialCalc.wireRolls,
+            concreteBags: materialCalc.concreteBags,
+            waterGapCount: materialCalc.waterGapCount,
+            gateCount: gates.length,
+            postCaps: materialCalc.postCapsQty,
+            tensioners: materialCalc.tensionersQty,
+            springIndicators: materialCalc.springIndicatorsQty,
+            stayTuffModel: fenceType.startsWith('stay_tuff') ? selectedStayTuff.spec : undefined,
+            stayTuffDescription: fenceType.startsWith('stay_tuff') ? selectedStayTuff.description : undefined,
+            topWireType,
+            tPostSpacing,
+            linePostSpacing,
+            wireHeightInches,
+            barbedStrandCount: fenceType === 'barbed_wire' ? barbedStrandCount : undefined,
+            barbedPointType: fenceType === 'barbed_wire' || topWireType === 'barbed' || topWireType === 'barbed_double' ? barbedWireType : undefined,
+            premiumGalvanized,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.narrative) setAiNarrative(data.narrative);
+    } catch (err) {
+      console.error('AI narrative error:', err);
+    } finally {
+      setGeneratingNarrative(false);
+    }
+  }, [terrainSuggestion, address, clientName, projectName, projectOverview, fenceType, fenceHeight,
+      totalFeet, postMaterial, squareTubeGauge, steepFootage, materialCalc, gates.length,
+      selectedStayTuff, topWireType, tPostSpacing, linePostSpacing, wireHeightInches,
+      barbedStrandCount, barbedWireType, premiumGalvanized]);
+
+  // Auto-trigger when terrain analysis arrives (initial load only)
+  useEffect(() => {
+    if (!terrainSuggestion?.soilType) return;
+    generateAINarrative();
+    // Only fire on terrain change — material edits trigger via the manual Regenerate button.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [terrainSuggestion]);
 
   const addSection = useCallback(() => {
     setSections(p => [...p, { id: uid(), name: `Section ${p.length + 1}`, linearFeet: 100, ratePerFoot: 0, total: 0, terrain: terrain as 'easy' | 'moderate' | 'difficult' | 'very_difficult' }]);
@@ -814,6 +915,7 @@ export default function FencingPage() {
       ...sec, materials: calculateSectionMaterials(
         sec.linearFeet, ftLabel, fenceHeight, stModel,
         sec.terrain || terrain, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType,
+        { barbedStrandCount, barbedPointType: barbedWireType, premiumGalvanized },
       ),
     }));
     const data: FenceBidData = {
@@ -823,6 +925,9 @@ export default function FencingPage() {
       stayTuffDescription: stModel ? selectedStayTuff.description : undefined,
       wireHeightInches,
       postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType,
+      barbedStrandCount: fenceType === 'barbed_wire' ? barbedStrandCount : undefined,
+      barbedPointType: barbedWireType,
+      premiumGalvanized,
       sections: secs, gates, projectTotal: projTotal, depositPercent, depositAmount: deposit,
       balanceAmount: balance, timelineWeeks: Math.ceil(timelineDays / 5), workingDays: timelineDays,
       laborEstimate: laborEstimate,
@@ -941,7 +1046,7 @@ export default function FencingPage() {
     } finally {
       setGeneratingPDF(false);
     }
-  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, laborEstimate, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory, paintEst, paintColor, showBidTiers, tierGoodLabel, tierGoodDesc, tierBetterLabel, tierBetterDesc, tierBestLabel, tierBestDesc, showCompetitorSection, competitors, acceptanceLink, acceptanceLinkLabel]);
+  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, laborEstimate, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory, paintEst, paintColor, showBidTiers, tierGoodLabel, tierGoodDesc, tierBetterLabel, tierBetterDesc, tierBestLabel, tierBestDesc, showCompetitorSection, competitors, acceptanceLink, acceptanceLinkLabel, barbedStrandCount, barbedWireType, premiumGalvanized]);
 
   const handleExportMaterialsCSV = useCallback(() => {
     // Aggregate materials from all sections
@@ -951,6 +1056,7 @@ export default function FencingPage() {
         sec.linearFeet, fenceType as import('@/types').FenceType, fenceHeight,
         fenceType.startsWith('stay_tuff') ? selectedStayTuff.id : undefined,
         terrain, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType,
+        { barbedStrandCount, barbedPointType: barbedWireType, premiumGalvanized },
       );
       for (const m of mats) {
         const existing = allMaterials.find(x => x.name === m.name);
@@ -988,7 +1094,8 @@ export default function FencingPage() {
     a.click();
     URL.revokeObjectURL(url);
   }, [computed, fenceType, fenceHeight, selectedStayTuff.id, terrain, postMaterial, squareTubeGauge,
-      tPostSpacing, linePostSpacing, topWireType, gates, projectName, clientName]);
+      tPostSpacing, linePostSpacing, topWireType, gates, projectName, clientName,
+      barbedStrandCount, barbedWireType, premiumGalvanized]);
 
   const handleSaveBid = useCallback(() => {
     addFenceBid({
@@ -1084,10 +1191,28 @@ export default function FencingPage() {
 
             <Card title="Fence Type" icon="&#x1f9f1;">
               <div className="space-y-3">
-                <select title="Fence type" value={fenceType} onChange={e => setFenceType(e.target.value as FenceType)}
+                {/* ── Single consolidated fence-selection dropdown ── */}
+                <select title="Fence selection" value={fenceSelectionId}
+                  onChange={e => handleFenceSelectionChange(e.target.value)}
                   className="w-full bg-black border border-steel-800 rounded-lg px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-tan-400/40">
-                  {Object.entries(FENCE_TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  {fenceSelectionGroups.map(([groupLabel, items]) => (
+                    <optgroup key={groupLabel} label={groupLabel}>
+                      {items.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                    </optgroup>
+                  ))}
                 </select>
+
+                {/* Stay-Tuff product details (read-only summary now that selection is unified) */}
+                {fenceType.startsWith('stay_tuff') && (
+                  <div className="bg-black/40 rounded-lg p-2 border border-white/[0.06]">
+                    <p className="text-[10px] text-tan-300 font-semibold mb-0.5">{WIRE_CATEGORY_LABELS[wireCategory]}</p>
+                    <p className="text-[10px] text-steel-400">
+                      Wire height: {selectedStayTuff.height}&quot; &rarr; fence height: {fenceHeight} | {selectedStayTuff.rollLength}&apos; rolls | T-Post: {tPostRec.label}
+                      {selectedStayTuff.madeToOrder && <span className="text-steel-300 ml-1">(Made to Order)</span>}
+                    </p>
+                    <p className="text-[9px] text-steel-500 mt-0.5">{selectedStayTuff.whereUsed}</p>
+                  </div>
+                )}
 
                 {/* Height selector: only for non-Stay-Tuff fences */}
                 {!fenceType.startsWith('stay_tuff') && (
@@ -1129,30 +1254,17 @@ export default function FencingPage() {
                   </div>
                 )}
 
-                {fenceType.startsWith('stay_tuff') && (
-                  <div>
-                    <label className="block text-xs font-medium text-steel-400 mb-1">Wire Category</label>
-                    <div className="grid grid-cols-2 gap-1.5 mb-2">
-                      {(Object.entries(WIRE_CATEGORY_LABELS) as [WireCategory, string][]).map(([cat, label]) => (
-                        <button key={cat} onClick={() => { setWireCategory(cat); const first = STAY_TUFF_CATALOG.find(p => p.category === cat); if (first) setSelectedStayTuff(first); }}
-                          className={`py-1.5 px-2 rounded-lg text-[10px] font-medium transition text-left ${wireCategory === cat ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-white/[0.06] hover:bg-steel-900'}`}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    <label className="block text-xs font-medium text-steel-400 mb-1">Stay-Tuff Product</label>
-                    <select title="Stay-Tuff product" value={selectedStayTuff.id}
-                      onChange={e => { const o = STAY_TUFF_CATALOG.find(x => x.id === e.target.value); if (o) setSelectedStayTuff(o); }}
-                      className="w-full bg-black border border-steel-800 rounded-lg px-3 py-2 text-sm text-steel-200 focus:ring-2 focus:ring-tan-400/40">
-                      {filteredStayTuff.map(o => <option key={o.id} value={o.id}>{o.partNo} — {o.spec} ({o.description})</option>)}
-                    </select>
-                    <p className="text-[10px] text-steel-400 mt-1">
-                      Wire height: {selectedStayTuff.height}&quot; &rarr; fence height: {fenceHeight} | {selectedStayTuff.rollLength}&apos; rolls | T-Post: {tPostRec.label}
-                      {selectedStayTuff.madeToOrder && <span className="text-steel-300 ml-1">(Made to Order)</span>}
-                    </p>
-                    <p className="text-[9px] text-steel-500 mt-0.5">{selectedStayTuff.whereUsed}</p>
+                {/* Premium All-Galvanized upgrade */}
+                <label className="flex items-start gap-3 cursor-pointer group bg-black/40 rounded-lg p-2 border border-white/[0.06]">
+                  <div className={`w-10 h-5 rounded-full transition relative shrink-0 mt-0.5 ${premiumGalvanized ? 'bg-tan-400' : 'bg-black'}`}
+                    onClick={() => setPremiumGalvanized(!premiumGalvanized)}>
+                    <div className={`absolute w-4 h-4 bg-white rounded-full top-0.5 transition-all ${premiumGalvanized ? 'left-5' : 'left-0.5'}`} />
                   </div>
-                )}
+                  <div>
+                    <span className="text-[11px] text-tan-300 font-semibold block group-hover:text-tan-200">Premium: All Galvanized</span>
+                    <span className="text-[9px] text-steel-500">Galvanized line posts, T-posts, and post caps. ~30% upcharge; auto-includes caps.</span>
+                  </div>
+                </label>
               </div>
             </Card>
             <Card title="Post Spacing" icon="&#x1f4cf;">
@@ -1206,21 +1318,35 @@ export default function FencingPage() {
               </Card>
             )}
 
-            {/* Barbed Wire only fences — 2pt or 4pt and strand count */}
+            {/* Barbed Wire only fences — point type and strand count */}
             {fenceType === 'barbed_wire' && (
               <Card title="Barbed Wire Options" icon="&#x26a0;&#xfe0f;">
-                <div className="space-y-2">
-                  <label className="block text-xs font-medium text-steel-400 mb-1">Point Type</label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {([
-                      { value: '2_point' as BarbedWireType, label: '2-Point' },
-                      { value: '4_point' as BarbedWireType, label: '4-Point' },
-                    ]).map(opt => (
-                      <button key={opt.value} onClick={() => setBarbedWireType(opt.value)}
-                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition ${barbedWireType === opt.value ? 'bg-tan-400 text-black' : 'bg-black text-steel-400 hover:bg-steel-900'}`}>
-                        {opt.label}
-                      </button>
-                    ))}
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-steel-400 mb-1">Point Type</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {([
+                        { value: '2_point' as BarbedWireType, label: '2-Point' },
+                        { value: '4_point' as BarbedWireType, label: '4-Point' },
+                      ]).map(opt => (
+                        <button key={opt.value} onClick={() => setBarbedWireType(opt.value)}
+                          className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition ${barbedWireType === opt.value ? 'bg-tan-400 text-black' : 'bg-black text-steel-400 hover:bg-steel-900'}`}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-steel-400 mb-1">
+                      Number of Strands: <span className="text-tan-300 font-semibold">{barbedStrandCount}</span>
+                    </label>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {[3, 4, 5, 6, 7].map(n => (
+                        <button key={n} onClick={() => setBarbedStrandCount(n)}
+                          className={`py-1.5 rounded-lg text-xs font-semibold transition ${barbedStrandCount === n ? 'bg-tan-400 text-black' : 'bg-black text-steel-400 hover:bg-steel-900 hover:text-steel-200'}`}>{n}</button>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-steel-500 mt-1">Common: 4 strand cattle, 5 strand mixed livestock, 6&ndash;7 strand for sheep/goats or rough country.</p>
                   </div>
                 </div>
               </Card>
@@ -1650,7 +1776,7 @@ export default function FencingPage() {
                       <div><span className="text-steel-500">T-Posts:</span> <span className="text-steel-200">{materialCalc.tPostCount} ({tPostRec.label}) @ {tPostSpacing}' spacing</span></div>
                       <div><span className="text-steel-500">H-Braces:</span> <span className="text-steel-200">{materialCalc.hBraces}</span></div>
                       <div><span className="text-steel-500">Corner Braces:</span> <span className="text-steel-200">{materialCalc.cornerBraces}</span></div>
-                      <div><span className="text-steel-500">Wire Rolls:</span> <span className="text-steel-200">{materialCalc.wireRolls} ({fenceType.startsWith('stay_tuff') ? selectedStayTuff.rollLength : 330}&apos; ea)</span></div>
+                      <div><span className="text-steel-500">Wire Rolls:</span> <span className="text-steel-200">{materialCalc.wireRolls} ({fenceType.startsWith('stay_tuff') ? selectedStayTuff.rollLength : fenceType === 'no_climb' ? 200 : fenceType === 'barbed_wire' ? 1320 : 330}&apos; ea{fenceType === 'barbed_wire' ? `, ${barbedStrandCount} strand` : ''})</span></div>
                       <div><span className="text-steel-500">Concrete:</span> <span className="text-steel-200">{materialCalc.concreteBags} bags (80lb)</span></div>
                       <div><span className="text-steel-500">Gates:</span> <span className="text-steel-200">{gates.length}</span></div>
                       {materialCalc.postCapsQty > 0 && <div><span className="text-steel-500">Post Caps:</span> <span className="text-steel-200">{materialCalc.postCapsQty}</span></div>}
@@ -1885,7 +2011,8 @@ export default function FencingPage() {
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-emerald-400 text-sm">&#x2713;</span>
                 <p className="text-xs font-semibold text-emerald-300">AI Site Analysis Ready</p>
-                <button onClick={() => setAiNarrative(null)} className="ml-auto text-[10px] text-red-400 hover:text-red-300 underline">clear</button>
+                <button onClick={() => generateAINarrative()} className="ml-auto text-[10px] text-tan-300 hover:text-tan-200 underline">regenerate with current materials</button>
+                <button onClick={() => setAiNarrative(null)} className="text-[10px] text-red-400 hover:text-red-300 underline">clear</button>
               </div>
               <p className="text-[11px] text-steel-300 leading-relaxed line-clamp-4">{aiNarrative}</p>
             </div>
