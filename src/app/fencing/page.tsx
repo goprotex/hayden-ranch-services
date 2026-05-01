@@ -184,12 +184,12 @@ export default function FencingPage() {
 
   // Bid tiers (Good / Better / Best)
   const [showBidTiers, setShowBidTiers] = useState(false);
-  const [tierGoodLabel, setTierGoodLabel] = useState('Basic');
-  const [tierGoodDesc, setTierGoodDesc] = useState('T-posts, line posts, corner posts & barbed wire — bottom-of-the-barrel basic package');
-  const [tierBetterLabel, setTierBetterLabel] = useState('Medium');
-  const [tierBetterDesc, setTierBetterDesc] = useState('High-tensile net wire (Stay-Tuff fixed knot) with standard posts & bracing');
-  const [tierBestLabel, setTierBestLabel] = useState('Premium');
-  const [tierBestDesc, setTierBestDesc] = useState('Galvanized line posts, galvanized H-braces & T-posts, all bracing galvanized + high-tensile net wire');
+  const [tierGoodLabel, setTierGoodLabel] = useState('Standard');
+  const [tierGoodDesc, setTierGoodDesc] = useState('T-post & field fence, basic installation');
+  const [tierBetterLabel, setTierBetterLabel] = useState('Premium');
+  const [tierBetterDesc, setTierBetterDesc] = useState('Stay-Tuff fixed knot, drill stem posts');
+  const [tierBestLabel, setTierBestLabel] = useState('Elite');
+  const [tierBestDesc, setTierBestDesc] = useState('Stay-Tuff + pipe fence, painted steel, concrete-set every post');
 
   // Competitor comparison
   const [showCompetitorSection, setShowCompetitorSection] = useState(false);
@@ -490,8 +490,13 @@ export default function FencingPage() {
     };
   }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType, barbedWireType, barbedStrandCount, premiumGalvanized, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, steepFootage, sections, tiePattern, braceRecommendations, manualMapPoints]);
 
-  const baseRate = materialCostPerFoot.total * (1 + markupPercent / 100) + laborRate;
-  const effectiveRate = useMemo(() => Math.round((materialCostPerFoot.total * (1 + markupPercent / 100) + laborRate * terrainMult) * 100) / 100, [materialCostPerFoot.total, markupPercent, laborRate, terrainMult]);
+  // Barbed-wire-only fences install much faster than woven net wire (no mesh to
+  // stretch & clip against every wire square), so the per-foot labor is roughly
+  // half. This keeps using the existing labor formula — just scaled by fence type.
+  const fenceTypeLaborMultiplier = fenceType === 'barbed_wire' ? 0.5 : 1.0;
+  const adjustedLaborRate = laborRate * fenceTypeLaborMultiplier;
+  const baseRate = materialCostPerFoot.total * (1 + markupPercent / 100) + adjustedLaborRate;
+  const effectiveRate = useMemo(() => Math.round((materialCostPerFoot.total * (1 + markupPercent / 100) + adjustedLaborRate * terrainMult) * 100) / 100, [materialCostPerFoot.total, markupPercent, adjustedLaborRate, terrainMult]);
 
   const computed = useMemo(() => sections.map(sec => {
     const rate = sec.ratePerFoot > 0 ? sec.ratePerFoot : effectiveRate;
@@ -1034,9 +1039,9 @@ export default function FencingPage() {
         return `${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
       })(),
       bidTiers: showBidTiers ? {
-        good:   { label: tierGoodLabel,   price: Math.round(projTotal * 0.65), description: tierGoodDesc },
+        good:   { label: tierGoodLabel,   price: Math.round(projTotal * 0.80), description: tierGoodDesc },
         better: { label: tierBetterLabel, price: projTotal,                    description: tierBetterDesc },
-        best:   { label: tierBestLabel,   price: Math.round(projTotal * 1.30), description: tierBestDesc },
+        best:   { label: tierBestLabel,   price: Math.round(projTotal * 1.20), description: tierBestDesc },
       } : undefined,
       competitorComparison: showCompetitorSection && competitors.some(c => c.name) ? competitors.filter(c => c.name) : undefined,
       acceptanceLink: acceptanceLink || undefined,
@@ -1520,7 +1525,7 @@ export default function FencingPage() {
                   <div className="text-[10px] text-steel-500 space-y-0.5">
                     <div className="flex justify-between"><span>Material:</span><span>${materialCostPerFoot.total.toFixed(2)}/ft</span></div>
                     {markupPercent > 0 && <div className="flex justify-between"><span>Markup ({markupPercent}%):</span><span>+${(materialCostPerFoot.total * markupPercent / 100).toFixed(2)}/ft</span></div>}
-                    <div className="flex justify-between"><span>Labor:</span><span>${laborRate.toFixed(2)}/ft</span></div>
+                    <div className="flex justify-between"><span>Labor:</span><span>${adjustedLaborRate.toFixed(2)}/ft{fenceTypeLaborMultiplier !== 1 && <span className="text-tan-400 ml-1">(barbed wire &times;{fenceTypeLaborMultiplier})</span>}</span></div>
                     <div className="flex justify-between border-t border-white/[0.08] pt-0.5"><span className="font-semibold">All-In Rate:</span><span className="font-semibold">${effectiveRate.toFixed(2)}/ft</span></div>
                   </div>
                 </div>
