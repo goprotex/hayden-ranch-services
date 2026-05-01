@@ -1965,7 +1965,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     }
     // Barbed wire main fence: configurable strand count, same aggregation
     if (matMap.has('barbed_main')) {
-      const strands = Math.max(2, Math.min(8, Math.round(data.barbedStrandCount ?? 4)));
+      const strands = Math.max(2, Math.min(9, Math.round(data.barbedStrandCount ?? 4)));
       const barbedRolls = Math.ceil((aggFeetWithOverlap * strands) / 1320);
       matMap.get('barbed_main')!.qty = `${barbedRolls} roll${barbedRolls !== 1 ? 's' : ''} (1,320' ea) — project total`;
     }
@@ -2568,7 +2568,7 @@ export function calculateSectionMaterials(
     premiumGalvanized?: boolean; // labels posts/t-posts/caps as galvanized
   } = {},
 ): SectionMaterial[] {
-  const barbedStrandCount = Math.max(2, Math.min(8, Math.round(options.barbedStrandCount ?? 4)));
+  const barbedStrandCount = Math.max(2, Math.min(9, Math.round(options.barbedStrandCount ?? 4)));
   const barbedPointLabel = options.barbedPointType === '2_point' ? '2-point' : '4-point';
   const galvPrefix = options.premiumGalvanized ? 'Galvanized ' : '';
   const ft = linearFeet;

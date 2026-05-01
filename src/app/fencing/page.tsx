@@ -78,7 +78,7 @@ export default function FencingPage() {
   const [topWireType, setTopWireType] = useState<TopWireType>('barbed');
   // Barbed wire point type
   const [barbedWireType, setBarbedWireType] = useState<BarbedWireType>('4_point');
-  // Number of barbed-wire strands for a barbed-wire-only fence (3-7 typical)
+  // Number of barbed-wire strands for a barbed-wire-only fence (3-9 typical)
   const [barbedStrandCount, setBarbedStrandCount] = useState<number>(4);
   // Premium upgrade: all-galvanized line posts, t-posts and post caps
   const [premiumGalvanized, setPremiumGalvanized] = useState<boolean>(false);
@@ -490,8 +490,13 @@ export default function FencingPage() {
     };
   }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType, barbedWireType, barbedStrandCount, premiumGalvanized, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, steepFootage, sections, tiePattern, braceRecommendations, manualMapPoints]);
 
-  const baseRate = materialCostPerFoot.total * (1 + markupPercent / 100) + laborRate;
-  const effectiveRate = useMemo(() => Math.round((materialCostPerFoot.total * (1 + markupPercent / 100) + laborRate * terrainMult) * 100) / 100, [materialCostPerFoot.total, markupPercent, laborRate, terrainMult]);
+  // Barbed-wire-only fences install much faster than woven net wire (no mesh to
+  // stretch & clip against every wire square), so the per-foot labor is roughly
+  // half. This keeps using the existing labor formula — just scaled by fence type.
+  const fenceTypeLaborMultiplier = fenceType === 'barbed_wire' ? 0.5 : 1.0;
+  const adjustedLaborRate = laborRate * fenceTypeLaborMultiplier;
+  const baseRate = materialCostPerFoot.total * (1 + markupPercent / 100) + adjustedLaborRate;
+  const effectiveRate = useMemo(() => Math.round((materialCostPerFoot.total * (1 + markupPercent / 100) + adjustedLaborRate * terrainMult) * 100) / 100, [materialCostPerFoot.total, markupPercent, adjustedLaborRate, terrainMult]);
 
   const computed = useMemo(() => sections.map(sec => {
     const rate = sec.ratePerFoot > 0 ? sec.ratePerFoot : effectiveRate;
@@ -1340,13 +1345,13 @@ export default function FencingPage() {
                     <label className="block text-xs font-medium text-steel-400 mb-1">
                       Number of Strands: <span className="text-tan-300 font-semibold">{barbedStrandCount}</span>
                     </label>
-                    <div className="grid grid-cols-5 gap-1.5">
-                      {[3, 4, 5, 6, 7].map(n => (
+                    <div className="grid grid-cols-7 gap-1.5">
+                      {[3, 4, 5, 6, 7, 8, 9].map(n => (
                         <button key={n} onClick={() => setBarbedStrandCount(n)}
                           className={`py-1.5 rounded-lg text-xs font-semibold transition ${barbedStrandCount === n ? 'bg-tan-400 text-black' : 'bg-black text-steel-400 hover:bg-steel-900 hover:text-steel-200'}`}>{n}</button>
                       ))}
                     </div>
-                    <p className="text-[9px] text-steel-500 mt-1">Common: 4 strand cattle, 5 strand mixed livestock, 6&ndash;7 strand for sheep/goats or rough country.</p>
+                    <p className="text-[9px] text-steel-500 mt-1">Common: 4 strand cattle, 5 strand mixed livestock, 6&ndash;7 strand for sheep/goats or rough country, 8&ndash;9 strand for high-pressure or predator areas.</p>
                   </div>
                 </div>
               </Card>
@@ -1520,7 +1525,7 @@ export default function FencingPage() {
                   <div className="text-[10px] text-steel-500 space-y-0.5">
                     <div className="flex justify-between"><span>Material:</span><span>${materialCostPerFoot.total.toFixed(2)}/ft</span></div>
                     {markupPercent > 0 && <div className="flex justify-between"><span>Markup ({markupPercent}%):</span><span>+${(materialCostPerFoot.total * markupPercent / 100).toFixed(2)}/ft</span></div>}
-                    <div className="flex justify-between"><span>Labor:</span><span>${laborRate.toFixed(2)}/ft</span></div>
+                    <div className="flex justify-between"><span>Labor:</span><span>${adjustedLaborRate.toFixed(2)}/ft{fenceTypeLaborMultiplier !== 1 && <span className="text-tan-400 ml-1">(barbed wire &times;{fenceTypeLaborMultiplier})</span>}</span></div>
                     <div className="flex justify-between border-t border-white/[0.08] pt-0.5"><span className="font-semibold">All-In Rate:</span><span className="font-semibold">${effectiveRate.toFixed(2)}/ft</span></div>
                   </div>
                 </div>
