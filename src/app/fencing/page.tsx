@@ -78,7 +78,7 @@ export default function FencingPage() {
   const [topWireType, setTopWireType] = useState<TopWireType>('barbed');
   // Barbed wire point type
   const [barbedWireType, setBarbedWireType] = useState<BarbedWireType>('4_point');
-  // Number of barbed-wire strands for a barbed-wire-only fence (3-7 typical)
+  // Number of barbed-wire strands for a barbed-wire-only fence (3-9 typical)
   const [barbedStrandCount, setBarbedStrandCount] = useState<number>(4);
   // Premium upgrade: all-galvanized line posts, t-posts and post caps
   const [premiumGalvanized, setPremiumGalvanized] = useState<boolean>(false);
@@ -184,12 +184,12 @@ export default function FencingPage() {
 
   // Bid tiers (Good / Better / Best)
   const [showBidTiers, setShowBidTiers] = useState(false);
-  const [tierGoodLabel, setTierGoodLabel] = useState('Standard');
-  const [tierGoodDesc, setTierGoodDesc] = useState('T-post & field fence, basic installation');
-  const [tierBetterLabel, setTierBetterLabel] = useState('Premium');
-  const [tierBetterDesc, setTierBetterDesc] = useState('Stay-Tuff fixed knot, drill stem posts');
-  const [tierBestLabel, setTierBestLabel] = useState('Elite');
-  const [tierBestDesc, setTierBestDesc] = useState('Stay-Tuff + pipe fence, painted steel, concrete-set every post');
+  const [tierGoodLabel, setTierGoodLabel] = useState('Basic');
+  const [tierGoodDesc, setTierGoodDesc] = useState('T-posts, line posts, corner posts & barbed wire — bottom-of-the-barrel basic package');
+  const [tierBetterLabel, setTierBetterLabel] = useState('Medium');
+  const [tierBetterDesc, setTierBetterDesc] = useState('High-tensile net wire (Stay-Tuff fixed knot) with standard posts & bracing');
+  const [tierBestLabel, setTierBestLabel] = useState('Premium');
+  const [tierBestDesc, setTierBestDesc] = useState('Galvanized line posts, galvanized H-braces & T-posts, all bracing galvanized + high-tensile net wire');
 
   // Competitor comparison
   const [showCompetitorSection, setShowCompetitorSection] = useState(false);
@@ -1034,9 +1034,9 @@ export default function FencingPage() {
         return `${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
       })(),
       bidTiers: showBidTiers ? {
-        good:   { label: tierGoodLabel,   price: Math.round(projTotal * 0.80), description: tierGoodDesc },
+        good:   { label: tierGoodLabel,   price: Math.round(projTotal * 0.65), description: tierGoodDesc },
         better: { label: tierBetterLabel, price: projTotal,                    description: tierBetterDesc },
-        best:   { label: tierBestLabel,   price: Math.round(projTotal * 1.20), description: tierBestDesc },
+        best:   { label: tierBestLabel,   price: Math.round(projTotal * 1.30), description: tierBestDesc },
       } : undefined,
       competitorComparison: showCompetitorSection && competitors.some(c => c.name) ? competitors.filter(c => c.name) : undefined,
       acceptanceLink: acceptanceLink || undefined,
@@ -1340,13 +1340,13 @@ export default function FencingPage() {
                     <label className="block text-xs font-medium text-steel-400 mb-1">
                       Number of Strands: <span className="text-tan-300 font-semibold">{barbedStrandCount}</span>
                     </label>
-                    <div className="grid grid-cols-5 gap-1.5">
-                      {[3, 4, 5, 6, 7].map(n => (
+                    <div className="grid grid-cols-7 gap-1.5">
+                      {[3, 4, 5, 6, 7, 8, 9].map(n => (
                         <button key={n} onClick={() => setBarbedStrandCount(n)}
                           className={`py-1.5 rounded-lg text-xs font-semibold transition ${barbedStrandCount === n ? 'bg-tan-400 text-black' : 'bg-black text-steel-400 hover:bg-steel-900 hover:text-steel-200'}`}>{n}</button>
                       ))}
                     </div>
-                    <p className="text-[9px] text-steel-500 mt-1">Common: 4 strand cattle, 5 strand mixed livestock, 6&ndash;7 strand for sheep/goats or rough country.</p>
+                    <p className="text-[9px] text-steel-500 mt-1">Common: 4 strand cattle, 5 strand mixed livestock, 6&ndash;7 strand for sheep/goats or rough country, 8&ndash;9 strand for high-pressure or predator areas.</p>
                   </div>
                 </div>
               </Card>
