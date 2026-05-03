@@ -11,8 +11,9 @@ import {
   getGaugeOptions,
   determineBraceType, estimatePainting, calculateVertexAngle,
   recommendedTPostLength, wireRollPriceId, postJointPriceId, calculatePostLength,
+  calculatePipeFenceMaterials,
   type PostMaterial, type SquareTubeGauge, type BraceType, type GateSize, type GateSpec, type BraceRecommendation,
-  type BarbedWireType, type TiePattern,
+  type BarbedWireType, type TiePattern, type PipeFenceConfig,
 } from '@/lib/fencing/fence-materials';
 import { generateFenceBidPDF, calculateSectionMaterials, calculateLaborEstimate, buildSiteAdjustments, type FenceBidSection, type BidGate, type FenceBidData, type TopWireType } from '@/lib/fencing/fence-bid-pdf';
 import { loadProductPhotos } from '@/lib/fencing/product-photos';
@@ -82,6 +83,18 @@ export default function FencingPage() {
   const [barbedStrandCount, setBarbedStrandCount] = useState<number>(4);
   // Premium upgrade: all-galvanized line posts, t-posts and post caps
   const [premiumGalvanized, setPremiumGalvanized] = useState<boolean>(false);
+
+  // ── Pipe Fence design (only used when fenceType === 'pipe_fence') ──
+  // Defaults match the most common ranch pipe fence: 5 ft tall, 4 rails,
+  // 2-7/8" uprights, 2-3/8" rails, continuous top rail, painted black.
+  const [pipeUprightMaterial, setPipeUprightMaterial] = useState<PostMaterial>('drill_stem_278');
+  const [pipeRailMaterial, setPipeRailMaterial] = useState<PostMaterial>('drill_stem_238');
+  const [pipeRailCount, setPipeRailCount] = useState<number>(4);
+  const [pipeTopRailStyle, setPipeTopRailStyle] = useState<'continuous' | 'caps'>('continuous');
+  const [pipeFinish, setPipeFinish] = useState<'painted' | 'bare'>('painted');
+  const [pipePaintColor, setPipePaintColor] = useState<string>('Black');
+  const [pipeFenceHeightFt, setPipeFenceHeightFt] = useState<number>(5);
+  const [pipePostSpacingFt, setPipePostSpacingFt] = useState<number>(8);
   // Tie pattern
   const [tiePattern, setTiePattern] = useState<TiePattern>('every_strand');
   // Accessories
@@ -320,6 +333,21 @@ export default function FencingPage() {
 
   const terrainMult = TERRAIN_MAP[terrain]?.mult || 1;
 
+  // ── Pipe Fence design assembled into a single config object ──
+  // Only meaningful when fenceType === 'pipe_fence', but always assembled so
+  // it can be passed to the PDF and to calculatePipeFenceMaterials() without
+  // sprinkling conditionals everywhere.
+  const pipeFenceConfig: PipeFenceConfig = useMemo(() => ({
+    uprightMaterial: pipeUprightMaterial,
+    railMaterial: pipeRailMaterial,
+    railCount: pipeRailCount,
+    topRailStyle: pipeTopRailStyle,
+    finish: pipeFinish,
+    paintColor: pipePaintColor,
+    fenceHeightFeet: pipeFenceHeightFt,
+    postSpacingFeet: pipePostSpacingFt,
+  }), [pipeUprightMaterial, pipeRailMaterial, pipeRailCount, pipeTopRailStyle, pipeFinish, pipePaintColor, pipeFenceHeightFt, pipePostSpacingFt]);
+
   // === Material cost per foot ===
   // Soil difficulty affects concrete requirements and hardware costs
   const soilMultiplier = useMemo(() => {
@@ -334,6 +362,33 @@ export default function FencingPage() {
 
   const materialCostPerFoot = useMemo(() => {
     const findPrice = (id: string) => materialPrices.find(m => m.id === id)?.price ?? 0;
+
+    // ── PIPE FENCE: completely separate cost path (no wire, no T-posts, etc.) ──
+    if (fenceType === 'pipe_fence') {
+      const estTotalFeet = sections.reduce((s, c) => s + c.linearFeet, 0) || 1000;
+      const pipe = calculatePipeFenceMaterials(estTotalFeet, pipeFenceConfig, materialPrices);
+      // Rough split for the per-line-item display in the UI
+      const linePostsPerFt = pipe.uprightCost / estTotalFeet;
+      const railsPerFt = pipe.railCost / estTotalFeet;
+      const concretePerFt = pipe.concreteCost / estTotalFeet;
+      const accessoriesPerFt = (pipe.capCost + pipe.paintMaterialCost + pipe.paintLaborCost) / estTotalFeet;
+      const total = pipe.totalCost / estTotalFeet;
+      return {
+        wire: 0,
+        topWire: 0,
+        tPosts: 0,
+        linePosts: Math.round((linePostsPerFt + railsPerFt) * 100) / 100,
+        concrete: Math.round(concretePerFt * 100) / 100,
+        hardware: 0,
+        accessories: Math.round(accessoriesPerFt * 100) / 100,
+        braces: 0,
+        steepSurcharge: 0,
+        total: Math.round(total * 100) / 100,
+        // No traditional bag-per-line-post for pipe — materialCalc has its own path.
+        _bagsPerLinePost: 0,
+        _bagsPerBracePost: 0,
+      };
+    }
 
     // Wire cost per foot (varies by product height for Stay-Tuff)
     let wireCostPerFt = 0;
@@ -488,7 +543,7 @@ export default function FencingPage() {
       _bagsPerLinePost: bagsPerLinePost,
       _bagsPerBracePost: bagsPerBracePost,
     };
-  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType, barbedWireType, barbedStrandCount, premiumGalvanized, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, steepFootage, sections, tiePattern, braceRecommendations, manualMapPoints]);
+  }, [fenceType, wireHeightInches, selectedStayTuff, tPostRec, tPostSpacing, linePostSpacing, postMaterial, squareTubeGauge, materialPrices, soilMultiplier, topWireType, barbedWireType, barbedStrandCount, premiumGalvanized, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, steepFootage, sections, tiePattern, braceRecommendations, manualMapPoints, pipeFenceConfig]);
 
   // Barbed-wire-only fences install much faster than woven net wire (no mesh to
   // stretch & clip against every wire square), so the per-foot labor is roughly
@@ -508,6 +563,36 @@ export default function FencingPage() {
   const gateTotal = useMemo(() => gates.reduce((s, g) => s + g.cost, 0), [gates]);
 
   const materialCalc = useMemo(() => {
+    // ── PIPE FENCE override: every "post" is an upright; no T-posts, no wire ──
+    if (fenceType === 'pipe_fence') {
+      const pipe = calculatePipeFenceMaterials(totalFeet || 1, pipeFenceConfig, materialPrices);
+      return {
+        linePostCount: pipe.uprightCount,
+        gradeTransitionPosts: 0,
+        extraLinePosts: 0,
+        tPostCount: 0,
+        hBraces: 0,
+        cornerBraces: 0,
+        doubleHBraces: 0,
+        totalBraces: 0,
+        waterGapCount: manualMapPoints.filter(p => p.type === 'water_gap').length,
+        wireRolls: 0,
+        concreteBags: pipe.concreteBags,
+        postCapsQty: pipe.postCapsNeeded,
+        tensionersQty: 0,
+        springIndicatorsQty: 0,
+        concreteFillPostsQty: 0,
+        concreteFillBracesQty: 0,
+        horizStrands: 0,
+        // Pipe-specific extras (informational; not on the wire-fence path):
+        pipeRailJoints: pipe.railJoints,
+        pipeUprightJoints: pipe.uprightJoints,
+        pipeRailTotalFeet: pipe.railTotalFeet,
+        pipeWeldsCount: pipe.weldsCount,
+        pipePaintGallons: pipe.paintGallons,
+      };
+    }
+
     // Base line posts from regular spacing
     const baseLinePostCount = Math.max(2, Math.ceil(totalFeet / linePostSpacing));
 
@@ -610,8 +695,14 @@ export default function FencingPage() {
       postCapsQty, tensionersQty, springIndicatorsQty,
       concreteFillPostsQty, concreteFillBracesQty,
       horizStrands,
+      // Pipe-specific extras — zero/undefined for non-pipe fences (kept for shape parity).
+      pipeRailJoints: 0,
+      pipeUprightJoints: 0,
+      pipeRailTotalFeet: 0,
+      pipeWeldsCount: 0,
+      pipePaintGallons: 0,
     };
-  }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations, manualMapPoints, gates, fenceType, selectedStayTuff, materialCostPerFoot, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, postMaterial, terrainSuggestion, barbedStrandCount, premiumGalvanized]);
+  }, [totalFeet, linePostSpacing, tPostSpacing, braceRecommendations, manualMapPoints, gates, fenceType, selectedStayTuff, materialCostPerFoot, includePostCaps, includeTensioners, includeSpringIndicators, concreteFillPosts, postMaterial, terrainSuggestion, barbedStrandCount, premiumGalvanized, pipeFenceConfig, materialPrices]);
 
   // Auto-calculate timeline from labor estimate
   const tiesPerLinePost = tiePattern === 'every_strand' ? materialCalc.horizStrands
@@ -920,7 +1011,10 @@ export default function FencingPage() {
       ...sec, materials: calculateSectionMaterials(
         sec.linearFeet, ftLabel, fenceHeight, stModel,
         sec.terrain || terrain, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType,
-        { barbedStrandCount, barbedPointType: barbedWireType, premiumGalvanized },
+        {
+          barbedStrandCount, barbedPointType: barbedWireType, premiumGalvanized,
+          pipeFenceConfig: fenceType === 'pipe_fence' ? pipeFenceConfig : undefined,
+        },
       ),
     }));
     const data: FenceBidData = {
@@ -933,6 +1027,7 @@ export default function FencingPage() {
       barbedStrandCount: fenceType === 'barbed_wire' ? barbedStrandCount : undefined,
       barbedPointType: barbedWireType,
       premiumGalvanized,
+      pipeFenceConfig: fenceType === 'pipe_fence' ? pipeFenceConfig : undefined,
       sections: secs, gates, projectTotal: projTotal, depositPercent, depositAmount: deposit,
       balanceAmount: balance, timelineWeeks: Math.ceil(timelineDays / 5), workingDays: timelineDays,
       laborEstimate: laborEstimate,
@@ -1051,7 +1146,7 @@ export default function FencingPage() {
     } finally {
       setGeneratingPDF(false);
     }
-  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, laborEstimate, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory, paintEst, paintColor, showBidTiers, tierGoodLabel, tierGoodDesc, tierBetterLabel, tierBetterDesc, tierBestLabel, tierBestDesc, showCompetitorSection, competitors, acceptanceLink, acceptanceLinkLabel, barbedStrandCount, barbedWireType, premiumGalvanized]);
+  }, [computed, gates, projectName, clientName, address, fenceType, fenceHeight, selectedStayTuff, terrain, depositPercent, deposit, balance, projTotal, laborEstimate, timelineDays, projectOverview, wireHeightInches, buildSoilNarrative, mapImages, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType, aiNarrative, terrainSuggestion, totalFeet, materialCalc, wireCategory, paintEst, paintColor, showBidTiers, tierGoodLabel, tierGoodDesc, tierBetterLabel, tierBetterDesc, tierBestLabel, tierBestDesc, showCompetitorSection, competitors, acceptanceLink, acceptanceLinkLabel, barbedStrandCount, barbedWireType, premiumGalvanized, pipeFenceConfig]);
 
   const handleExportMaterialsCSV = useCallback(() => {
     // Aggregate materials from all sections
@@ -1061,7 +1156,10 @@ export default function FencingPage() {
         sec.linearFeet, fenceType as import('@/types').FenceType, fenceHeight,
         fenceType.startsWith('stay_tuff') ? selectedStayTuff.id : undefined,
         terrain, postMaterial, squareTubeGauge, tPostSpacing, linePostSpacing, topWireType,
-        { barbedStrandCount, barbedPointType: barbedWireType, premiumGalvanized },
+        {
+          barbedStrandCount, barbedPointType: barbedWireType, premiumGalvanized,
+          pipeFenceConfig: fenceType === 'pipe_fence' ? pipeFenceConfig : undefined,
+        },
       );
       for (const m of mats) {
         const existing = allMaterials.find(x => x.name === m.name);
@@ -1357,7 +1455,142 @@ export default function FencingPage() {
               </Card>
             )}
 
-            {/* Wire Tie Pattern */}
+            {/* Pipe Fence Options — only shown when Pipe Fence is the selected fence type */}
+            {fenceType === 'pipe_fence' && (
+              <Card title="Pipe Fence Options" icon="&#x1f527;">
+                <div className="space-y-3">
+                  {/* Fence height */}
+                  <div>
+                    <label className="block text-xs font-medium text-steel-400 mb-1.5">Fence Height</label>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {[3.5, 4, 5, 6, 7].map(h => (
+                        <button key={h} onClick={() => setPipeFenceHeightFt(h)}
+                          className={`py-1.5 rounded-lg text-xs font-semibold transition ${pipeFenceHeightFt === h ? 'bg-tan-400 text-black' : 'bg-black text-steel-400 hover:bg-steel-900 hover:text-steel-200'}`}>
+                          {h}&prime;
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Number of rails */}
+                  <div>
+                    <label className="block text-xs font-medium text-steel-400 mb-1.5">Number of Rails</label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[1, 2, 3, 4].map(n => (
+                        <button key={n} onClick={() => setPipeRailCount(n)}
+                          className={`py-2 rounded-lg text-[11px] font-semibold transition ${pipeRailCount === n ? 'bg-tan-400 text-black' : 'bg-black text-steel-400 hover:bg-steel-900 hover:text-steel-200'}`}>
+                          {n} rail{n > 1 ? 's' : ''}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-steel-500 mt-1">1 = top rail only · 2 = top + bottom · 3 = top + middle + bottom · 4 = full ranch rail</p>
+                  </div>
+
+                  {/* Top rail style */}
+                  <div>
+                    <label className="block text-xs font-medium text-steel-400 mb-1.5">Top Rail Style</label>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {([
+                        { value: 'continuous' as const, label: 'Continuous Top Rail', desc: 'One long rail welded across the post tops (covers post tops, no caps).' },
+                        { value: 'caps' as const, label: 'Posts Stick Up + Post Caps', desc: 'All rails butt-welded between posts; post tops exposed and capped.' },
+                      ]).map(opt => (
+                        <button key={opt.value} onClick={() => setPipeTopRailStyle(opt.value)}
+                          className={`py-2 px-3 rounded-lg text-left transition ${pipeTopRailStyle === opt.value ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-white/[0.06] hover:bg-steel-900'}`}>
+                          <span className="text-[11px] font-medium block">{opt.label}</span>
+                          <span className="text-[9px] opacity-60">{opt.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Upright / vertical post pipe */}
+                  <div>
+                    <label className="block text-xs font-medium text-steel-400 mb-1.5">Upright (Vertical Post) Pipe</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {POST_MATERIALS.map(pm => (
+                        <button key={pm.id} onClick={() => setPipeUprightMaterial(pm.id)}
+                          className={`py-2 px-2 rounded-lg text-[11px] font-medium transition text-left ${pipeUprightMaterial === pm.id ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-white/[0.06] hover:bg-steel-900'}`}>
+                          {pm.label}<span className="block text-[9px] opacity-70">{pm.diameter}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Rail / horizontal pipe */}
+                  <div>
+                    <label className="block text-xs font-medium text-steel-400 mb-1.5">Horizontal Rail Pipe</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {POST_MATERIALS.map(pm => (
+                        <button key={pm.id} onClick={() => setPipeRailMaterial(pm.id)}
+                          className={`py-2 px-2 rounded-lg text-[11px] font-medium transition text-left ${pipeRailMaterial === pm.id ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-white/[0.06] hover:bg-steel-900'}`}>
+                          {pm.label}<span className="block text-[9px] opacity-70">{pm.diameter}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-steel-500 mt-1">Common: 2-7/8&Prime; uprights with 2-3/8&Prime; rails (smaller, lighter rails save material).</p>
+                  </div>
+
+                  {/* Post spacing for pipe fence */}
+                  <div>
+                    <label className="block text-xs font-medium text-steel-400 mb-1.5">Upright Spacing: <span className="text-tan-300">{pipePostSpacingFt} ft</span></label>
+                    <input type="range" min={6} max={12} step={0.5} value={pipePostSpacingFt}
+                      onChange={e => setPipePostSpacingFt(parseFloat(e.target.value))}
+                      className="w-full accent-tan-400" />
+                    <div className="flex justify-between text-[9px] text-steel-500"><span>6 ft</span><span>12 ft</span></div>
+                    <p className="text-[9px] text-steel-500 mt-1">Pipe fence has no T-posts — every post is a line post. 8&prime; is standard.</p>
+                  </div>
+
+                  {/* Finish */}
+                  <div>
+                    <label className="block text-xs font-medium text-steel-400 mb-1.5">Finish</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {([
+                        { value: 'painted' as const, label: 'Painted', desc: 'Sprayed with rust-inhibiting oil-based paint.' },
+                        { value: 'bare' as const, label: 'Bare / Rusty', desc: 'Left unpainted; will develop natural rust patina.' },
+                      ]).map(opt => (
+                        <button key={opt.value} onClick={() => setPipeFinish(opt.value)}
+                          className={`py-2 px-3 rounded-lg text-left transition ${pipeFinish === opt.value ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-white/[0.06] hover:bg-steel-900'}`}>
+                          <span className="text-[11px] font-medium block">{opt.label}</span>
+                          <span className="text-[9px] opacity-60">{opt.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {pipeFinish === 'painted' && (
+                      <div className="mt-2">
+                        <label className="block text-[10px] font-medium text-steel-400 mb-1">Paint Color</label>
+                        <select value={pipePaintColor} onChange={e => setPipePaintColor(e.target.value)}
+                          title="Pipe fence paint color"
+                          className="w-full bg-black border border-steel-800 rounded-lg px-3 py-1.5 text-xs text-steel-200 focus:ring-2 focus:ring-tan-400/40">
+                          {['Black', 'White', 'Brown', 'Green', 'Red', 'Grey', 'Silver', 'Tan'].map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Live materials summary for the current pipe design */}
+                  {totalFeet > 0 && (() => {
+                    const pipe = calculatePipeFenceMaterials(totalFeet, pipeFenceConfig, materialPrices);
+                    return (
+                      <div className="bg-black/60 rounded-lg p-2.5 border border-tan-400/20 text-[10px]">
+                        <p className="text-tan-300 font-semibold mb-1.5 text-[10px] uppercase tracking-wider">Pipe Fence Materials ({totalFeet.toLocaleString()} ft)</p>
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-steel-400">
+                          <span>Uprights:</span><span className="text-steel-200 text-right">{pipe.uprightCount} @ {pipe.uprightCutLengthFeet}&prime; ({pipe.uprightJoints} joints)</span>
+                          <span>Rail joints:</span><span className="text-steel-200 text-right">{pipe.railJoints} ({pipe.railTotalFeet.toLocaleString()} ft)</span>
+                          {pipe.postCapsNeeded > 0 && (<><span>Post caps:</span><span className="text-steel-200 text-right">{pipe.postCapsNeeded}</span></>)}
+                          <span>Concrete:</span><span className="text-steel-200 text-right">{pipe.concreteBags} bags</span>
+                          <span>Welds:</span><span className="text-steel-200 text-right">{pipe.weldsCount.toLocaleString()}</span>
+                          {pipe.paintGallons > 0 && (<><span>Paint:</span><span className="text-steel-200 text-right">{pipe.paintGallons} gal</span></>)}
+                          <span className="border-t border-white/10 pt-1 mt-0.5">Material total:</span>
+                          <span className="text-tan-300 text-right border-t border-white/10 pt-1 mt-0.5 font-semibold">${pipe.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </Card>
+            )}
             <Card title="Wire Tie Pattern" icon="&#x1f9f5;">
               <div className="grid grid-cols-1 gap-1.5">
                 {([
