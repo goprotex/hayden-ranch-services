@@ -188,6 +188,8 @@ export interface FenceBidData {
   fenceLifespanYears?: number;           // e.g. 25
   alternativeCostPerFoot?: number;       // e.g. 6 (cheap barbed)
   alternativeLifespanYears?: number;     // e.g. 8
+  alternativeLabel?: string;             // e.g. 'STANDARD BARBED WIRE' or 'TYPICAL WIRE FENCE' (pipe fences)
+  alternativeSavingsLabel?: string;      // e.g. 'a standard barbed wire installation' (used in the savings sentence)
 
   // Acreage framing (anchors customer on enclosed area, not price)
   enclosedAcreage?: number;              // e.g. 12.4
@@ -770,7 +772,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     sz(7);
     doc.setFont(brandFont, 'bold');
     doc.setTextColor(180, 60, 40);
-    doc.text('STANDARD BARBED WIRE', rx + 4, y + 7);
+    doc.text(data.alternativeLabel || 'STANDARD BARBED WIRE', rx + 4, y + 7);
 
     sz(14);
     doc.setTextColor(27, 38, 54);
@@ -790,7 +792,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       sz(7.5);
       doc.setFont(brandFont, 'bold');
       doc.setTextColor(34, 139, 84);
-      doc.text(`Your fence costs ${pctSavings}% less per year than a standard barbed wire installation that needs replacing in ${altLifespan} years.`, mx, y);
+      doc.text(`Your fence costs ${pctSavings}% less per year than ${data.alternativeSavingsLabel || 'a standard barbed wire installation'} that needs replacing in ${altLifespan} years.`, mx, y);
       y += 5;
     }
 
@@ -1558,12 +1560,32 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
 
     // ─── Confidence Closer — ties soil findings to actual material selections ───
     if (site) {
-      // Build a material-aware closer referencing user's selections
-      const postSpec = POST_MATERIALS.find(p => p.id === data.postMaterial);
-      const matPostLabel = postSpec
-        ? `${postSpec.label} (${postSpec.diameter}, ${postSpec.weightPerFoot} lb/ft)`
-        : data.postMaterial;
-      const isDrillStem = data.postMaterial.startsWith('drill_stem');
+      const isPipeFence = data.fenceType.toLowerCase().includes('pipe');
+      const cfg = data.pipeFenceConfig;
+
+      // For pipe fence, describe the upright/rail design instead of the wire-fence
+      // line-post-and-T-post pair (T-posts and line-post spacing are not used).
+      let isDrillStem: boolean;
+      let postSelectionSentence: string;
+
+      if (isPipeFence && cfg) {
+        const uprightSpec = POST_MATERIALS.find(p => p.id === cfg.uprightMaterial);
+        const railSpec = POST_MATERIALS.find(p => p.id === cfg.railMaterial);
+        const upLabel = uprightSpec
+          ? `${uprightSpec.label} (${uprightSpec.diameter}, ${uprightSpec.weightPerFoot} lb/ft)`
+          : cfg.uprightMaterial;
+        const railLabel = railSpec ? railSpec.label : cfg.railMaterial;
+        isDrillStem = cfg.uprightMaterial.startsWith('drill_stem');
+        postSelectionSentence = `We selected ${upLabel} for your uprights — set every ${cfg.postSpacingFeet}' along the ${cfg.fenceHeightFeet}' tall, ${cfg.railCount}-rail pipe fence — with ${railLabel} horizontal rails, specifically for the conditions on YOUR property.`;
+      } else {
+        const postSpec = POST_MATERIALS.find(p => p.id === data.postMaterial);
+        const matPostLabel = postSpec
+          ? `${postSpec.label} (${postSpec.diameter}, ${postSpec.weightPerFoot} lb/ft)`
+          : data.postMaterial;
+        isDrillStem = data.postMaterial.startsWith('drill_stem');
+        postSelectionSentence = `We selected ${matPostLabel} for your line posts (spaced every ${data.linePostSpacing}') and T-posts every ${data.tPostSpacing}' specifically for the conditions on YOUR property.`;
+      }
+
       const matReasons: string[] = [];
       if (site.bedrockDepthIn != null && site.bedrockDepthIn <= 30) {
         matReasons.push(isDrillStem
@@ -1579,9 +1601,7 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
         matReasons.push(`posts set ${isDrillStem ? '3\' deep' : 'to full depth'} with extra concrete to combat clay heave`);
       }
 
-      const closerParts: string[] = [
-        `We selected ${matPostLabel} for your line posts (spaced every ${data.linePostSpacing}') and T-posts every ${data.tPostSpacing}' specifically for the conditions on YOUR property.`,
-      ];
+      const closerParts: string[] = [postSelectionSentence];
       if (matReasons.length > 0) {
         closerParts.push(`Why: ${matReasons.join('; ')}.`);
       }
@@ -2043,13 +2063,13 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
 
       for (let i = 0; i < sortedMats.length; i++) {
         const row = sortedMats[i];
-        // Clean qty: take first quantity only (no multi-section duplication for single-section bids)
-        const cleanQty = row.qty.includes('+') ? row.qty.split('+').map(s => s.trim()).join(' + ') : row.qty;
-        // Truncate qty for compact display
-        const qtyShort = cleanQty.length > 50 ? cleanQty.slice(0, 47) + '...' : cleanQty;
+        // Normalize internal whitespace; preserve full quantity string so totals
+        // (e.g. line-post breakdowns like "234 uprights (59 joints × 31', 74' scrap) + 156 ...")
+        // aren't cut off. splitTextToSize below handles wrapping into the column width.
+        const cleanQty = row.qty.replace(/\s*\+\s*/g, ' + ').replace(/\s+/g, ' ').trim();
 
         const nameLines = doc.splitTextToSize(row.shortName, cw * 0.55);
-        const qtyLines = doc.splitTextToSize(qtyShort, cw * 0.4);
+        const qtyLines = doc.splitTextToSize(cleanQty, cw * 0.4);
         const rowH = Math.max(nameLines.length, qtyLines.length) * 3.5 + 2;
 
         y = ensureSpace(doc, y, rowH);
@@ -3216,17 +3236,20 @@ function drawPipeFenceSectionDiagram(
     }
   }
 
-  // Rail vertical positions: evenly distributed from top (cfg.fenceHeightFeet)
-  // down to ~6" above ground for the bottom rail. If only one rail, place it
-  // at the top.
+  // Rail vertical positions: evenly distributed from the top of the fence down to
+  // the ground. With railCount evenly-spaced rails and the ground as the lower
+  // reference, rail i (0 = top) sits at fenceHeight × (1 - i/railCount):
+  //   • 1 rail  → top only
+  //   • 2 rails → top, mid-height (H, H/2)
+  //   • 3 rails → top, 2/3 H, 1/3 H
+  //   • 4 rails → top, 3/4 H, H/2, H/4 ... and so on.
+  // This matches typical pipe-fence framing where the bottom rail anchors near
+  // ground and the rails between are evenly spaced from the top rail down.
   const railCount = Math.max(1, Math.min(6, Math.round(cfg.railCount)));
-  const topY_ft = cfg.fenceHeightFeet - 0.05;        // top rail at top (small inset)
-  const bottomY_ft = railCount > 1 ? 0.5 : topY_ft;  // bottom rail 6" off ground if multi-rail
   const railYsFt: number[] = [];
   for (let i = 0; i < railCount; i++) {
-    if (railCount === 1) { railYsFt.push(topY_ft); break; }
-    const t = i / (railCount - 1);
-    railYsFt.push(topY_ft - t * (topY_ft - bottomY_ft));
+    const heightFt = cfg.fenceHeightFeet * (1 - i / railCount);
+    railYsFt.push(heightFt);
   }
 
   // Draw rails
