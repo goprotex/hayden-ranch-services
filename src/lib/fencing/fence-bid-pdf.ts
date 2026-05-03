@@ -23,10 +23,14 @@ export interface LaborEstimate {
   drillingHours: number;       // time to drill all post holes
   postSettingHours: number;    // time to set posts in concrete
   tPostHours: number;          // time to drive T-posts
-  wireHours: number;           // wire unrolling & tensioning time
-  clippingHours: number;       // time to clip/tie wire to every post
+  wireHours: number;           // wire unrolling & tensioning time (0 for pipe fence)
+  clippingHours: number;       // time to clip/tie wire to every post (0 for pipe fence)
   braceAssemblyHours: number;  // time to build H-brace & corner brace assemblies
   gateHours: number;           // gate installation
+  // ── Pipe-fence-specific (0 for non-pipe fences) ──
+  pipeRailHandlingHours?: number; // cut & position rail pipe between posts
+  pipeWeldingHours?: number;      // welding rails to posts
+  pipePaintHours?: number;        // painting the assembled fence
   totalHours: number;
   workDayHours: number;        // hours per work day (9-10)
   workDays: number;            // total work days
@@ -1713,6 +1717,33 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       });
     }
 
+    // Phase 4b: Pipe-fence rail handling + welding (only present for pipe fence)
+    const pipeBuildItems = le.breakdown.filter(b => {
+      const t = b.task.toLowerCase();
+      return t.includes('rail pipe') || t.includes('weld');
+    });
+    const pipeBuildHrs = pipeBuildItems.reduce((s, b) => s + b.hours, 0);
+    if (pipeBuildHrs > 0) {
+      phases.push({
+        name: 'Rail Cutting & Welding',
+        icon: String(phases.length + 1),
+        hours: Math.round(pipeBuildHrs * 10) / 10,
+        items: pipeBuildItems.map(b => b.detail),
+      });
+    }
+
+    // Phase 4c: Pipe fence painting (only if applicable)
+    const pipePaintItems = le.breakdown.filter(b => b.task.toLowerCase().includes('paint'));
+    const pipePaintHrs = pipePaintItems.reduce((s, b) => s + b.hours, 0);
+    if (pipePaintHrs > 0) {
+      phases.push({
+        name: 'Painting',
+        icon: String(phases.length + 1),
+        hours: Math.round(pipePaintHrs * 10) / 10,
+        items: pipePaintItems.map(b => b.detail),
+      });
+    }
+
     // Phase 5: Gates & Finishing
     const gateItems = le.breakdown.filter(b => b.task.toLowerCase().includes('gate'));
     const gateHrs = gateItems.reduce((s, b) => s + b.hours, 0);
@@ -2882,6 +2913,18 @@ export function calculateLaborEstimate(params: {
   clipsPerTPost?: number;      // clips per T-post (default 4)
   tiesPerLinePost?: number;    // wire ties per line post (default 4)
   workDayHours?: number;       // default 9.5
+  // Pipe-fence overrides — when present, the wire-stringing/clipping steps
+  // are replaced with welding + rail handling + (optional) painting steps.
+  // weldsCount: total rail-to-post welds for the run (from
+  // calculatePipeFenceMaterials.weldsCount).
+  // railJoints: full pipe joints to cut / position
+  // (calculatePipeFenceMaterials.railJoints).
+  // paintGallons: 0 for bare; otherwise full-job paint quantity.
+  pipeFence?: {
+    weldsCount: number;
+    railJoints: number;
+    paintGallons: number;
+  };
 }): LaborEstimate {
   const {
     totalLinearFeet,
@@ -2893,7 +2936,10 @@ export function calculateLaborEstimate(params: {
     clipsPerTPost = 4,
     tiesPerLinePost = 4,
     workDayHours = 9.5,
+    pipeFence,
   } = params;
+
+  const isPipeFence = !!pipeFence;
 
   const breakdown: { task: string; hours: number; detail: string }[] = [];
 
@@ -2959,21 +3005,63 @@ export function calculateLaborEstimate(params: {
   }
 
   // ── Wire stringing (~300 ft/hr for unrolling & tensioning) ──
-  const wireHrs = totalLinearFeet / 300;
-  breakdown.push({
-    task: 'Unroll & tension wire',
-    hours: wireHrs,
-    detail: `${totalLinearFeet.toLocaleString()} ft @ ~300 ft/hr (unroll, stretch, tension)`,
-  });
+  // Pipe fence has no wire — skip this step entirely for pipe.
+  let wireHrs = 0;
+  if (!isPipeFence) {
+    wireHrs = totalLinearFeet / 300;
+    breakdown.push({
+      task: 'Unroll & tension wire',
+      hours: wireHrs,
+      detail: `${totalLinearFeet.toLocaleString()} ft @ ~300 ft/hr (unroll, stretch, tension)`,
+    });
+  }
 
   // ── Clipping wire to posts (~1 min per clip/tie) ──
-  const totalClips = (tPostCount * clipsPerTPost) + (linePostCount * tiesPerLinePost);
-  const clippingHrs = totalClips / 60; // 1 minute per clip
-  breakdown.push({
-    task: 'Clip & tie wire to posts',
-    hours: clippingHrs,
-    detail: `${totalClips.toLocaleString()} clips/ties @ ~1 min each (${tPostCount} T-posts × ${clipsPerTPost} + ${linePostCount} line posts × ${tiesPerLinePost})`,
-  });
+  // Again, no clips/ties on a pipe fence.
+  let clippingHrs = 0;
+  if (!isPipeFence) {
+    const totalClips = (tPostCount * clipsPerTPost) + (linePostCount * tiesPerLinePost);
+    clippingHrs = totalClips / 60; // 1 minute per clip
+    breakdown.push({
+      task: 'Clip & tie wire to posts',
+      hours: clippingHrs,
+      detail: `${totalClips.toLocaleString()} clips/ties @ ~1 min each (${tPostCount} T-posts × ${clipsPerTPost} + ${linePostCount} line posts × ${tiesPerLinePost})`,
+    });
+  }
+
+  // ── Pipe-fence specific steps: rail handling + welding + painting ──
+  // Welding is the dominant labor on a pipe fence. Real-world rate from ranch
+  // pipe fence builders is ~3 minutes per finished rail-to-post weld
+  // (positioning the rail, tacking, full weld pass, light grinding). Continuous
+  // top rail welds are slightly faster (lap weld on top of post) but caps-style
+  // butt welds are slower (two welds per rail end) — 3 min/weld is a fair avg.
+  // Rail handling: ~5 min per joint (haul, measure, cut, fit between posts)
+  // Painting: ~30 min per gallon (prep + apply, sprayer or roller)
+  let pipeRailHandlingHrs = 0;
+  let pipeWeldingHrs = 0;
+  let pipePaintHrs = 0;
+  if (pipeFence) {
+    pipeRailHandlingHrs = pipeFence.railJoints * (5 / 60);
+    pipeWeldingHrs = pipeFence.weldsCount * (3 / 60);
+    pipePaintHrs = pipeFence.paintGallons * 0.5;
+    breakdown.push({
+      task: 'Cut & position rail pipe',
+      hours: pipeRailHandlingHrs,
+      detail: `${pipeFence.railJoints} joints × ~5 min each (haul, measure, cut, fit between posts)`,
+    });
+    breakdown.push({
+      task: 'Weld rails to posts',
+      hours: pipeWeldingHrs,
+      detail: `${pipeFence.weldsCount.toLocaleString()} welds × ~3 min each (position, tack, full pass, light grind)`,
+    });
+    if (pipeFence.paintGallons > 0) {
+      breakdown.push({
+        task: 'Paint fence',
+        hours: pipePaintHrs,
+        detail: `${pipeFence.paintGallons} gal × ~30 min each (prep + spray/roll)`,
+      });
+    }
+  }
 
   // ── Gates (avg 1.5 hrs per gate install including welding frame) ──
   const gateHrs = gateCount * 1.5;
@@ -2999,6 +3087,9 @@ export function calculateLaborEstimate(params: {
     clippingHours: Math.round(clippingHrs * 10) / 10,
     braceAssemblyHours: Math.round(braceAssemblyHours * 10) / 10,
     gateHours: Math.round(gateHrs * 10) / 10,
+    pipeRailHandlingHours: Math.round(pipeRailHandlingHrs * 10) / 10,
+    pipeWeldingHours: Math.round(pipeWeldingHrs * 10) / 10,
+    pipePaintHours: Math.round(pipePaintHrs * 10) / 10,
     totalHours: Math.round(totalHours * 10) / 10,
     workDayHours,
     workDays: Math.ceil(workDays),

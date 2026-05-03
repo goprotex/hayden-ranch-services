@@ -717,7 +717,13 @@ export default function FencingPage() {
     gateCount: gates.length,
     clipsPerTPost: 4,
     tiesPerLinePost,
-  }), [totalFeet, materialCalc, gates.length, tiesPerLinePost]);
+    // Pipe-fence-specific labor inputs (dominated by welding, not wire stringing)
+    pipeFence: fenceType === 'pipe_fence' ? {
+      weldsCount: materialCalc.pipeWeldsCount,
+      railJoints: materialCalc.pipeRailJoints,
+      paintGallons: materialCalc.pipePaintGallons,
+    } : undefined,
+  }), [totalFeet, materialCalc, gates.length, tiesPerLinePost, fenceType]);
   const timelineDays = laborEstimate.workDays;
 
   const paintEst = useMemo(() => {
