@@ -524,8 +524,10 @@ export interface PipeFenceMaterials {
   totalCost: number;                   // totalMaterialCost + paintLaborCost
 }
 
-/** Outside diameter (or width for square tube) in INCHES for a given post material. */
-function postOdInches(material: PostMaterial): number {
+/** Outside diameter (or width for square tube) in INCHES for a given post material.
+ *  Exported so consumers (e.g. the PDF section diagram) don't have to duplicate
+ *  the lookup table. */
+export function postOdInches(material: PostMaterial): number {
   switch (material) {
     case 'drill_stem_238': return 2.375;
     case 'drill_stem_278': return 2.875;

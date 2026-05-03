@@ -1465,6 +1465,8 @@ export default function FencingPage() {
                     <div className="grid grid-cols-5 gap-1.5">
                       {[3.5, 4, 5, 6, 7].map(h => (
                         <button key={h} onClick={() => setPipeFenceHeightFt(h)}
+                          aria-label={`Set fence height to ${h} feet`}
+                          aria-pressed={pipeFenceHeightFt === h}
                           className={`py-1.5 rounded-lg text-xs font-semibold transition ${pipeFenceHeightFt === h ? 'bg-tan-400 text-black' : 'bg-black text-steel-400 hover:bg-steel-900 hover:text-steel-200'}`}>
                           {h}&prime;
                         </button>
@@ -1532,8 +1534,9 @@ export default function FencingPage() {
 
                   {/* Post spacing for pipe fence */}
                   <div>
-                    <label className="block text-xs font-medium text-steel-400 mb-1.5">Upright Spacing: <span className="text-tan-300">{pipePostSpacingFt} ft</span></label>
-                    <input type="range" min={6} max={12} step={0.5} value={pipePostSpacingFt}
+                    <label htmlFor="pipe-upright-spacing" className="block text-xs font-medium text-steel-400 mb-1.5">Upright Spacing: <span className="text-tan-300">{pipePostSpacingFt} ft</span></label>
+                    <input id="pipe-upright-spacing" type="range" min={6} max={12} step={0.5} value={pipePostSpacingFt}
+                      aria-label={`Pipe fence upright spacing in feet, currently ${pipePostSpacingFt}`}
                       onChange={e => setPipePostSpacingFt(parseFloat(e.target.value))}
                       className="w-full accent-tan-400" />
                     <div className="flex justify-between text-[9px] text-steel-500"><span>6 ft</span><span>12 ft</span></div>

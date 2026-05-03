@@ -5,6 +5,7 @@ import {
   POST_MATERIALS,
   getGaugeOptions,
   calculatePipeFenceMaterials,
+  postOdInches,
   type PostMaterial,
   type SquareTubeGauge,
   type PipeFenceConfig,
@@ -3069,21 +3070,8 @@ function drawPipeFenceSectionDiagram(
   }
 
   // Post dimensions in drawing units
-  // Real-world post OD (inches → feet → mm). We don't have access to the
-  // post-OD helper here, so duplicate the small lookup.
-  const postOdInchesLocal = (m: PipeFenceConfig['uprightMaterial']): number => {
-    switch (m) {
-      case 'drill_stem_238': return 2.375;
-      case 'drill_stem_278': return 2.875;
-      case 'round_pipe_250': return 2.5;
-      case 'square_2': return 2;
-      case 'square_3': return 3;
-      case 'square_4': return 4;
-      default: return 2.375;
-    }
-  };
-  const railOdInchesLocal = postOdInchesLocal(cfg.railMaterial);
-  const uprightOdIn = postOdInchesLocal(cfg.uprightMaterial);
+  const railOdInchesLocal = postOdInches(cfg.railMaterial);
+  const uprightOdIn = postOdInches(cfg.uprightMaterial);
   const uprightThicknessMm = Math.max(1.4, ftToMmX(uprightOdIn / 12));
   const railThicknessMm = Math.max(0.8, ftToMmY(railOdInchesLocal / 12));
 
