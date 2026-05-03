@@ -68,6 +68,23 @@ interface SiteAnalysisRequest {
     tPostSpacing: number;
     linePostSpacing: number;
     wireHeightInches?: number;
+    // Pipe-fence-specific (only populated when fenceType is a pipe fence — supersedes
+    // T-post / line-post-spacing fields above, which do not apply to pipe fences).
+    pipeFence?: {
+      uprightMaterialLabel: string;   // e.g. "2-7/8\" Drill Stem"
+      railMaterialLabel: string;      // e.g. "2-3/8\" Drill Stem"
+      uprightCount: number;
+      railJoints: number;
+      railTotalFeet: number;
+      postSpacingFeet: number;
+      fenceHeightFeet: number;
+      railCount: number;
+      topRailStyle: 'continuous' | 'caps';
+      finish: 'painted' | 'bare';
+      paintColor?: string;
+      weldsCount: number;
+      paintGallons: number;
+    };
   };
 }
 
@@ -87,7 +104,7 @@ You MUST return valid JSON with exactly these 5 keys. Each value is a string of 
   "soilProfile": "2-3 paragraphs, 150-250 words. Scientific classification in human terms. If taxonomy data exists, explain what the soil order means for fence posts (Mollisols = rich grassland soil, settling risk; Vertisols = shrink-swell clay; Alfisols = clay subsoil anchoring; etc). Describe soil components and percentages. Skip if no taxonomy data — write 'null' as the value.",
   "belowTheSurface": "2-3 paragraphs, 150-250 words. Bedrock depth vs. the 30-36 inch post requirement. Rock fragment percentages and what that means for augering. Equipment you'll bring. If bedrock is shallow (<24\\"), explain every hole gets drilled and that rock-anchored posts are actually the strongest installation. Skip if no bedrock data — write 'null'.",
   "terrainDrainageWater": "1-2 paragraphs, 100-200 words. Elevation change expressed as slope percentage over the fence length. Drainage classification and what it means for concrete curing and post longevity. Hydric indicators if present. Runoff class. Skip if minimal data — write 'null'.",
-  "materialSelection": "2-3 paragraphs, 200-300 words. THIS IS THE KEY SECTION. You have the exact materials and quantities being used. Name every material: the specific post type and diameter, the wire model, the spacing, number of braces, concrete bags, accessories. Explain WHY each was chosen for THIS property's soil and terrain — tie each material decision back to a specific finding from the soil/terrain data. End with a confidence statement that this is not a generic bid."
+  "materialSelection": "2-3 paragraphs, 200-300 words. THIS IS THE KEY SECTION. You have the exact materials and quantities being used. Name every material: the specific post type and diameter, the wire model, the spacing, number of braces, concrete bags, accessories. Explain WHY each was chosen for THIS property's soil and terrain — tie each material decision back to a specific finding from the soil/terrain data. End with a confidence statement that this is not a generic bid. IF the build is a WELDED PIPE FENCE (uprights + horizontal rails, no T-posts, no woven wire), describe uprights, rail count/style, post spacing, welds, and finish — never mention T-posts, line-post spacing, woven wire, or wire rolls."
 }
 
 Hard rules:
@@ -231,24 +248,45 @@ function buildUserPrompt(data: SiteAnalysisRequest): string {
   if (data.materials) {
     const m = data.materials;
     parts.push('\n=== SELECTED MATERIALS & QUANTITIES ===');
-    parts.push(`Wire: ${m.stayTuffModel ? `Stay-Tuff ${m.stayTuffModel}` : data.fenceType}${m.stayTuffDescription ? ` — ${m.stayTuffDescription}` : ''}`);
-    if (m.wireHeightInches) parts.push(`Wire height: ${m.wireHeightInches}" (${(m.wireHeightInches / 12).toFixed(1)} ft)`);
-    parts.push(`Wire rolls needed: ${m.wireRolls}`);
-    parts.push(`Top wire: ${m.topWireType === 'barbed_double' ? 'double barbed wire' : m.topWireType === 'barbed' ? 'single barbed wire' : 'smooth high-tensile wire'}`);
-    let postDesc2 = data.postMaterialLabel || data.postMaterial;
-    if (data.squareTubeGauge) postDesc2 += ` ${data.squareTubeGauge}`;
-    parts.push(`Line posts: ${m.linePostCount} × ${postDesc2} (spaced every ${m.linePostSpacing}')`);
-    parts.push(`T-posts: ${m.tPostCount} (spaced every ${m.tPostSpacing}' between line posts)`);
-    parts.push(`H-brace assemblies: ${m.hBraces}`);
-    parts.push(`Corner brace assemblies: ${m.cornerBraces}`);
-    if (m.doubleHBraces > 0) parts.push(`Double H-brace assemblies: ${m.doubleHBraces}`);
-    parts.push(`Total brace assemblies: ${m.totalBraces}`);
-    parts.push(`Concrete bags (80 lb): ${m.concreteBags}`);
-    if (m.gateCount > 0) parts.push(`Gates: ${m.gateCount}`);
-    if (m.waterGapCount > 0) parts.push(`Water gap cable kits: ${m.waterGapCount}`);
-    if (m.postCaps > 0) parts.push(`Post caps: ${m.postCaps}`);
-    if (m.tensioners > 0) parts.push(`Inline tensioners: ${m.tensioners}`);
-    if (m.springIndicators > 0) parts.push(`Spring tension indicators: ${m.springIndicators}`);
+    if (m.pipeFence) {
+      // Pipe-fence builds use uprights + horizontal rails (no T-posts, no woven
+      // wire). Tell the AI explicitly so the narrative doesn't reference
+      // T-post spacing or line-post spacing — those concepts don't exist here.
+      const pf = m.pipeFence;
+      parts.push(`Fence style: WELDED PIPE FENCE — uprights + horizontal rails (NO T-posts, NO woven wire, NO line-post spacing concept).`);
+      parts.push(`Uprights: ${pf.uprightCount} × ${pf.uprightMaterialLabel}, set every ${pf.postSpacingFeet}' along the fence line.`);
+      parts.push(`Fence height: ${pf.fenceHeightFeet}' tall with ${pf.railCount} horizontal rail${pf.railCount > 1 ? 's' : ''}.`);
+      parts.push(`Rails: ${pf.railJoints} joints of ${pf.railMaterialLabel} (${pf.railTotalFeet.toLocaleString()} ft total).`);
+      parts.push(`Top rail style: ${pf.topRailStyle === 'continuous' ? 'continuous top rail welded across post tops' : 'rails butt-welded between posts with post caps'}.`);
+      parts.push(`Total rail-to-post welds: ${pf.weldsCount.toLocaleString()}.`);
+      parts.push(`Finish: ${pf.finish === 'painted' ? `painted ${pf.paintColor || ''} (${pf.paintGallons} gallons)` : 'bare steel (will rust naturally)'}`);
+      parts.push(`H-brace assemblies: ${m.hBraces}`);
+      parts.push(`Corner brace assemblies: ${m.cornerBraces}`);
+      if (m.doubleHBraces > 0) parts.push(`Double H-brace assemblies: ${m.doubleHBraces}`);
+      parts.push(`Total brace assemblies: ${m.totalBraces}`);
+      parts.push(`Concrete bags (80 lb): ${m.concreteBags}`);
+      if (m.gateCount > 0) parts.push(`Gates: ${m.gateCount}`);
+      parts.push(`IMPORTANT: Do NOT mention T-posts, line-post spacing, woven wire, wire rolls, or top-wire selections — none apply to a pipe fence. Reference uprights, rails, welds, and (where relevant) paint instead.`);
+    } else {
+      parts.push(`Wire: ${m.stayTuffModel ? `Stay-Tuff ${m.stayTuffModel}` : data.fenceType}${m.stayTuffDescription ? ` — ${m.stayTuffDescription}` : ''}`);
+      if (m.wireHeightInches) parts.push(`Wire height: ${m.wireHeightInches}" (${(m.wireHeightInches / 12).toFixed(1)} ft)`);
+      parts.push(`Wire rolls needed: ${m.wireRolls}`);
+      parts.push(`Top wire: ${m.topWireType === 'barbed_double' ? 'double barbed wire' : m.topWireType === 'barbed' ? 'single barbed wire' : 'smooth high-tensile wire'}`);
+      let postDesc2 = data.postMaterialLabel || data.postMaterial;
+      if (data.squareTubeGauge) postDesc2 += ` ${data.squareTubeGauge}`;
+      parts.push(`Line posts: ${m.linePostCount} × ${postDesc2} (spaced every ${m.linePostSpacing}')`);
+      parts.push(`T-posts: ${m.tPostCount} (spaced every ${m.tPostSpacing}' between line posts)`);
+      parts.push(`H-brace assemblies: ${m.hBraces}`);
+      parts.push(`Corner brace assemblies: ${m.cornerBraces}`);
+      if (m.doubleHBraces > 0) parts.push(`Double H-brace assemblies: ${m.doubleHBraces}`);
+      parts.push(`Total brace assemblies: ${m.totalBraces}`);
+      parts.push(`Concrete bags (80 lb): ${m.concreteBags}`);
+      if (m.gateCount > 0) parts.push(`Gates: ${m.gateCount}`);
+      if (m.waterGapCount > 0) parts.push(`Water gap cable kits: ${m.waterGapCount}`);
+      if (m.postCaps > 0) parts.push(`Post caps: ${m.postCaps}`);
+      if (m.tensioners > 0) parts.push(`Inline tensioners: ${m.tensioners}`);
+      if (m.springIndicators > 0) parts.push(`Spring tension indicators: ${m.springIndicators}`);
+    }
   }
 
   return parts.join('\n');

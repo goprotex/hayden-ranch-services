@@ -797,6 +797,29 @@ export default function FencingPage() {
             barbedStrandCount: fenceType === 'barbed_wire' ? barbedStrandCount : undefined,
             barbedPointType: fenceType === 'barbed_wire' || topWireType === 'barbed' || topWireType === 'barbed_double' ? barbedWireType : undefined,
             premiumGalvanized,
+            // For pipe fence, send the pipe-specific build details so the AI
+            // doesn't fabricate T-post / line-post-spacing claims that don't
+            // apply to a welded pipe fence.
+            pipeFence: fenceType === 'pipe_fence' ? (() => {
+              const pipe = calculatePipeFenceMaterials(totalFeet || 1000, pipeFenceConfig, materialPrices);
+              const upSpec = POST_MATERIALS.find(p => p.id === pipeFenceConfig.uprightMaterial);
+              const railSpec = POST_MATERIALS.find(p => p.id === pipeFenceConfig.railMaterial);
+              return {
+                uprightMaterialLabel: upSpec?.label || pipeFenceConfig.uprightMaterial,
+                railMaterialLabel: railSpec?.label || pipeFenceConfig.railMaterial,
+                uprightCount: pipe.uprightCount,
+                railJoints: pipe.railJoints,
+                railTotalFeet: pipe.railTotalFeet,
+                postSpacingFeet: pipeFenceConfig.postSpacingFeet,
+                fenceHeightFeet: pipeFenceConfig.fenceHeightFeet,
+                railCount: pipeFenceConfig.railCount,
+                topRailStyle: pipeFenceConfig.topRailStyle,
+                finish: pipeFenceConfig.finish,
+                paintColor: pipeFenceConfig.paintColor,
+                weldsCount: pipe.weldsCount,
+                paintGallons: pipe.paintGallons,
+              };
+            })() : undefined,
           },
         }),
       });
@@ -810,7 +833,7 @@ export default function FencingPage() {
   }, [terrainSuggestion, address, clientName, projectName, projectOverview, fenceType, fenceHeight,
       totalFeet, postMaterial, squareTubeGauge, steepFootage, materialCalc, gates.length,
       selectedStayTuff, topWireType, tPostSpacing, linePostSpacing, wireHeightInches,
-      barbedStrandCount, barbedWireType, premiumGalvanized]);
+      barbedStrandCount, barbedWireType, premiumGalvanized, pipeFenceConfig, materialPrices]);
 
   // Auto-trigger when terrain analysis arrives (initial load only)
   useEffect(() => {
@@ -1109,9 +1132,13 @@ export default function FencingPage() {
       steepSurchargePerFoot: steepFootage > 0 ? 2 : undefined,
       wireCategory: fenceType.startsWith('stay_tuff') ? wireCategory : undefined,
       productImages: productImages.length > 0 ? productImages : undefined,
-      fenceLifespanYears: 25,
-      alternativeCostPerFoot: 6,
-      alternativeLifespanYears: 8,
+      fenceLifespanYears: fenceType === 'pipe_fence' ? 55 : 25,
+      // For pipe fence, compare against a typical wire fence (~$10/ft, ~25 yr life)
+      // instead of the cheap-barbed-wire baseline used for wire fences.
+      alternativeCostPerFoot: fenceType === 'pipe_fence' ? 10 : 6,
+      alternativeLifespanYears: fenceType === 'pipe_fence' ? 25 : 8,
+      alternativeLabel: fenceType === 'pipe_fence' ? 'TYPICAL WIRE FENCE' : 'STANDARD BARBED WIRE',
+      alternativeSavingsLabel: fenceType === 'pipe_fence' ? 'a typical wire fence' : 'a standard barbed wire installation',
       enclosedAcreage: totalFeet > 0 ? parseFloat(((totalFeet / 4) * (totalFeet / 4) / 43560).toFixed(1)) : undefined,
       permitInfo: {
         hoaFound: false,
@@ -1376,21 +1403,24 @@ export default function FencingPage() {
                 </label>
               </div>
             </Card>
-            <Card title="Post Spacing" icon="&#x1f4cf;">
-              <div className="space-y-4">
-                <DSlider label="Line Post Spacing" value={linePostSpacing} min={30} max={70} step={1}
-                  display={`${linePostSpacing} ft`} onChange={setLinePostSpacing} minLabel="30 ft" maxLabel="70 ft" />
-                <DSlider label="T-Post Spacing" value={tPostSpacing} min={7} max={15} step={0.5}
-                  display={`${tPostSpacing} ft`} onChange={setTPostSpacing} minLabel="7 ft" maxLabel="15 ft" />
-                <div className="bg-black rounded-lg p-3 text-xs text-steel-400">
-                  <div className="flex justify-between"><span>Line Posts (est):</span><span className="text-steel-200 font-semibold">{materialCalc.linePostCount}{materialCalc.gradeTransitionPosts > 0 ? ` (incl. ${materialCalc.gradeTransitionPosts} grade posts)` : ''}</span></div>
-                  <div className="flex justify-between mt-1"><span>T-Posts ({tPostRec.label}):</span><span className="text-steel-200 font-semibold">{materialCalc.tPostCount}</span></div>
+            {/* Post Spacing — hidden for pipe fence (pipe fence uses its own upright spacing in the Pipe Fence Options card) */}
+            {fenceType !== 'pipe_fence' && (
+              <Card title="Post Spacing" icon="&#x1f4cf;">
+                <div className="space-y-4">
+                  <DSlider label="Line Post Spacing" value={linePostSpacing} min={30} max={70} step={1}
+                    display={`${linePostSpacing} ft`} onChange={setLinePostSpacing} minLabel="30 ft" maxLabel="70 ft" />
+                  <DSlider label="T-Post Spacing" value={tPostSpacing} min={7} max={15} step={0.5}
+                    display={`${tPostSpacing} ft`} onChange={setTPostSpacing} minLabel="7 ft" maxLabel="15 ft" />
+                  <div className="bg-black rounded-lg p-3 text-xs text-steel-400">
+                    <div className="flex justify-between"><span>Line Posts (est):</span><span className="text-steel-200 font-semibold">{materialCalc.linePostCount}{materialCalc.gradeTransitionPosts > 0 ? ` (incl. ${materialCalc.gradeTransitionPosts} grade posts)` : ''}</span></div>
+                    <div className="flex justify-between mt-1"><span>T-Posts ({tPostRec.label}):</span><span className="text-steel-200 font-semibold">{materialCalc.tPostCount}</span></div>
+                  </div>
                 </div>
-              </div>
-            </Card>
+              </Card>
+            )}
 
-            {/* Top/Bottom Wire — only show for non-barbed-wire fence types */}
-            {fenceType !== 'barbed_wire' && (
+            {/* Top/Bottom Wire — only show for wire-style fences (hide for barbed-wire-only and for pipe fence) */}
+            {fenceType !== 'barbed_wire' && fenceType !== 'pipe_fence' && (
               <Card title="Top & Bottom Wire" icon="&#x2194;&#xfe0f;">
                 <div className="space-y-2">
                   <label className="block text-xs font-medium text-steel-400 mb-1">Wire Type (runs above & below field wire)</label>
@@ -1600,44 +1630,49 @@ export default function FencingPage() {
                 </div>
               </Card>
             )}
-            <Card title="Wire Tie Pattern" icon="&#x1f9f5;">
-              <div className="grid grid-cols-1 gap-1.5">
-                {([
-                  { value: 'every_strand' as TiePattern, label: 'Every Strand', desc: 'Tie wire at every horizontal strand per post' },
-                  { value: 'every_other' as TiePattern, label: 'Every Other Strand', desc: 'Tie wire at alternating strands' },
-                  { value: 'four_per_post' as TiePattern, label: '4 Per Post', desc: '4 ties per post, evenly spaced' },
-                ]).map(opt => (
-                  <button key={opt.value} onClick={() => setTiePattern(opt.value)}
-                    className={`py-2 px-3 rounded-lg text-left transition ${tiePattern === opt.value ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-white/[0.06] hover:bg-steel-900'}`}>
-                    <span className="text-[11px] font-medium block">{opt.label}</span>
-                    <span className="text-[9px] opacity-60">{opt.desc}</span>
-                  </button>
-                ))}
-              </div>
-            </Card>
+            {/* Wire Tie Pattern — wire-fence only (pipe fence has no wire ties) */}
+            {fenceType !== 'pipe_fence' && (
+              <Card title="Wire Tie Pattern" icon="&#x1f9f5;">
+                <div className="grid grid-cols-1 gap-1.5">
+                  {([
+                    { value: 'every_strand' as TiePattern, label: 'Every Strand', desc: 'Tie wire at every horizontal strand per post' },
+                    { value: 'every_other' as TiePattern, label: 'Every Other Strand', desc: 'Tie wire at alternating strands' },
+                    { value: 'four_per_post' as TiePattern, label: '4 Per Post', desc: '4 ties per post, evenly spaced' },
+                  ]).map(opt => (
+                    <button key={opt.value} onClick={() => setTiePattern(opt.value)}
+                      className={`py-2 px-3 rounded-lg text-left transition ${tiePattern === opt.value ? 'bg-tan-400/10 text-tan-300 border border-tan-400/30' : 'bg-black text-steel-400 border border-white/[0.06] hover:bg-steel-900'}`}>
+                      <span className="text-[11px] font-medium block">{opt.label}</span>
+                      <span className="text-[9px] opacity-60">{opt.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </Card>
+            )}
 
-            {/* Accessories & Upsells */}
-            <Card title="Accessories" icon="&#x2699;&#xfe0f;">
-              <div className="space-y-2.5">
-                {([
-                  { get: includePostCaps, set: setIncludePostCaps, label: 'Post Caps', desc: 'Prevents rain intrusion on square tube posts' },
-                  { get: includeTensioners, set: setIncludeTensioners, label: 'Inline Tensioners', desc: 'Tensioners at H-braces and every 660\' on long runs' },
-                  { get: includeSpringIndicators, set: setIncludeSpringIndicators, label: 'Spring Tension Indicators', desc: 'Visual indicators showing wire tension at each H-brace' },
-                  { get: concreteFillPosts, set: setConcreteFillPosts, label: 'Concrete-Filled Posts', desc: 'Fill square tube posts with concrete for maximum rigidity' },
-                ]).map(opt => (
-                  <label key={opt.label} className="flex items-center gap-3 cursor-pointer group">
-                    <div className={`w-10 h-5 rounded-full transition relative ${opt.get ? 'bg-white' : 'bg-black'}`}
-                      onClick={() => opt.set(!opt.get)}>
-                      <div className={`absolute w-4 h-4 bg-white rounded-full top-0.5 transition-all ${opt.get ? 'left-5' : 'left-0.5'}`} />
-                    </div>
-                    <div>
-                      <span className="text-[11px] text-steel-300 font-medium block group-hover:text-steel-200">{opt.label}</span>
-                      <span className="text-[9px] text-steel-500">{opt.desc}</span>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </Card>
+            {/* Accessories & Upsells — wire-fence only (pipe fence accessories live in the Pipe Fence Options card) */}
+            {fenceType !== 'pipe_fence' && (
+              <Card title="Accessories" icon="&#x2699;&#xfe0f;">
+                <div className="space-y-2.5">
+                  {([
+                    { get: includePostCaps, set: setIncludePostCaps, label: 'Post Caps', desc: 'Prevents rain intrusion on square tube posts' },
+                    { get: includeTensioners, set: setIncludeTensioners, label: 'Inline Tensioners', desc: 'Tensioners at H-braces and every 660\' on long runs' },
+                    { get: includeSpringIndicators, set: setIncludeSpringIndicators, label: 'Spring Tension Indicators', desc: 'Visual indicators showing wire tension at each H-brace' },
+                    { get: concreteFillPosts, set: setConcreteFillPosts, label: 'Concrete-Filled Posts', desc: 'Fill square tube posts with concrete for maximum rigidity' },
+                  ]).map(opt => (
+                    <label key={opt.label} className="flex items-center gap-3 cursor-pointer group">
+                      <div className={`w-10 h-5 rounded-full transition relative ${opt.get ? 'bg-white' : 'bg-black'}`}
+                        onClick={() => opt.set(!opt.get)}>
+                        <div className={`absolute w-4 h-4 bg-white rounded-full top-0.5 transition-all ${opt.get ? 'left-5' : 'left-0.5'}`} />
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-steel-300 font-medium block group-hover:text-steel-200">{opt.label}</span>
+                        <span className="text-[9px] text-steel-500">{opt.desc}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </Card>
+            )}
 
             <Card title="Bracing" icon="&#x1f527;">
               <div className="space-y-3">
