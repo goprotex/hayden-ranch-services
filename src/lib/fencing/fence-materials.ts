@@ -9,6 +9,13 @@ export type GateSize = '4ft' | '6ft' | '8ft' | '10ft' | '12ft' | '16ft';
 export type BarbedWireType = '2_point' | '4_point';
 export type TiePattern = 'every_strand' | 'every_other' | 'four_per_post';
 
+// -- Pipe Fence types --
+/** "continuous" = one long top rail welded ACROSS post tops (post tops hidden under rail).
+ *  "caps"       = all rails (incl. top) butt-welded BETWEEN posts; post tops stick up & get caps. */
+export type PipeTopRailStyle = 'continuous' | 'caps';
+/** Painted = sprayed with paint of `pipeFinishColor`. Bare = left raw, will rust naturally. */
+export type PipeFinish = 'painted' | 'bare';
+
 // -- Post Material Specifications --
 export interface PostSpec {
   id: PostMaterial;
@@ -434,4 +441,263 @@ export function calculateVertexAngle(
   const cross = v1.x * v2.y - v1.y * v2.x;
   const angle = Math.atan2(Math.abs(cross), dot);
   return angle * (180 / Math.PI);
+}
+
+// ============================================================
+// Pipe Fence — configuration & meticulous material calculation
+// ============================================================
+
+/**
+ * Everything that defines a pipe fence design. Drives both the per-foot cost
+ * calculation and the auto-generated section diagram in the PDF.
+ */
+export interface PipeFenceConfig {
+  uprightMaterial: PostMaterial;          // e.g. 'drill_stem_278' (vertical posts)
+  uprightGauge?: SquareTubeGauge;         // only used if upright is square
+  railMaterial: PostMaterial;             // e.g. 'drill_stem_238' (horizontal rails)
+  railGauge?: SquareTubeGauge;            // only used if rail is square
+  railCount: number;                      // number of horizontal rails (1-4 typical)
+  topRailStyle: PipeTopRailStyle;         // 'continuous' or 'caps'
+  finish: PipeFinish;                     // 'painted' or 'bare'
+  paintColor?: string;                    // e.g. 'Black' (only used if painted)
+  fenceHeightFeet: number;                // overall fence height above ground
+  postSpacingFeet: number;                // upright spacing (typ. 8 ft)
+}
+
+/** Sensible default pipe-fence design (4-rail, 5 ft, 2-7/8" uprights, 2-3/8" rails, painted black). */
+export const DEFAULT_PIPE_FENCE_CONFIG: PipeFenceConfig = {
+  uprightMaterial: 'drill_stem_278',
+  railMaterial: 'drill_stem_238',
+  railCount: 4,
+  topRailStyle: 'continuous',
+  finish: 'painted',
+  paintColor: 'Black',
+  fenceHeightFeet: 5,
+  postSpacingFeet: 8,
+};
+
+/** Result of a pipe-fence material calculation. All quantities are exact, "go-buy-this-much" numbers. */
+export interface PipeFenceMaterials {
+  // Uprights (vertical posts)
+  uprightCount: number;
+  uprightCutLengthFeet: number;        // each upright cut to this length (above + below ground, rounded up to nearest 0.5')
+  uprightTotalFeet: number;            // total feet of upright pipe needed (count × cutLength)
+  uprightJoints: number;               // how many full joints to buy (joint length comes from POST_MATERIALS)
+  uprightJointLengthFeet: number;
+  uprightWastageFeet: number;          // leftover pipe after cutting all uprights
+  uprightJointPriceId: string;
+  uprightUnitPrice: number;            // $ per joint (current price)
+
+  // Rails (horizontals)
+  railCount: number;
+  topRailStyle: PipeTopRailStyle;
+  railTotalFeet: number;               // sum of all rail pipe needed (already includes ~5% cut waste)
+  railJoints: number;                  // joints to buy
+  railJointLengthFeet: number;
+  railJointPriceId: string;
+  railUnitPrice: number;
+  railContinuousFeet: number;          // feet of continuous top rail (0 for caps style)
+  railBetweenPostFeet: number;         // feet of cut-between-post rails
+
+  // Caps (only for caps style)
+  postCapsNeeded: number;
+  postCapUnitPrice: number;
+
+  // Concrete
+  concreteBags: number;                // 80 lb bags
+  concreteUnitPrice: number;
+
+  // Welds (each rail-to-post connection is one weld; informational, not priced)
+  weldsCount: number;
+
+  // Paint (zero if finish === 'bare')
+  paintGallons: number;
+  paintMaterialCost: number;
+  paintLaborCost: number;
+
+  // Cost breakdown
+  uprightCost: number;
+  railCost: number;
+  capCost: number;
+  concreteCost: number;
+  totalMaterialCost: number;           // uprights + rails + caps + concrete + paint material (NOT paint labor)
+  totalCost: number;                   // totalMaterialCost + paintLaborCost
+}
+
+/** Outside diameter (or width for square tube) in INCHES for a given post material.
+ *  Exported so consumers (e.g. the PDF section diagram) don't have to duplicate
+ *  the lookup table. */
+export function postOdInches(material: PostMaterial): number {
+  switch (material) {
+    case 'drill_stem_238': return 2.375;
+    case 'drill_stem_278': return 2.875;
+    case 'round_pipe_250': return 2.5;
+    case 'square_2':       return 2;
+    case 'square_3':       return 3;
+    case 'square_4':       return 4;
+    default:               return 2.375;
+  }
+}
+
+/**
+ * Meticulously calculate every piece of pipe, every cap, every bag of
+ * concrete and every gallon of paint needed to build a section of pipe fence.
+ *
+ * The math, in plain English:
+ *   - We need ONE upright (vertical post) at every postSpacingFeet, plus one
+ *     extra upright at the very end of the run.
+ *   - Every upright is buried: 2.5 ft for fences ≤ 5 ft tall, 3 ft for taller.
+ *     We round each cut UP to the nearest 6 inches so the welder isn't
+ *     fighting fractional inches in the field.
+ *   - Then we figure out how many uprights we can cut from one full joint of
+ *     pipe (e.g. a 31' joint of 2-7/8" drill stem yields 4 uprights at 7.5'
+ *     each, leaving 1' of scrap), and round the joint count UP.
+ *   - Rail math depends on the top-rail style:
+ *       * continuous: the TOP rail is one long pipe across all posts, full
+ *         linear footage; the remaining (railCount - 1) rails are cut
+ *         between posts (postSpacing - postOd inches per piece).
+ *       * caps: ALL railCount rails are cut between posts.
+ *   - We add 5% cut/waste allowance on rails, then convert to joints.
+ *   - Caps style needs one post cap per upright; continuous style needs none
+ *     (the rail covers the post tops).
+ *   - Welds are informational: each rail end welded to a post = 1 weld.
+ *   - Paint is zero gallons if finish === 'bare'. Otherwise we estimate
+ *     1 gallon per ~15 uprights + 1 gallon per ~250 rail-feet (pipe has more
+ *     surface area than a flat fence, so we don't reuse the woven-fence
+ *     20 posts/gallon number).
+ */
+export function calculatePipeFenceMaterials(
+  totalLinearFeet: number,
+  cfg: PipeFenceConfig,
+  prices?: MaterialPrice[],
+): PipeFenceMaterials {
+  const list = prices ?? DEFAULT_MATERIAL_PRICES;
+  const findPrice = (id: string) => list.find(m => m.id === id)?.price ?? 0;
+
+  // ── Uprights ──
+  const uprightCount = Math.max(2, Math.ceil(totalLinearFeet / cfg.postSpacingFeet) + 1);
+  const buryFt = cfg.fenceHeightFeet <= 5 ? 2.5 : 3;
+  // Round cut length up to nearest 0.5 ft so welders aren't dealing with weird inches.
+  const uprightCutLengthFeet = Math.ceil((cfg.fenceHeightFeet + buryFt) * 2) / 2;
+  const uprightTotalFeet = uprightCount * uprightCutLengthFeet;
+
+  const uprightSpec = POST_MATERIALS.find(p => p.id === cfg.uprightMaterial) || POST_MATERIALS[0];
+  const uprightJointLength = uprightSpec.jointLengthFeet;
+  const postsPerJoint = Math.max(1, Math.floor(uprightJointLength / uprightCutLengthFeet));
+  const uprightJoints = Math.ceil(uprightCount / postsPerJoint);
+  const uprightWastageFeet = (uprightJoints * uprightJointLength) - uprightTotalFeet;
+  const uprightJointPriceId = postJointPriceId(cfg.uprightMaterial, cfg.uprightGauge);
+  const uprightUnitPrice = findPrice(uprightJointPriceId);
+
+  // ── Rails ──
+  const railSpec = POST_MATERIALS.find(p => p.id === cfg.railMaterial) || POST_MATERIALS[0];
+  const railJointLength = railSpec.jointLengthFeet;
+  const railJointPriceId = postJointPriceId(cfg.railMaterial, cfg.railGauge);
+  const railUnitPrice = findPrice(railJointPriceId);
+
+  const railCount = Math.max(1, Math.min(6, Math.round(cfg.railCount)));
+  const uprightOdFt = postOdInches(cfg.uprightMaterial) / 12;
+  const spans = uprightCount - 1;                          // number of bays between uprights
+  // Length of one rail piece between two posts (caps style butts the rail
+  // INTO the gap; continuous-style center rails do the same).
+  const cutRailPieceFt = Math.max(0, cfg.postSpacingFeet - uprightOdFt);
+
+  let railContinuousFeet = 0;
+  let railBetweenPostFeet = 0;
+  if (cfg.topRailStyle === 'continuous') {
+    // Top rail spans full run; the rest are cut between posts.
+    railContinuousFeet = totalLinearFeet;
+    railBetweenPostFeet = (railCount - 1) * spans * cutRailPieceFt;
+  } else {
+    // All rails are cut between each pair of posts.
+    railBetweenPostFeet = railCount * spans * cutRailPieceFt;
+  }
+  // 5% waste allowance for cuts, mistakes, fitting.
+  const railTotalFeet = (railContinuousFeet + railBetweenPostFeet) * 1.05;
+  const railJoints = railJointLength > 0 ? Math.ceil(railTotalFeet / railJointLength) : 0;
+
+  // ── Caps ──
+  const postCapsNeeded = cfg.topRailStyle === 'caps' ? uprightCount : 0;
+  const postCapUnitPrice = findPrice('post_cap');
+
+  // ── Concrete (per-upright; same diameter-based logic as line posts) ──
+  const odIn = postOdInches(cfg.uprightMaterial);
+  const holeDiamIn = Math.max(odIn * 3, 8);
+  const holeRadFt = (holeDiamIn / 2) / 12;
+  const postRadFt = (odIn / 2) / 12;
+  const postArea = uprightSpec.shape === 'square' ? (odIn / 12) ** 2 : Math.PI * postRadFt ** 2;
+  const holeArea = Math.PI * holeRadFt ** 2;
+  const concreteCuFtPerPost = (holeArea - postArea) * buryFt;
+  const bagsPerPost = Math.max(1, Math.ceil(concreteCuFtPerPost / 0.6));
+  const concreteBags = bagsPerPost * uprightCount;
+  const concreteUnitPrice = findPrice('concrete_bag');
+
+  // ── Welds (informational) ──
+  // Continuous: top rail welded ON TOP of each upright (uprightCount welds) +
+  // every center rail butt-welded BETWEEN posts (2 welds per piece × spans).
+  // Caps: every rail butt-welded between posts (2 welds per piece × spans × railCount).
+  const weldsCount = cfg.topRailStyle === 'continuous'
+    ? uprightCount + (railCount - 1) * spans * 2
+    : railCount * spans * 2;
+
+  // ── Paint ──
+  let paintGallons = 0;
+  let paintMaterialCost = 0;
+  let paintLaborCost = 0;
+  if (cfg.finish === 'painted') {
+    const gallonsForPosts = Math.ceil(uprightCount / 15);
+    const gallonsForRails = Math.ceil((railContinuousFeet + railBetweenPostFeet) / 250);
+    paintGallons = gallonsForPosts + gallonsForRails;
+    paintMaterialCost = paintGallons * findPrice('paint_posts');
+    // Painting labor: $/post for uprights (existing per-post rate covers a post's worth of work)
+    paintLaborCost = uprightCount * findPrice('paint_labor');
+  }
+
+  // ── Costs ──
+  const uprightCost = uprightJoints * uprightUnitPrice;
+  const railCost = railJoints * railUnitPrice;
+  const capCost = postCapsNeeded * postCapUnitPrice;
+  const concreteCost = concreteBags * concreteUnitPrice;
+  const totalMaterialCost = uprightCost + railCost + capCost + concreteCost + paintMaterialCost;
+  const totalCost = totalMaterialCost + paintLaborCost;
+
+  return {
+    uprightCount,
+    uprightCutLengthFeet,
+    uprightTotalFeet,
+    uprightJoints,
+    uprightJointLengthFeet: uprightJointLength,
+    uprightWastageFeet: Math.round(uprightWastageFeet * 10) / 10,
+    uprightJointPriceId,
+    uprightUnitPrice,
+
+    railCount,
+    topRailStyle: cfg.topRailStyle,
+    railTotalFeet: Math.round(railTotalFeet * 10) / 10,
+    railJoints,
+    railJointLengthFeet: railJointLength,
+    railJointPriceId,
+    railUnitPrice,
+    railContinuousFeet: Math.round(railContinuousFeet * 10) / 10,
+    railBetweenPostFeet: Math.round(railBetweenPostFeet * 10) / 10,
+
+    postCapsNeeded,
+    postCapUnitPrice,
+
+    concreteBags,
+    concreteUnitPrice,
+
+    weldsCount,
+
+    paintGallons,
+    paintMaterialCost: Math.round(paintMaterialCost * 100) / 100,
+    paintLaborCost: Math.round(paintLaborCost * 100) / 100,
+
+    uprightCost: Math.round(uprightCost * 100) / 100,
+    railCost: Math.round(railCost * 100) / 100,
+    capCost: Math.round(capCost * 100) / 100,
+    concreteCost: Math.round(concreteCost * 100) / 100,
+    totalMaterialCost: Math.round(totalMaterialCost * 100) / 100,
+    totalCost: Math.round(totalCost * 100) / 100,
+  };
 }

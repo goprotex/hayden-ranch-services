@@ -4,8 +4,12 @@ import {
   calculatePostLength,
   POST_MATERIALS,
   getGaugeOptions,
+  calculatePipeFenceMaterials,
+  postOdInches,
   type PostMaterial,
   type SquareTubeGauge,
+  type PipeFenceConfig,
+  type PipeFenceMaterials,
 } from './fence-materials';
 
 // ============================================================
@@ -19,10 +23,14 @@ export interface LaborEstimate {
   drillingHours: number;       // time to drill all post holes
   postSettingHours: number;    // time to set posts in concrete
   tPostHours: number;          // time to drive T-posts
-  wireHours: number;           // wire unrolling & tensioning time
-  clippingHours: number;       // time to clip/tie wire to every post
+  wireHours: number;           // wire unrolling & tensioning time (0 for pipe fence)
+  clippingHours: number;       // time to clip/tie wire to every post (0 for pipe fence)
   braceAssemblyHours: number;  // time to build H-brace & corner brace assemblies
   gateHours: number;           // gate installation
+  // ── Pipe-fence-specific (0 for non-pipe fences) ──
+  pipeRailHandlingHours?: number; // cut & position rail pipe between posts
+  pipeWeldingHours?: number;      // welding rails to posts
+  pipePaintHours?: number;        // painting the assembled fence
   totalHours: number;
   workDayHours: number;        // hours per work day (9-10)
   workDays: number;            // total work days
@@ -77,6 +85,11 @@ export interface FenceBidData {
   barbedStrandCount?: number;        // for fenceType === 'barbed_wire'; default 4
   barbedPointType?: '2_point' | '4_point';
   premiumGalvanized?: boolean;       // upgrade: galvanized line posts, t-posts & caps
+
+  // Pipe fence design (only used when fenceType === 'Pipe Fence' / 'pipe_fence').
+  // Drives the per-section materials calculation AND the auto-generated PDF
+  // section diagram so the customer can see exactly what they're getting.
+  pipeFenceConfig?: PipeFenceConfig;
 
   // Sections
   sections: FenceBidSection[];
@@ -1704,6 +1717,33 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
       });
     }
 
+    // Phase 4b: Pipe-fence rail handling + welding (only present for pipe fence)
+    const pipeBuildItems = le.breakdown.filter(b => {
+      const t = b.task.toLowerCase();
+      return t.includes('rail pipe') || t.includes('weld');
+    });
+    const pipeBuildHrs = pipeBuildItems.reduce((s, b) => s + b.hours, 0);
+    if (pipeBuildHrs > 0) {
+      phases.push({
+        name: 'Rail Cutting & Welding',
+        icon: String(phases.length + 1),
+        hours: Math.round(pipeBuildHrs * 10) / 10,
+        items: pipeBuildItems.map(b => b.detail),
+      });
+    }
+
+    // Phase 4c: Pipe fence painting (only if applicable)
+    const pipePaintItems = le.breakdown.filter(b => b.task.toLowerCase().includes('paint'));
+    const pipePaintHrs = pipePaintItems.reduce((s, b) => s + b.hours, 0);
+    if (pipePaintHrs > 0) {
+      phases.push({
+        name: 'Painting',
+        icon: String(phases.length + 1),
+        hours: Math.round(pipePaintHrs * 10) / 10,
+        items: pipePaintItems.map(b => b.detail),
+      });
+    }
+
     // Phase 5: Gates & Finishing
     const gateItems = le.breakdown.filter(b => b.task.toLowerCase().includes('gate'));
     const gateHrs = gateItems.reduce((s, b) => s + b.hours, 0);
@@ -2331,6 +2371,24 @@ export async function generateFenceBidPDF(data: FenceBidData): Promise<void> {
     y += 36;
   }
 
+  // ── Auto-generated Pipe Fence Section Diagram ──
+  // Side-elevation drawing showing exactly what one section of the customer's
+  // pipe fence will look like, complete with measurements.
+  if (data.pipeFenceConfig) {
+    y = ensureSpace(doc, y, 110);
+
+    // Header bar
+    doc.setFillColor(27, 38, 54);
+    doc.rect(mx, y - 3, cw, 9, 'F');
+    doc.setTextColor(255, 255, 255);
+    sz(12); doc.setFont(brandFont, 'bold');
+    doc.text('YOUR PIPE FENCE — SECTION DIAGRAM', mx + 4, y + 3);
+    y += 14;
+
+    drawPipeFenceSectionDiagram(doc, mx, y, cw, 90, data.pipeFenceConfig, brandFont, sz);
+    y += 96;
+  }
+
   // ── Terms and Conditions ──
   doc.addPage();
   y = 20;
@@ -2566,11 +2624,62 @@ export function calculateSectionMaterials(
     barbedStrandCount?: number; // for fenceType === 'barbed_wire'; default 4
     barbedPointType?: '2_point' | '4_point'; // affects barbed wire material name
     premiumGalvanized?: boolean; // labels posts/t-posts/caps as galvanized
+    pipeFenceConfig?: PipeFenceConfig; // full pipe-fence design (only used for pipe fence)
   } = {},
 ): SectionMaterial[] {
   const barbedStrandCount = Math.max(2, Math.min(9, Math.round(options.barbedStrandCount ?? 4)));
   const barbedPointLabel = options.barbedPointType === '2_point' ? '2-point' : '4-point';
   const galvPrefix = options.premiumGalvanized ? 'Galvanized ' : '';
+
+  // ============================================================
+  // PIPE FENCE — dedicated path: uprights + horizontal rails + caps + concrete + paint.
+  // No T-posts, no woven wire, no clips, no tensioners.
+  // ============================================================
+  const isPipeFenceShortCircuit = fenceType.toLowerCase().includes('pipe');
+  if (isPipeFenceShortCircuit && options.pipeFenceConfig) {
+    const cfg = options.pipeFenceConfig;
+    const pipe = calculatePipeFenceMaterials(linearFeet, cfg);
+    const uprightSpec = POST_MATERIALS.find(p => p.id === cfg.uprightMaterial) || POST_MATERIALS[0];
+    const railSpec = POST_MATERIALS.find(p => p.id === cfg.railMaterial) || POST_MATERIALS[0];
+    const styleLabel = cfg.topRailStyle === 'continuous'
+      ? 'continuous top rail (welded across post tops)'
+      : 'rails butt-welded between posts (post tops capped)';
+    const finishLabel = cfg.finish === 'painted'
+      ? `painted${cfg.paintColor ? ' ' + cfg.paintColor : ''}`
+      : 'bare (no paint — will rust naturally)';
+    const out: SectionMaterial[] = [];
+    out.push({
+      name: `Pipe Fence — ${cfg.fenceHeightFeet}ft tall, ${cfg.railCount} rail${cfg.railCount > 1 ? 's' : ''}, ${styleLabel}, ${finishLabel}`,
+      quantity: `${linearFeet.toLocaleString()} ft @ ${cfg.postSpacingFeet}' upright spacing`,
+    });
+    out.push({
+      name: `${galvPrefix}${uprightSpec.label} Uprights — cut to ${pipe.uprightCutLengthFeet}' each`,
+      quantity: `${pipe.uprightCount} uprights (${pipe.uprightJoints} joints × ${pipe.uprightJointLengthFeet}', ${pipe.uprightWastageFeet}' scrap)`,
+    });
+    out.push({
+      name: `${galvPrefix}${railSpec.label} Horizontal Rails — ${cfg.railCount} rows`,
+      quantity: `${pipe.railJoints} joints × ${pipe.railJointLengthFeet}' (${pipe.railTotalFeet.toLocaleString()} ft total inc. 5% cut waste)`,
+    });
+    if (pipe.postCapsNeeded > 0) {
+      out.push({ name: 'Post Caps — pressed steel', quantity: `${pipe.postCapsNeeded} caps` });
+    }
+    out.push({
+      name: 'Concrete Mix — 80 lb bags, fast-setting',
+      quantity: `${pipe.concreteBags} bags`,
+    });
+    out.push({
+      name: 'Welds (informational — included in labor)',
+      quantity: `${pipe.weldsCount} rail-to-post welds`,
+    });
+    if (pipe.paintGallons > 0) {
+      out.push({
+        name: `Paint — ${cfg.paintColor || 'specified color'}, oil-based rust-inhibiting`,
+        quantity: `${pipe.paintGallons} gallons`,
+      });
+    }
+    return out;
+  }
+
   const ft = linearFeet;
   const wireHeightIn = resolveWireHeight(fenceHeight, stayTuffModel);
   const rollLength = resolveWireRollLength(stayTuffModel);
@@ -2804,6 +2913,18 @@ export function calculateLaborEstimate(params: {
   clipsPerTPost?: number;      // clips per T-post (default 4)
   tiesPerLinePost?: number;    // wire ties per line post (default 4)
   workDayHours?: number;       // default 9.5
+  // Pipe-fence overrides — when present, the wire-stringing/clipping steps
+  // are replaced with welding + rail handling + (optional) painting steps.
+  // weldsCount: total rail-to-post welds for the run (from
+  // calculatePipeFenceMaterials.weldsCount).
+  // railJoints: full pipe joints to cut / position
+  // (calculatePipeFenceMaterials.railJoints).
+  // paintGallons: 0 for bare; otherwise full-job paint quantity.
+  pipeFence?: {
+    weldsCount: number;
+    railJoints: number;
+    paintGallons: number;
+  };
 }): LaborEstimate {
   const {
     totalLinearFeet,
@@ -2815,7 +2936,10 @@ export function calculateLaborEstimate(params: {
     clipsPerTPost = 4,
     tiesPerLinePost = 4,
     workDayHours = 9.5,
+    pipeFence,
   } = params;
+
+  const isPipeFence = !!pipeFence;
 
   const breakdown: { task: string; hours: number; detail: string }[] = [];
 
@@ -2881,21 +3005,63 @@ export function calculateLaborEstimate(params: {
   }
 
   // ── Wire stringing (~300 ft/hr for unrolling & tensioning) ──
-  const wireHrs = totalLinearFeet / 300;
-  breakdown.push({
-    task: 'Unroll & tension wire',
-    hours: wireHrs,
-    detail: `${totalLinearFeet.toLocaleString()} ft @ ~300 ft/hr (unroll, stretch, tension)`,
-  });
+  // Pipe fence has no wire — skip this step entirely for pipe.
+  let wireHrs = 0;
+  if (!isPipeFence) {
+    wireHrs = totalLinearFeet / 300;
+    breakdown.push({
+      task: 'Unroll & tension wire',
+      hours: wireHrs,
+      detail: `${totalLinearFeet.toLocaleString()} ft @ ~300 ft/hr (unroll, stretch, tension)`,
+    });
+  }
 
   // ── Clipping wire to posts (~1 min per clip/tie) ──
-  const totalClips = (tPostCount * clipsPerTPost) + (linePostCount * tiesPerLinePost);
-  const clippingHrs = totalClips / 60; // 1 minute per clip
-  breakdown.push({
-    task: 'Clip & tie wire to posts',
-    hours: clippingHrs,
-    detail: `${totalClips.toLocaleString()} clips/ties @ ~1 min each (${tPostCount} T-posts × ${clipsPerTPost} + ${linePostCount} line posts × ${tiesPerLinePost})`,
-  });
+  // Again, no clips/ties on a pipe fence.
+  let clippingHrs = 0;
+  if (!isPipeFence) {
+    const totalClips = (tPostCount * clipsPerTPost) + (linePostCount * tiesPerLinePost);
+    clippingHrs = totalClips / 60; // 1 minute per clip
+    breakdown.push({
+      task: 'Clip & tie wire to posts',
+      hours: clippingHrs,
+      detail: `${totalClips.toLocaleString()} clips/ties @ ~1 min each (${tPostCount} T-posts × ${clipsPerTPost} + ${linePostCount} line posts × ${tiesPerLinePost})`,
+    });
+  }
+
+  // ── Pipe-fence specific steps: rail handling + welding + painting ──
+  // Welding is the dominant labor on a pipe fence. Real-world rate from ranch
+  // pipe fence builders is ~3 minutes per finished rail-to-post weld
+  // (positioning the rail, tacking, full weld pass, light grinding). Continuous
+  // top rail welds are slightly faster (lap weld on top of post) but caps-style
+  // butt welds are slower (two welds per rail end) — 3 min/weld is a fair avg.
+  // Rail handling: ~5 min per joint (haul, measure, cut, fit between posts)
+  // Painting: ~30 min per gallon (prep + apply, sprayer or roller)
+  let pipeRailHandlingHrs = 0;
+  let pipeWeldingHrs = 0;
+  let pipePaintHrs = 0;
+  if (pipeFence) {
+    pipeRailHandlingHrs = pipeFence.railJoints * (5 / 60);
+    pipeWeldingHrs = pipeFence.weldsCount * (3 / 60);
+    pipePaintHrs = pipeFence.paintGallons * 0.5;
+    breakdown.push({
+      task: 'Cut & position rail pipe',
+      hours: pipeRailHandlingHrs,
+      detail: `${pipeFence.railJoints} joints × ~5 min each (haul, measure, cut, fit between posts)`,
+    });
+    breakdown.push({
+      task: 'Weld rails to posts',
+      hours: pipeWeldingHrs,
+      detail: `${pipeFence.weldsCount.toLocaleString()} welds × ~3 min each (position, tack, full pass, light grind)`,
+    });
+    if (pipeFence.paintGallons > 0) {
+      breakdown.push({
+        task: 'Paint fence',
+        hours: pipePaintHrs,
+        detail: `${pipeFence.paintGallons} gal × ~30 min each (prep + spray/roll)`,
+      });
+    }
+  }
 
   // ── Gates (avg 1.5 hrs per gate install including welding frame) ──
   const gateHrs = gateCount * 1.5;
@@ -2921,9 +3087,225 @@ export function calculateLaborEstimate(params: {
     clippingHours: Math.round(clippingHrs * 10) / 10,
     braceAssemblyHours: Math.round(braceAssemblyHours * 10) / 10,
     gateHours: Math.round(gateHrs * 10) / 10,
+    pipeRailHandlingHours: Math.round(pipeRailHandlingHrs * 10) / 10,
+    pipeWeldingHours: Math.round(pipeWeldingHrs * 10) / 10,
+    pipePaintHours: Math.round(pipePaintHrs * 10) / 10,
     totalHours: Math.round(totalHours * 10) / 10,
     workDayHours,
     workDays: Math.ceil(workDays),
     breakdown: breakdown.map(b => ({ ...b, hours: Math.round(b.hours * 10) / 10 })),
   };
+}
+// ============================================================
+// Pipe Fence — Auto-generated Section Diagram (side elevation)
+// ============================================================
+//
+// Renders a scaled side-view of one representative section of the
+// customer's pipe fence. Shows posts, every rail, the ground line, post
+// caps (if cap-style), the continuous top rail (if continuous-style),
+// and labels post-to-post spacing + total fence height.
+//
+// All units in jsPDF coordinates are millimeters. We map the real-world
+// fence (in feet) into a fixed drawing area (boxX..boxX+boxW, boxY..boxY+boxH).
+// ============================================================
+
+function drawPipeFenceSectionDiagram(
+  doc: jsPDF,
+  boxX: number,
+  boxY: number,
+  boxW: number,
+  boxH: number,
+  cfg: PipeFenceConfig,
+  brandFont: string,
+  sz: (s: number) => void,
+): void {
+  // Show 3 bays = 4 posts so the picture is informative without being cramped.
+  const baysShown = 3;
+  const realWidthFt = baysShown * cfg.postSpacingFeet;
+  const realHeightFt = cfg.fenceHeightFeet + 1.5; // include some headroom + ground
+
+  // Reserve margins inside the box for measurement labels.
+  const padX = 22;     // left/right space for height label / arrow
+  const padTop = 8;    // top space for "post spacing" label
+  const padBottom = 14; // bottom space for ground hatching + spacing label
+  const drawX = boxX + padX;
+  const drawY = boxY + padTop;
+  const drawW = boxW - padX * 2;
+  const drawH = boxH - padTop - padBottom;
+
+  // Scale: pick the smaller scale so the whole drawing fits.
+  const scaleX = drawW / realWidthFt;
+  const scaleY = drawH / realHeightFt;
+  // Use independent X/Y scales — fence sections are normally wider than tall
+  // and forcing a 1:1 ratio would waste page space.
+  const ftToMmX = (ft: number) => ft * scaleX;
+  const ftToMmY = (ft: number) => ft * scaleY;
+
+  // Outer card
+  doc.setFillColor(250, 251, 253);
+  doc.roundedRect(boxX, boxY, boxW, boxH, 2, 2, 'F');
+  doc.setDrawColor(220, 225, 235);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(boxX, boxY, boxW, boxH, 2, 2, 'S');
+
+  // Ground line (drawY + drawH = ground)
+  const groundY = drawY + drawH - ftToMmY(0);
+  doc.setDrawColor(120, 90, 50);
+  doc.setLineWidth(0.5);
+  doc.line(drawX - 4, groundY, drawX + drawW + 4, groundY);
+  // Ground hatching
+  doc.setLineWidth(0.2);
+  doc.setDrawColor(160, 130, 80);
+  for (let hx = drawX - 3; hx < drawX + drawW + 4; hx += 2.5) {
+    doc.line(hx, groundY, hx + 1.8, groundY + 2.2);
+  }
+
+  // Post dimensions in drawing units
+  const railOdInchesLocal = postOdInches(cfg.railMaterial);
+  const uprightOdIn = postOdInches(cfg.uprightMaterial);
+  const uprightThicknessMm = Math.max(1.4, ftToMmX(uprightOdIn / 12));
+  const railThicknessMm = Math.max(0.8, ftToMmY(railOdInchesLocal / 12));
+
+  // Color of pipe — bare = rusty brown; painted = use color name if recognizable, else dark grey
+  const isPainted = cfg.finish === 'painted';
+  const colorMap: Record<string, [number, number, number]> = {
+    black: [25, 25, 25],
+    white: [240, 240, 240],
+    red: [180, 40, 40],
+    green: [50, 110, 60],
+    brown: [110, 75, 50],
+    grey: [110, 110, 115],
+    gray: [110, 110, 115],
+    silver: [180, 185, 190],
+    tan: [196, 164, 105],
+  };
+  const paintRgb = colorMap[(cfg.paintColor || 'black').toLowerCase()] || [40, 40, 45];
+  const pipeRgb: [number, number, number] = isPainted ? paintRgb : [150, 95, 60]; // rust
+
+  // Post positions (4 posts for 3 bays)
+  const postCount = baysShown + 1;
+  const postXs: number[] = [];
+  for (let i = 0; i < postCount; i++) {
+    postXs.push(drawX + ftToMmX(i * cfg.postSpacingFeet));
+  }
+
+  // Above-ground top of each upright (post tops). For "caps" style they stick up
+  // a tiny bit above the top rail (we show ~3 inches of post above top rail).
+  // For "continuous" style the top rail covers the post tops.
+  const topRailFt = cfg.fenceHeightFeet; // top rail at fence height
+  const topRailY = groundY - ftToMmY(topRailFt);
+  const postTopY = cfg.topRailStyle === 'caps'
+    ? topRailY - ftToMmY(0.25)        // 3" of post above top rail
+    : topRailY;
+
+  // Draw the uprights
+  doc.setFillColor(...pipeRgb);
+  doc.setDrawColor(40, 40, 50);
+  doc.setLineWidth(0.2);
+  for (const px of postXs) {
+    doc.rect(px - uprightThicknessMm / 2, postTopY, uprightThicknessMm, groundY - postTopY, 'F');
+  }
+
+  // Draw caps (cap style only)
+  if (cfg.topRailStyle === 'caps') {
+    doc.setFillColor(...pipeRgb);
+    for (const px of postXs) {
+      const capW = uprightThicknessMm + 1.2;
+      const capH = 1.4;
+      doc.rect(px - capW / 2, postTopY - capH, capW, capH, 'F');
+    }
+  }
+
+  // Rail vertical positions: evenly distributed from top (cfg.fenceHeightFeet)
+  // down to ~6" above ground for the bottom rail. If only one rail, place it
+  // at the top.
+  const railCount = Math.max(1, Math.min(6, Math.round(cfg.railCount)));
+  const topY_ft = cfg.fenceHeightFeet - 0.05;        // top rail at top (small inset)
+  const bottomY_ft = railCount > 1 ? 0.5 : topY_ft;  // bottom rail 6" off ground if multi-rail
+  const railYsFt: number[] = [];
+  for (let i = 0; i < railCount; i++) {
+    if (railCount === 1) { railYsFt.push(topY_ft); break; }
+    const t = i / (railCount - 1);
+    railYsFt.push(topY_ft - t * (topY_ft - bottomY_ft));
+  }
+
+  // Draw rails
+  doc.setFillColor(...pipeRgb);
+  for (let i = 0; i < railYsFt.length; i++) {
+    const ry = groundY - ftToMmY(railYsFt[i]);
+    let railStartX: number, railEndX: number;
+    const isTopRail = i === 0;
+    if (isTopRail && cfg.topRailStyle === 'continuous') {
+      // Continuous top rail spans across all post tops, sticking out a touch on each side.
+      railStartX = postXs[0] - 1.5;
+      railEndX = postXs[postXs.length - 1] + 1.5;
+    } else {
+      // Other rails butt-welded between posts: draw between each adjacent pair of posts.
+      // We render as one continuous strip from first to last post, but visually that's the same here.
+      railStartX = postXs[0];
+      railEndX = postXs[postXs.length - 1];
+    }
+    doc.rect(railStartX, ry - railThicknessMm / 2, railEndX - railStartX, railThicknessMm, 'F');
+  }
+
+  // ── Labels & dimensions ──
+  doc.setTextColor(40, 40, 60);
+  doc.setFont(brandFont, 'normal');
+
+  // Post-to-post spacing label (between first two posts)
+  sz(7);
+  const spacingLabelY = groundY + 5;
+  const spanMidX = (postXs[0] + postXs[1]) / 2;
+  doc.setDrawColor(80, 80, 90);
+  doc.setLineWidth(0.25);
+  doc.line(postXs[0], spacingLabelY - 1, postXs[1], spacingLabelY - 1);
+  // tick marks
+  doc.line(postXs[0], spacingLabelY - 2.5, postXs[0], spacingLabelY + 0.5);
+  doc.line(postXs[1], spacingLabelY - 2.5, postXs[1], spacingLabelY + 0.5);
+  doc.text(`${cfg.postSpacingFeet} ft`, spanMidX, spacingLabelY + 3.5, { align: 'center' });
+
+  // Fence height label (vertical, on left)
+  sz(7);
+  const heightLabelX = drawX - 6;
+  doc.setDrawColor(80, 80, 90);
+  doc.line(heightLabelX, groundY, heightLabelX, topRailY);
+  doc.line(heightLabelX - 1.2, groundY, heightLabelX + 1.2, groundY);
+  doc.line(heightLabelX - 1.2, topRailY, heightLabelX + 1.2, topRailY);
+  doc.text(`${cfg.fenceHeightFeet} ft`, heightLabelX - 3, (groundY + topRailY) / 2, { align: 'center', angle: 90 });
+
+  // Cap label (cap style)
+  if (cfg.topRailStyle === 'caps') {
+    sz(6);
+    doc.setTextColor(80, 80, 110);
+    doc.text('post caps', postXs[postXs.length - 1] + 4, postTopY + 0.8);
+  }
+
+  // Top rail style annotation
+  sz(6);
+  doc.setTextColor(80, 80, 110);
+  const topAnnotation = cfg.topRailStyle === 'continuous'
+    ? 'continuous top rail'
+    : 'top rail welded between posts';
+  doc.text(topAnnotation, postXs[0], topRailY - 2);
+
+  // Header text: design summary
+  sz(7.5);
+  doc.setFont(brandFont, 'bold');
+  doc.setTextColor(27, 38, 54);
+  const upLabel = POST_MATERIALS.find(p => p.id === cfg.uprightMaterial)?.label || cfg.uprightMaterial;
+  const railLabel = POST_MATERIALS.find(p => p.id === cfg.railMaterial)?.label || cfg.railMaterial;
+  const finishLabel = cfg.finish === 'painted' ? `painted ${cfg.paintColor || ''}`.trim() : 'bare (will rust)';
+  doc.text(
+    `${cfg.fenceHeightFeet}' tall · ${cfg.railCount} rail${cfg.railCount > 1 ? 's' : ''} · uprights: ${upLabel} · rails: ${railLabel} · ${finishLabel}`,
+    boxX + boxW / 2, boxY + 4.5, { align: 'center' },
+  );
+
+  // Footer note
+  sz(6);
+  doc.setFont(brandFont, 'italic');
+  doc.setTextColor(110, 110, 130);
+  doc.text(
+    `Side-elevation showing ${baysShown} bays (${baysShown + 1} posts). Drawing not to exact scale; horizontal & vertical scales differ for clarity.`,
+    boxX + boxW / 2, boxY + boxH - 2, { align: 'center' },
+  );
 }
